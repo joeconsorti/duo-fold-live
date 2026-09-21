@@ -18,7 +18,7 @@ object ShizukuAccess {
   }
  } catch(e: Exception){"Shizuku request failed: ${e.javaClass.simpleName}: ${e.message}"}
  fun report(context: Context): String = buildString {
-  append("Duo Fold Live 1.5.3 · connection report\n")
+  append("Duo Fold Live 1.5.4 · connection report\n")
   append("${Build.MODEL} / Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}\n")
   append("Package: ${context.packageName}\n")
   append("Official Shizuku installed in this profile: "+runCatching{context.packageManager.getPackageInfo("moe.shizuku.privileged.api",0);true}.getOrDefault(false)+"\n")
@@ -30,7 +30,7 @@ object ShizukuAccess {
    append("Permission: ${Shizuku.checkSelfPermission()} (0 = authorized)\n")
    append("Previously denied: ${Shizuku.shouldShowRequestPermissionRationale()}\n")
   }.onFailure{append("Connection check failed: ${it.javaClass.simpleName}: ${it.message}\n")}
-  append("Automatic wallpaper profile supported: ${Build.MODEL=="SM-F971U" && Build.VERSION.SDK_INT==37}\n")
+  append("Wallpaper setup model/OS eligible: ${DeviceCompatibility.isEligible(Build.MODEL, Build.VERSION.SDK_INT)}\n")
   append("Wallpaper setup verified: ${context.getSharedPreferences("first_run",0).getBoolean("wallpaper_verified",false)}\n")
   append("Wireless and USB start the same Shizuku ADB service. An unsupported wallpaper profile is not an authorization failure.")
  }
