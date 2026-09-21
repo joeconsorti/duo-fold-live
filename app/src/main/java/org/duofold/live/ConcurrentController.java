@@ -7,14 +7,13 @@ import java.util.concurrent.Executor;
 /** One bounded transition session. All hidden API calls execute under the Shizuku shell identity. */
 final class ConcurrentController {
  private Object manager,owned;private Class<?> requestType,callbackType;private Method request,cancel;
- private boolean liveMode;
  private boolean primaryInner,contentInner,blocked,routeAttempted,bootstrapUsed,bootstrapping;private int innerId=-1,outerId=-1;
  private long started,endpointSince,pendingSince,readyLostAt,mappingDeadline;
  private ComponentName expected;private int destination;private boolean pendingInner;
  private TaskDisplayRouter router;
  private String nativeFailure="";
  private boolean nativeRetried;
- synchronized boolean canMirrorSecondary(){return liveMode && owned!=null;}
+ synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
  String status="Dual-screen mode ready";
  synchronized boolean active(){return owned!=null;}
@@ -55,8 +54,7 @@ final class ConcurrentController {
   request.invoke(manager,next,(Executor)Runnable::run,callback);
   status="Waiting for second-panel Presentation (state "+(inner?innerId:outerId)+")";
  }
- synchronized void update(float angle,boolean fresh,boolean unlocked,boolean primaryIsInner,boolean secondaryReady,int frozenSource,float openThreshold,boolean live){
-  liveMode=live;
+ synchronized void update(float angle,boolean fresh,boolean unlocked,boolean primaryIsInner,boolean secondaryReady,int frozenSource,float openThreshold){
   long token=Binder.clearCallingIdentity();long now=SystemClock.elapsedRealtime();
   try{
    if(!unlocked){releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;return;}
@@ -72,11 +70,11 @@ final class ConcurrentController {
     if(angle>=FoldThreshold.sanitize(openThreshold) || now-endpointSince>=350){releaseInternal();blocked=false;}return;
    }
    endpointSince=0;
-   if(owned==null){if(!blocked&&FoldThreshold.canStart(angle,openThreshold)){int target=HandoffStartPolicy.target(primaryIsInner,frozenSource,liveMode);if(target>=0)begin(target==1,now);else status="Waiting for outgoing frame before switching displays";}return;}
+   if(owned==null){if(!blocked&&FoldThreshold.canStart(angle,openThreshold)){if(FreezePolicy.canSwitch(primaryIsInner,frozenSource))begin(FreezePolicy.targetInner(frozenSource),now);else status="Waiting for outgoing frame before switching displays";}return;}
    if(primaryIsInner!=primaryInner && now<mappingDeadline)return;
    if(primaryIsInner!=primaryInner)throw new IllegalStateException("Primary physical display changed during session");
    // Hold one inner-primary session for the entire overlap; do not move tasks or swap at 90 degrees.
-   status=liveMode?(secondaryReady?"Live compositor mirror active":"Waiting for live compositor mirror"):secondaryReady?(primaryInner?"Inner live + frozen cover":"Cover live + frozen inner"):"Waiting for outgoing-panel freeze Presentation";
+   status=secondaryReady?(primaryInner?"Inner live + frozen cover":"Cover live + frozen inner"):"Waiting for outgoing-panel freeze Presentation";
   }catch(Exception e){Throwable root=e;while(root.getCause()!=null)root=root.getCause();releaseInternal();blocked=true;status="Concurrent mode error: "+root.getMessage();}
   finally{Binder.restoreCallingIdentity(token);}
  }
