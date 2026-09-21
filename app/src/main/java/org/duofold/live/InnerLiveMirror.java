@@ -21,7 +21,7 @@ final class InnerLiveMirror {
    if(source==null||dest==null)throw new IllegalStateException("Both panels must exist");
    int sw=source.getClass().getField("logicalWidth").getInt(source),sh=source.getClass().getField("logicalHeight").getInt(source);
    int dw=dest.getClass().getField("logicalWidth").getInt(dest),dh=dest.getClass().getField("logicalHeight").getInt(dest);
-   if(Math.min(sw,sh)<1500||Math.min(dw,dh)>=1500)throw new IllegalStateException("Physical panels changed; refusing feedback mirror");
+   if(java.util.Objects.equals(source.getClass().getField("uniqueId").get(source),dest.getClass().getField("uniqueId").get(dest)))throw new IllegalStateException("Refusing same-panel feedback mirror");
    Object wm=service("window","android.view.IWindowManager$Stub");
    mirror=SurfaceControl.class.getConstructor().newInstance();
    boolean accepted=(boolean)Class.forName("android.view.IWindowManager").getMethod("mirrorDisplay",int.class,SurfaceControl.class).invoke(wm,0,mirror);
@@ -31,7 +31,7 @@ final class InnerLiveMirror {
     SurfaceControl.Transaction.class.getMethod("setMatrix",SurfaceControl.class,float.class,float.class,float.class,float.class).invoke(t,mirror,fit[0],0f,0f,fit[0]);
     t.reparent(mirror,parent).setLayer(mirror,1).setCrop(mirror,new Rect(0,0,sw,sh)).setPosition(mirror,fit[1],fit[2]).setVisibility(mirror,true).apply();
    }
-   owner=id;status="Live inner content → cover Presentation (center crop, no screenshots)";result.putBoolean("ok",true);
+   owner=id;status="Live primary display → secondary panel (center crop, no frozen handoff frame)";result.putBoolean("ok",true);
   }catch(Exception e){close();Throwable cause=e;while(cause.getCause()!=null)cause=cause.getCause();status="Cover mirror unavailable: "+cause.getClass().getSimpleName()+": "+cause.getMessage();}
   finally{if(parent!=null)parent.release();Binder.restoreCallingIdentity(identity);}
   result.putString("status",status);return result;
