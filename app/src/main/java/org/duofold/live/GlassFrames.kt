@@ -10,6 +10,7 @@ internal object GlassFrames {
  var status by mutableStateOf("Glass renderer ready");private set
  private val main=Handler(Looper.getMainLooper())
  private val executor=Executors.newSingleThreadExecutor()
+ private val settingsExecutor=Executors.newSingleThreadExecutor()
  private var suspended=false
  fun suspendCapture(){suspended=true;generation++;frame=null;main.removeCallbacks(tick)}
  fun resumeCapture(){if(suspended){suspended=false;if(clients>0)main.post(tick)}}
@@ -56,7 +57,7 @@ internal object GlassFrames {
    val f=captured;val message=note;main.post{done(f,message)}
   }
  }
- fun foldSetting(action:String,original:String?,done:(Bundle)->Unit){executor.execute{
+ fun foldSetting(action:String,original:String?,done:(Bundle)->Unit){settingsExecutor.execute{
   val p=Parcel.obtain();val r=Parcel.obtain();val response=try{
    p.writeInterfaceToken(GlassCapture.TOKEN);p.writeString(action);if(action=="restore")p.writeString(original)
    LiveAngles.captureBinder().transact(2,p,r,0);r.readException();r.readBundle(javaClass.classLoader)?:Bundle()
