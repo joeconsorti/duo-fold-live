@@ -1,10 +1,10 @@
-# Duo Fold Live · v1.5.1
+# Duo Fold Live · v1.5.2
 
 Hinge-driven opening and closing animations for the Samsung Galaxy Z Fold 8, running over One UI and ordinary apps without replacing your launcher. Includes two-screen screenshot handoff and an optional custom photo wallpaper.
 
 The animation follows live hinge measurements; the outgoing screen content is a freeze frame during handoff. This is an Android overlay app, not a system feature supplied by Samsung. See the known issues below before installing.
 
-**v1.5.1 is available in this repository’s Releases section.** Download `Duo-Fold-Live-v1.5.1.apk`; `SHA256SUMS.txt` is provided for verification.
+**v1.5.2 is available as a test pre-release in Releases.** Download `Duo-Fold-Live-v1.5.2.apk`. It updates public v1.5.1 without uninstalling. Authorization handling and on-phone diagnostics are improved; confirmation from affected phones is still needed.
 
 **Supported automatic setup: SM-F971U, Android 17 / SDK 37.** Samsung private APIs and the installed FoldInteractive wallpaper engine are required. Other models and firmware are not verified. This is an independent project, unaffiliated with Samsung, Apple, Shizuku, or the upstream animation authors.
 
@@ -14,7 +14,7 @@ Install the signed release APK. A fresh installation guides you through:
 
 1. **Required fold wallpaper.** Both inner and cover HOME wallpapers must use Samsung's interactive fold wallpaper. The app explains this before making changes. There is no alternative hinge-source selection in setup.
 2. **Optional custom photo.** Pick an image to display behind your icons, or keep the Samsung wallpaper visible.
-3. **Shizuku.** Download it from [the official Shizuku download page](https://shizuku.rikka.app/download/), start it using wireless debugging or USB debugging, and authorize Duo. The app automatically applies the required home wallpapers to Samsung slots 5 and 17 and verifies the component and video profile in each slot. It does not write the lock-screen slots.
+3. **Shizuku.** Download it from [the official Shizuku download page](https://shizuku.rikka.app/download/), start it using wireless debugging or USB debugging, and authorize Duo. After authorization, tap **Apply required wallpapers**. The app applies the required home wallpapers to Samsung slots 5 and 17 and verifies the component and video profile in each slot. It does not write the lock-screen slots.
 4. **Android permissions.** Allow overlays and enable Duo's accessibility service. If Android blocks accessibility, open App info → ⋮ → Allow restricted settings, then return to Accessibility. Finish enables the animation and starts the selected photo layer.
 
 The Samsung wallpaper application and assets must already be installed. They are **not bundled** with this project. Wallpaper setup uses the profile extracted from the tested device (`FoldInteractive`, `video_001.mp4`, thumbnail frame 545). Configuration readback is checked; this alone does not prove that a different firmware can deliver hinge-angle events.
@@ -50,7 +50,7 @@ The supported setup uses official Shizuku in **ADB mode** (wireless or USB debug
 
 This privacy-clean release uses the new Android application ID `org.duofold.live` and a new neutral signing certificate. It installs separately from earlier private builds and cannot update or automatically read their private settings. Your old app is left untouched. Disable its animation and custom wallpaper before enabling this app, then complete setup here. Do not run both animation hosts together.
 
-Public version **v1.5.1**, Android `versionCode 24`. Existing-install bypass still applies to future upgrades of this new application ID.
+Public test version **v1.5.2**, Android `versionCode 25`. Existing-install bypass still applies to future upgrades of this new application ID.
 
 ## Controls
 
@@ -70,7 +70,7 @@ Public version **v1.5.1**, Android `versionCode 24`. Existing-install bypass sti
 4. **Long-term goal: live content on both panels.** Both physical panels have been illuminated in experiments, but two independent live app surfaces throughout the transition are not implemented. The current method deliberately retains screenshot handoff. Work on simultaneous live composition is welcome.
 5. **Background photo host.** The photo layer may need enabling again after a reboot or if Android ends the host.
 6. **Capture and performance limits.** Secure/restricted content may not be captured. Display behavior depends on Samsung firmware. Refresh requests target supported rates up to 120 Hz; actual FPS is workload dependent.
-7. **Device and setup coverage.** The animation has been developed and tested on SM-F971U. The renamed v1.5.1 helper components and fresh-install automatic wallpaper setup still need handset verification. Other foldables and firmware are not supported by the current automatic setup.
+7. **Device and setup coverage.** The animation has been developed and tested on SM-F971U. The renamed helper components and fresh-install automatic wallpaper setup still need handset verification. Other foldables and firmware are not supported by the current automatic setup.
 
 Issues and pull requests are welcome, especially for these items. Include app version, model, Android/One UI version, direction of the fold, and reproduction steps. Review diagnostic logs and recordings for personal information before sharing. Keep upstream licenses and avoid committing signing keys, personal photos, or device logs into source.
 
