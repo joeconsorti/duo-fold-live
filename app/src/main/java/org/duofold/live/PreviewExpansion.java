@@ -41,7 +41,7 @@ final class PreviewExpansion extends Binder {
   if(off && offSince<0){offSince=now;diagnosticEvent("Inner reports OFF");}
   if(!off && offSince>=0){diagnosticEvent("Inner OFF interval "+(now-offSince)+" ms (sampled)");offSince=-1;}
  }
- void releaseReturned(){final long when=SystemClock.elapsedRealtime();handler.post(()->{if(diagnosticStart>0)diagnosticEvent("Cover release call returned at +"+(when-diagnosticStart)+" ms");});}
+ void releaseReturned(){final long when=SystemClock.elapsedRealtime();handler.post(()->{if(diagnosticStart>0)diagnosticEvent("Cover-primary handoff call returned at +"+(when-diagnosticStart)+" ms");});}
  private synchronized void event(String text){trace=(trace+" | "+SystemClock.elapsedRealtime()+": "+text);if(trace.length()>6000)trace=trace.substring(trace.length()-6000);}
  volatile String status="Expansion idle";
  PreviewExpansion(int owner){this.owner=owner;thread.start();handler=new Handler(thread.getLooper());attachInterface(null,TOKEN);}
