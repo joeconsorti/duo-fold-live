@@ -1,10 +1,10 @@
-# Duo Fold Live · v1.5.4
+# Duo Fold Live · v1.6.0
 
 Hinge-driven opening and closing animations for the Samsung Galaxy Z Fold 8, running over One UI and ordinary apps without replacing your launcher. Includes two-screen screenshot handoff and an optional custom photo wallpaper.
 
 The animation follows live hinge measurements; the outgoing screen content is a freeze frame during handoff. This is an Android overlay app, not a system feature supplied by Samsung. See the known issues below before installing.
 
-**v1.5.4 is available in Releases.** Download `Duo-Fold-Live-v1.5.4.apk`. It updates public v1.5.1 without uninstalling. This release removes exact-model restrictions from wallpaper setup and both display controllers. Regional firmware still needs on-device confirmation.
+**v1.6.0 is available in Releases.** Download `Duo-Fold-Live-v1.6.0.apk`. It updates public v1.5.1 without uninstalling. Promotes the user-tested alpha.4 performance improvements unchanged: 1 ms minimum polling wait, direct frame-loop rendering, half-resolution glass by default, and adjustable 12–120 ms motion smoothing (12 ms default). Regional firmware still needs on-device confirmation.
 
 **Automatic setup enabled: regional SM-F971 variants on Android 17 / SDK 37, including U1 and W.** Samsung private APIs and the installed FoldInteractive wallpaper engine are required. Regional support is experimental; only SM-F971U has been tested on-device. Fold 7 (SM-F966, including SM-F966W) is not supported by this wallpaper profile. This is an independent project, unaffiliated with Samsung, Apple, Shizuku, or the upstream animation authors.
 
@@ -50,7 +50,7 @@ The supported setup uses official Shizuku in **ADB mode** (wireless or USB debug
 
 This privacy-clean release uses the new Android application ID `org.duofold.live` and a new neutral signing certificate. It installs separately from earlier private builds and cannot update or automatically read their private settings. Your old app is left untouched. Disable its animation and custom wallpaper before enabling this app, then complete setup here. Do not run both animation hosts together.
 
-Public version **v1.5.4**, Android `versionCode 27`. Existing-install bypass still applies to future upgrades of this new application ID.
+Public version **v1.6.0**, Android `versionCode 32`. Existing-install bypass still applies to future upgrades of this new application ID.
 
 ## Controls
 
@@ -59,7 +59,7 @@ Public version **v1.5.4**, Android `versionCode 27`. Existing-install bypass sti
 - The animation selector is directly below Enable animation.
 - The default fully-open endpoint is 172°, adjustable in Advanced.
 - Keep cover awake on close defaults on for new setup. Future updates under this new app identity preserve settings.
-- Screenshot handoff, display switching, smoothing, shaders, and wallpaper renderer are unchanged from the previous private build.
+- Half-resolution glass is the default; enable Full-resolution glass to compare quality and GPU cost. Motion smoothness is adjustable from 12–120 ms, default 12 ms. Higher smoothing adds delay rather than rendering FPS. Display-switch angles, screenshot handoff and wallpaper behavior are unchanged from alpha.4.
 - Custom wallpaper remains an in-memory layer while the host runs. The Samsung home wallpaper stays installed as the hinge source. Disable removes the custom layer; it does not restore the home wallpaper that preceded Samsung's fold wallpaper. Restore another home wallpaper through Samsung Settings if desired; doing so removes the required angle source.
 
 ## Known issues and ways to contribute
