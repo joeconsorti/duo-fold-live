@@ -14,6 +14,7 @@ public final class LiveAngles {
  private static long last=0;
  public static boolean dualActive=false;
  public static boolean coverPreview=false;
+ public static String bridgeTrace="No bridge";
  public static String expansionStatus="Expansion idle";
  public static String mirrorStatus="Inner live mirror idle";
  public static boolean nativeInner=false;
@@ -84,7 +85,7 @@ public final class LiveAngles {
    running=true;current=this;last=0;count=0;action="org.duofold.live.wallpaperprobe.READ_"+SystemClock.elapsedRealtime();
    ensureAnchors();
    thread=new HandlerThread("duofold-angle-ipc");thread.start();worker=new Handler(thread.getLooper());
-   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(149);
+   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(150);
    bound=true;Shizuku.bindUserService(args,connection);status="Connecting to Shizuku…";
    main.postDelayed(()->{if(running&&reader==null){status="Connection timed out — reconnect in app";stop();}},12000);
   }catch(Exception e){status=e.getMessage();stop();}
@@ -140,7 +141,7 @@ public final class LiveAngles {
    String nextHandoff=b.getString("handoff", "Unknown display status");
    if(!nextHandoff.equals(handoffStatus))RecoveryLog.add(nextHandoff);
    handoffStatus=nextHandoff;
-   dualActive=b.getBoolean("dualActive");coverPreview=b.getBoolean("coverPreview");expansionStatus=b.getString("expansion","Expansion idle");
+   dualActive=b.getBoolean("dualActive");coverPreview=b.getBoolean("coverPreview");expansionStatus=b.getString("expansion","Expansion idle");bridgeTrace=b.getString("bridgeTrace","No bridge");
    mirrorStatus=b.getString("mirror","Inner mirror status unavailable");nativeInner=b.getBoolean("nativeInner");
    StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null)host.refreshSecondary();
    lastPoll=SystemClock.elapsedRealtime();
