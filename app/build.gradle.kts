@@ -9,7 +9,7 @@ android {
   keyAlias=System.getenv("DUO_KEY_ALIAS"); keyPassword=System.getenv("DUO_KEY_PASSWORD")
  } }
  buildTypes { getByName("release") { isMinifyEnabled=false; isShrinkResources=false; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt")); if (releaseKey != null) signingConfig=signingConfigs.getByName("standalone") } }
- buildFeatures { compose=true }
+ buildFeatures { compose=true; buildConfig=true }
  compileOptions { sourceCompatibility=JavaVersion.VERSION_17; targetCompatibility=JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget="17" }
 }
