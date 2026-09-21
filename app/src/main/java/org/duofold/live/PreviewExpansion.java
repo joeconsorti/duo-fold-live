@@ -10,6 +10,9 @@ import android.view.SurfaceControl;
 final class PreviewExpansion extends Binder {
  static final String TOKEN="org.duofold.live.PreviewExpansion";
  private final int owner;
+ private final PanelPowerContinuity power=new PanelPowerContinuity();
+ void powerEnabled(boolean value){power.configure(value);}
+ String powerReport(){return power.status;}
  private final HandlerThread thread=new HandlerThread("duo-preview-expansion");
  private final Handler handler;
  private Object dm,wm;private java.lang.reflect.Method displayInfo,keyguard;
@@ -53,7 +56,7 @@ final class PreviewExpansion extends Binder {
    Bitmap bitmap=data.readTypedObject(Bitmap.CREATOR);Bitmap clean=data.readTypedObject(Bitmap.CREATOR);long captured=data.readLong();
    if(bitmap==null || clean==null)throw new IllegalArgumentException("No prepared frame");
    handler.post(()->{try{prepare(bitmap,clean,captured);}catch(Exception e){clear("Expansion prepare failed: "+root(e));}finally{bitmap.recycle();clean.recycle();}});
-  }else if(code==2){handler.post(()->{if(layer!=null){pendingReady=true;event("Fresh inner render submitted");if(start>0 && ready<0){ready=SystemClock.elapsedRealtime()-start;status="Inner content received; expansion fading";}}});}
+  }else if(code==2){handler.post(()->{if(layer!=null){pendingReady=true;event("Fresh inner render submitted");power.stop("fresh inner frame submitted");if(start>0 && ready<0){ready=SystemClock.elapsedRealtime()-start;status="Inner content received; expansion fading";}}});}
   else if(code==3){handler.post(()->{completed=false;clear("Expansion reset");});}
   else throw new IllegalArgumentException("Unknown bridge operation");
   reply.writeNoException();reply.writeString(status);return true;
@@ -66,7 +69,7 @@ final class PreviewExpansion extends Binder {
    trace="";diagnosticStart=SystemClock.elapsedRealtime();lastSample=0;maxSampleGap=0;offSince=-1;missingSince=-1;lastMapping="";
    event("MEASURED SOFTWARE EVENTS ONLY: panel state is sampled; commit/draw is not photon visibility");
    event("Pre-release hold requested; prepared frame age="+(diagnosticStart-stamp)+" ms");
-   start=SystemClock.elapsedRealtime();ready=-1;coverCommit=committed;
+   start=SystemClock.elapsedRealtime();ready=-1;coverCommit=committed;power.begin();
    handler.removeCallbacks(tick);tick.run();
   });
   try{boolean acknowledged=committed.await(24,java.util.concurrent.TimeUnit.MILLISECONDS);
@@ -94,7 +97,7 @@ final class PreviewExpansion extends Binder {
   init();Object primary=displayInfo.invoke(dm,0),secondary=displayInfo.invoke(dm,1);
   if(primary==null || secondary==null || inner(primary) || !inner(secondary) || (boolean)keyguard.invoke(wm))return;
   if(completed)return; // Wait for the app to reset after leaving this cover session.
-  innerId=id(secondary);stamp=captured;
+  innerId=id(secondary);stamp=captured;power.prime(innerId);
   Bitmap next=bitmap.copy(Bitmap.Config.HARDWARE,false);HardwareBuffer nextBuffer=next.getHardwareBuffer();
   Bitmap nextClean=Bitmap.createScaledBitmap(clean,bitmap.getWidth(),bitmap.getHeight(),true).copy(Bitmap.Config.HARDWARE,false);HardwareBuffer nextCleanBuffer=nextClean.getHardwareBuffer();
   if(layer==null)layer=new SurfaceControl.Builder().setName("Duo clean right hold").setBufferSize(bitmap.getWidth(),bitmap.getHeight()).setOpaque(true).setHidden(true).build();
@@ -155,6 +158,7 @@ final class PreviewExpansion extends Binder {
   }catch(Exception e){clear("Expansion failed: "+root(e));}
  }};
  private void clear(String message){
+  power.stop(message);
   if(start>0){event(message+"; hold duration="+(SystemClock.elapsedRealtime()-start)+" ms; maximum state-sampling gap="+maxSampleGap+" ms");
    if(offSince>=0)event("OFF interval still open at cleanup");if(missingSince>=0)event("Missing mapping interval still open at cleanup");}
   diagnosticStart=0;if(coverCommit!=null){coverCommit.countDown();coverCommit=null;}
@@ -165,5 +169,5 @@ final class PreviewExpansion extends Binder {
   if(buffer!=null){buffer.close();buffer=null;}if(hardware!=null){hardware.recycle();hardware=null;}status=message;
   if(!enabled)completed=false;
  }
- void close(){closed=true;enabled=false;handler.post(()->{clear("Expansion stopped");thread.quitSafely();});}
+ void close(){power.close();closed=true;enabled=false;handler.post(()->{clear("Expansion stopped");thread.quitSafely();});}
 }
