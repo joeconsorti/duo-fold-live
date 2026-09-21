@@ -19,7 +19,7 @@ import kotlin.math.exp
 
 /** Screenshot-free reference darkening over the live wallpaper and apps; no blur or 3D projection. */
 @Composable
-internal fun DuoLiveShade(host: StandaloneFoldHost, intensity: Float, innerPanel: Boolean? = null, frozenFrame:GlassFrame? = null) {
+internal fun DuoLiveShade(host: StandaloneFoldHost, intensity: Float, innerPanel: Boolean? = null, frozenFrame:GlassFrame? = null, forceVeil:Boolean = false) {
     var angle by remember { mutableFloatStateOf(Float.NaN) }
     var visualAngle by remember { mutableFloatStateOf(Float.NaN) }
     var amount by remember { mutableFloatStateOf(0f) }
@@ -51,7 +51,7 @@ internal fun DuoLiveShade(host: StandaloneFoldHost, intensity: Float, innerPanel
     }}
     SideEffect { host.onFrame(amount>.003f,amount) }
     val debug=LocalContext.current.getSharedPreferences("standalone",0).getBoolean("debug_mode",false)
-    if(!debug){DuoGlassSurface(visualAngle,amount,intensity,expanded,rotation,frozenFrame);return}
+    if(!debug && !forceVeil){DuoGlassSurface(visualAngle,amount,intensity,expanded,rotation,frozenFrame);return}
     Canvas(Modifier.fillMaxSize()){
         val horizontal=rotation==Surface.ROTATION_90 || rotation==Surface.ROTATION_270
         val reversed=rotation==Surface.ROTATION_90 || rotation==Surface.ROTATION_180
