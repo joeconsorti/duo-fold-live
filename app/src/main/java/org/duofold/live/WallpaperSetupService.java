@@ -22,15 +22,14 @@ public final class WallpaperSetupService extends Binder {
    String result=apply();out.writeNoException();out.writeInt(1);out.writeString(result);
   } catch(Throwable error){
    while(error instanceof InvocationTargetException && error.getCause()!=null)error=error.getCause();
-   out.writeNoException();out.writeInt(0);out.writeString("Wallpaper setup incomplete: "+error.getClass().getSimpleName()+": "+error.getMessage()+". Retry after checking Shizuku. Existing completed slots are retained.");
+   out.writeNoException();out.writeInt(0);out.writeString("Wallpaper setup incomplete: "+error.getClass().getSimpleName()+": "+error.getMessage()+". Copy this error with the connection report. Existing completed slots are retained.");
   } finally {Binder.restoreCallingIdentity(identity);}
   return true;
  }
  private static String apply()throws Exception {
   if(android.os.Process.myUid()!=2000)throw new IllegalStateException("Start Shizuku using wireless or USB debugging (ADB mode)");
-  // This profile is verified only for the handset/firmware family from which it was extracted.
-  if(!Build.MODEL.equals("SM-F971U") || Build.VERSION.SDK_INT!=37)
-   throw new IllegalStateException("Automatic wallpaper setup currently supports SM-F971U on Android 17 only; no wallpaper was changed");
+  // Regional variants share eligibility; verify Samsung components and methods before writing.
+  DeviceCompatibility.requireEligible(Build.MODEL, Build.VERSION.SDK_INT);
   ShellFrameworkBootstrap.initialize();
   FutureTask<Context> contextTask=new FutureTask<>(()->{
    Class<?> at=Class.forName("android.app.ActivityThread");
