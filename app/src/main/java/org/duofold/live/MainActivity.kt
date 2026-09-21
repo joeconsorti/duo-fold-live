@@ -65,7 +65,7 @@ class MainActivity:ComponentActivity(){
     var exporting by remember{mutableStateOf(false)}
     var foldStatus by remember{mutableStateOf("")}
     LaunchedEffect(Unit){while(true){enabled=prefs.getBoolean("enabled",false);status=LiveAngles.status+"\n"+LiveAngles.handoffStatus;delay(600)}}
-    fun restart(){if(prefs.getBoolean("enabled",false))startBackground() else stopService(Intent(this@MainActivity,FoldBackgroundService::class.java));StandaloneService.instance?.restart()}
+    fun restart(){if(prefs.getBoolean("enabled",false)||org.duofold.live.wallpaperlayer.WallpaperRestore.enabled(this@MainActivity))startBackground() else stopService(Intent(this@MainActivity,FoldBackgroundService::class.java));StandaloneService.instance?.restart()}
     fun booleanSetting(key:String,value:Boolean){prefs.edit().putBoolean(key,value).apply();restart()}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)scope.launch{
      photoStatus="Preparing image…"
@@ -140,6 +140,7 @@ class MainActivity:ComponentActivity(){
         OutlinedButton(onClick={GlassFrames.foldSetting("always",null){r->if(r.getBoolean("ok")){if(!prefs.contains("previous_fold_lock"))prefs.edit().putString("previous_fold_lock",r.getString("previous","null")).apply();foldStatus="Keep-awake setting applied"}else foldStatus="Could not apply: ${r.getString("error")}"}}){Text("Apply keep-awake setting")}
         TextButton(onClick={keepAwake=false;prefs.edit().putBoolean("auto_keep_cover_awake",false).apply();val original=prefs.getString("previous_fold_lock",null);if(original==null)foldStatus="No saved setting" else GlassFrames.foldSetting("restore",original){r->if(r.getBoolean("ok")){prefs.edit().remove("previous_fold_lock").apply();foldStatus="Previous setting restored"}else foldStatus="Restore failed: ${r.getString("error")}"}}){Text("Restore previous setting")}
         if(foldStatus.isNotEmpty())Text(foldStatus,style=MaterialTheme.typography.bodySmall)
+        Text(FoldAwakeDefault.status,style=MaterialTheme.typography.bodySmall)
         Text(GlassFrames.status,style=MaterialTheme.typography.bodySmall)
         Text(HandoffFrames.status,style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={startActivity(Intent(this@MainActivity,FoldProbeActivity::class.java))}){Text("Sensor & display diagnostics")}
