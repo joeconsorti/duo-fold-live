@@ -19,6 +19,10 @@ final class PreviewExpansion extends Binder {
  private long stamp,start=0,ready=-1;private volatile long lastLease=0;
  private boolean polling=false,completed=false,pendingReady=false;
  private volatile boolean closed=false;
+ private java.util.concurrent.CountDownLatch coverCommit;
+ volatile String trace="No handoff yet";
+ private int lastStack=-1,lastPanelState=-1;
+ private void event(String text){trace=(trace+" | "+SystemClock.elapsedRealtime()+": "+text);if(trace.length()>1800)trace=trace.substring(trace.length()-1800);}
  volatile String status="Expansion idle";
  PreviewExpansion(int owner){this.owner=owner;thread.start();handler=new Handler(thread.getLooper());attachInterface(null,TOKEN);}
  void enabled(boolean value){boolean changed=enabled!=value;enabled=value;lastLease=SystemClock.elapsedRealtime();if(!value && changed)handler.post(()->clear("Expansion disabled"));}
@@ -29,10 +33,21 @@ final class PreviewExpansion extends Binder {
    Bitmap bitmap=data.readTypedObject(Bitmap.CREATOR);Bitmap clean=data.readTypedObject(Bitmap.CREATOR);long captured=data.readLong();
    if(bitmap==null || clean==null)throw new IllegalArgumentException("No prepared frame");
    handler.post(()->{try{prepare(bitmap,clean,captured);}catch(Exception e){clear("Expansion prepare failed: "+root(e));}finally{bitmap.recycle();clean.recycle();}});
-  }else if(code==2){handler.post(()->{if(layer!=null){pendingReady=true;if(start>0 && ready<0){ready=SystemClock.elapsedRealtime()-start;status="Inner content received; expansion fading";}}});}
+  }else if(code==2){handler.post(()->{if(layer!=null){pendingReady=true;event("Fresh inner render submitted");if(start>0 && ready<0){ready=SystemClock.elapsedRealtime()-start;status="Inner content received; expansion fading";}}});}
   else if(code==3){handler.post(()->{completed=false;clear("Expansion reset");});}
   else throw new IllegalArgumentException("Unknown bridge operation");
   reply.writeNoException();reply.writeString(status);return true;
+ }
+ void holdBeforeRelease(){
+  if(!enabled || closed)return;
+  java.util.concurrent.CountDownLatch committed=new java.util.concurrent.CountDownLatch(1);
+  handler.post(()->{
+   if(layer==null || start>0 || !PreviewExpansionPolicy.fresh(stamp,SystemClock.elapsedRealtime())){committed.countDown();return;}
+   trace="";event("Pre-release hold requested");
+   start=SystemClock.elapsedRealtime();ready=-1;coverCommit=committed;
+   handler.removeCallbacks(tick);tick.run();
+  });
+  try{committed.await(24,java.util.concurrent.TimeUnit.MILLISECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}
  }
  private static String root(Throwable e){while(e.getCause()!=null)e=e.getCause();return e.getClass().getSimpleName()+": "+e.getMessage();}
  private Object service(String name,String stub)throws Exception{
@@ -91,6 +106,8 @@ final class PreviewExpansion extends Binder {
    long elapsed=start==0?0:now-start;
    float alpha=start==0?1f:PreviewExpansionPolicy.opacity(elapsed,ready);
    if(alpha<=0){completed=true;clear("Prepared layout handed to inner content");return;}
+   int stack=number(target,"layerStack"),panelState=number(target,"state");
+   if(stack!=lastStack || panelState!=lastPanelState){lastStack=stack;lastPanelState=panelState;event("Inner stack="+stack+" state="+panelState);}
    int w=number(target,"logicalWidth"),h=number(target,"logicalHeight");
    float fit=Math.min(w/(float)bw,h/(float)bh);
    float leftWidth=Math.max(0f,w-bw*fit);
@@ -102,12 +119,18 @@ final class PreviewExpansion extends Binder {
     // The left copy is visible BEFORE handoff. Never hide either layer merely because
     // Android reports a transient OFF state during the physical panel remap.
     t.setPosition(backdrop,0,0).setAlpha(backdrop,alpha).setVisibility(backdrop,leftWidth>0);
-    t.setPosition(layer,leftWidth,(h-bh*fit)/2f).setAlpha(layer,alpha).setVisibility(layer,start>0).apply();
+    t.setPosition(layer,leftWidth,(h-bh*fit)/2f).setAlpha(layer,alpha).setVisibility(layer,start>0);
+    if(coverCommit!=null){final java.util.concurrent.CountDownLatch fence=coverCommit;coverCommit=null;
+     t.addTransactionCommittedListener(Runnable::run,()->{fence.countDown();});
+     event("Replacement submitted before cover release");
+    }
+    t.apply();
    }
    handler.postDelayed(this,8);
   }catch(Exception e){clear("Expansion failed: "+root(e));}
  }};
  private void clear(String message){
+  if(start>0)event(message);if(coverCommit!=null){coverCommit.countDown();coverCommit=null;}
   handler.removeCallbacks(tick);polling=false;start=0;ready=-1;pendingReady=false;
   if(layer!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(layer,false).reparent(layer,null).apply();}catch(Exception ignored){}layer.release();layer=null;}
   if(backdrop!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(backdrop,false).reparent(backdrop,null).apply();}catch(Exception ignored){}backdrop.release();backdrop=null;}
