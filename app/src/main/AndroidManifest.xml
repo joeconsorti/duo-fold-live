@@ -1,0 +1,29 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <uses-permission android:name="moe.shizuku.manager.permission.API_V23"/>
+ <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+ <uses-permission android:name="android.permission.SET_WALLPAPER"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+ <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+ <uses-feature android:name="android.hardware.sensor.hinge_angle" android:required="false"/>
+ <queries><package android:name="moe.shizuku.privileged.api"/><intent><action android:name="android.service.wallpaper.WallpaperService"/></intent><package android:name="com.samsung.android.wallpaper.live"/><package android:name="com.samsung.android.wallpaper.res"/></queries>
+ <application android:label="Duo Fold Live" android:icon="@drawable/icon" android:theme="@style/Theme.Standalone" android:allowBackup="false" android:hardwareAccelerated="true">
+  <provider android:name="androidx.core.content.FileProvider" android:authorities="com.consorti.foliofold.files" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/export_paths"/></provider>
+  <meta-data android:name="moe.shizuku.client.V3_SUPPORT" android:value="true"/>
+  <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="com.consorti.foliofold.shizuku" android:exported="true" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"/>
+  <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density">
+   <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+  </activity>
+  <activity android:name=".SetupActivity" android:exported="false" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density"/>
+  <activity android:name=".FoldBridgeActivity" android:exported="false" android:theme="@style/Theme.Folio.FoldBridge" android:taskAffinity="com.consorti.foliofold.foldbridge" android:excludeFromRecents="true" android:noHistory="true" android:resizeableActivity="true" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density"/>
+  <activity android:name=".FoldProbeActivity" android:exported="false" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density"/>
+  <activity android:name=".FoldMotionActivity" android:exported="false" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density"/>
+  <service android:name=".FoldBackgroundService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-enabled persistent hinge animation overlay and wallpaper-angle reader"/></service>
+  <service android:name=".StandaloneService" android:label="Duo Fold Live" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
+   <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
+   <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility"/>
+  </service>
+  <activity android:name="com.consorti.wallpaperlayer.WallpaperActivity" android:exported="false" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"/>
+ </application>
+ <instrumentation android:name="com.consorti.wallpaperlayer.PhotoInstrumentation" android:targetPackage="com.consorti.foliofold" android:functionalTest="true" android:label="Custom wallpaper host"/>
+</manifest>

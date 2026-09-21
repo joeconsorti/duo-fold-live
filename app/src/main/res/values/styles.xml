@@ -1,0 +1,15 @@
+<resources>
+ <string name="service_description">Draws hinge-driven edge shading over your live wallpaper and apps. Does not capture screenshots, read screen text, perform touches or use the internet.</string>
+ <style name="Theme.Standalone" parent="android:style/Theme.Material.NoActionBar">
+  <item name="android:windowLightStatusBar">false</item>
+  <item name="android:windowBackground">#101818</item>
+  <item name="android:fontFamily">sans</item>
+  <item name="android:colorAccent">#8CCDC7</item>
+ </style>
+ <style name="Theme.Folio.FoldBridge" parent="android:style/Theme.Translucent.NoTitleBar">
+  <item name="android:windowAnimationStyle">@null</item>
+  <item name="android:windowBackground">@android:color/transparent</item>
+  <item name="android:backgroundDimEnabled">false</item>
+  <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+ </style>
+</resources>
