@@ -15,19 +15,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.lifecycle.*
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 
 /** The outgoing panel shows only its own pre-switch frame; incoming content stays native. */
-internal class SecondaryShade(private val service:AccessibilityService,display:Display,private val intensity:Float,private val event:(String)->Unit):Presentation(service,display,android.R.style.Theme_Material_NoActionBar){
+internal class SecondaryShade(private val service:AccessibilityService,display:Display,private val intensity:Float,private val preview:Boolean=false,private val event:(String)->Unit):Presentation(service,display,android.R.style.Theme_Material_NoActionBar){
  private val life=OverlayOwner()
  private var compose:ComposeView?=null
  private var inner=false
+ private var mirrorReady=false
+ private var mirrorView:LivePanelSurface?=null
  var strength=0f;private set
  var draws=0;private set
- val layer:String get()="Frozen outgoing ${if(inner) "inner" else "cover"}; own frame=${HandoffFrames.forPanel(inner)!=null}"
- val ready:Boolean get()=isShowing && draws>0 && HandoffFrames.forPanel(inner)!=null && display.state==Display.STATE_ON
+ val layer:String get()=if(preview) "Live cover preview; ready=$mirrorReady; ${LiveAngles.mirrorStatus}" else "Frozen outgoing ${if(inner) "inner" else "cover"}; own frame=${HandoffFrames.forPanel(inner)!=null}"
+ val ready:Boolean get()=isShowing && draws>0 && (if(preview)mirrorReady else HandoffFrames.forPanel(inner)!=null) && display.state==Display.STATE_ON
  fun refresh(){compose?.invalidate()}
  override fun onCreate(saved:Bundle?){
   super.onCreate(saved);life.registry.currentState=Lifecycle.State.CREATED
@@ -41,7 +44,9 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
    CompositionLocalProvider(LocalConfiguration provides context.resources.configuration,LocalHinge provides null){
     val frozen=HandoffFrames.forPanel(inner)
     Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)){
-     if(frozen!=null){
+     if(preview){
+      AndroidView(factory={LivePanelSurface(it){ok,note->mirrorReady=ok;event(note)}.also{mirrorView=it}},modifier=Modifier.fillMaxSize())
+     }else if(frozen!=null){
       Image(frozen.bitmap.asImageBitmap(),contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Fit)
       DuoLiveShade(object:StandaloneFoldHost{
        override fun onMovement(){}
@@ -55,10 +60,10 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
   window?.apply{
    setBackgroundDrawable(ColorDrawable(Color.BLACK));clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
    addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
-   attributes=attributes.apply{setFitInsetsTypes(0);layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;title="Duo outgoing frozen panel"}
+   attributes=attributes.apply{setFitInsetsTypes(0);layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;title=if(preview)"Duo live cover preview" else "Duo outgoing frozen panel"}
   }
  }
  override fun onStart(){super.onStart();window?.setLayout(-1,-1);life.registry.currentState=Lifecycle.State.RESUMED}
  override fun onStop(){if(life.registry.currentState!=Lifecycle.State.DESTROYED)life.registry.currentState=Lifecycle.State.CREATED;super.onStop()}
- override fun dismiss(){life.registry.currentState=Lifecycle.State.DESTROYED;compose?.disposeComposition();compose=null;super.dismiss()}
+ override fun dismiss(){mirrorView?.close();mirrorView=null;mirrorReady=false;life.registry.currentState=Lifecycle.State.DESTROYED;compose?.disposeComposition();compose=null;super.dismiss()}
 }

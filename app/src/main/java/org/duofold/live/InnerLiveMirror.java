@@ -21,17 +21,18 @@ final class InnerLiveMirror {
    if(source==null||dest==null)throw new IllegalStateException("Both panels must exist");
    int sw=source.getClass().getField("logicalWidth").getInt(source),sh=source.getClass().getField("logicalHeight").getInt(source);
    int dw=dest.getClass().getField("logicalWidth").getInt(dest),dh=dest.getClass().getField("logicalHeight").getInt(dest);
-   if(Math.min(sw,sh)<1500||Math.min(dw,dh)>=1500)throw new IllegalStateException("Physical panels changed; refusing feedback mirror");
+   if(java.util.Objects.equals(source.getClass().getField("uniqueId").get(source),dest.getClass().getField("uniqueId").get(dest)))throw new IllegalStateException("Refusing same-panel feedback mirror");
    Object wm=service("window","android.view.IWindowManager$Stub");
    mirror=SurfaceControl.class.getConstructor().newInstance();
    boolean accepted=(boolean)Class.forName("android.view.IWindowManager").getMethod("mirrorDisplay",int.class,SurfaceControl.class).invoke(wm,0,mirror);
    if(!accepted||!mirror.isValid())throw new IllegalStateException("WindowManager refused live mirror");
-   float[] fit=LiveMirrorLayout.fill(sw,sh,width,height);
+   if(Math.min(sw,sh)/(float)Math.max(sw,sh)>.7f || Math.min(dw,dh)/(float)Math.max(dw,dh)<=.7f)throw new IllegalStateException("Cover-to-inner preview only");
+   float[] fit=LiveMirrorLayout.fit(sw,sh,width,height);
    try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){
     SurfaceControl.Transaction.class.getMethod("setMatrix",SurfaceControl.class,float.class,float.class,float.class,float.class).invoke(t,mirror,fit[0],0f,0f,fit[0]);
     t.reparent(mirror,parent).setLayer(mirror,1).setCrop(mirror,new Rect(0,0,sw,sh)).setPosition(mirror,fit[1],fit[2]).setVisibility(mirror,true).apply();
    }
-   owner=id;status="Live inner content → cover Presentation (center crop, no screenshots)";result.putBoolean("ok",true);
+   owner=id;status="Live cover → inner preview (right aligned; normal handoff)";result.putBoolean("ok",true);
   }catch(Exception e){close();Throwable cause=e;while(cause.getCause()!=null)cause=cause.getCause();status="Cover mirror unavailable: "+cause.getClass().getSimpleName()+": "+cause.getMessage();}
   finally{if(parent!=null)parent.release();Binder.restoreCallingIdentity(identity);}
   result.putString("status",status);return result;

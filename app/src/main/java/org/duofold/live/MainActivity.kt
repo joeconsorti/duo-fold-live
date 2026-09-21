@@ -47,14 +47,16 @@ class MainActivity:ComponentActivity(){
     val scope=rememberCoroutineScope()
     var enabled by remember{mutableStateOf(prefs.getBoolean("enabled",false))}
     var animationStyle by remember{mutableStateOf(prefs.getString("animation_style","duo") ?: "duo")}
+    var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
     var keepAwake by remember{mutableStateOf(prefs.getBoolean("auto_keep_cover_awake",true))}
-    var dual by remember{mutableStateOf(prefs.getBoolean("dual",true))}
+    var dual by remember{mutableStateOf(prefs.getBoolean("dual",false))}
     var advanced by remember{mutableStateOf(false)}
     var setup by remember{mutableStateOf(!enabled)}
     var smoothing by remember{mutableFloatStateOf(FrameSmoothing.sanitize(prefs.getFloat("smoothing_ms",12f)))}
     var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
     var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",1f))}
+    var closedThreshold by remember{mutableFloatStateOf(FoldThreshold.sanitizeClosed(prefs.getFloat("closed_threshold",1f)))}
     var threshold by remember{mutableFloatStateOf(FoldThreshold.sanitize(prefs.getFloat("open_threshold",172f)))}
     var preview by remember{mutableFloatStateOf(.45f)}
     var status by remember{mutableStateOf("Connecting…")}
@@ -120,9 +122,15 @@ class MainActivity:ComponentActivity(){
         Slider(value=threshold,onValueChange={threshold=it.roundToInt().toFloat()},valueRange=165f..179f,steps=13,onValueChangeFinished={prefs.edit().putFloat("open_threshold",threshold).apply();restart()})
         Text("At this angle the inner effect is completely clear. Closing starts below this threshold. Default: 172°.",style=MaterialTheme.typography.bodySmall)
         TextButton(onClick={threshold=172f;prefs.edit().putFloat("open_threshold",172f).apply();restart()}){Text("Reset to 172°")}
+        Text("Fully-closed threshold · ${closedThreshold.roundToInt()}°",style=MaterialTheme.typography.titleMedium)
+        Slider(value=closedThreshold,onValueChange={closedThreshold=it.roundToInt().toFloat()},valueRange=1f..10f,steps=8,onValueChangeFinished={prefs.edit().putFloat("closed_threshold",closedThreshold).apply();restart()})
+        Text("At or below this angle, treat the phone as fully closed and clear the cover effect. Default: 1°.",style=MaterialTheme.typography.bodySmall)
+        TextButton(onClick={closedThreshold=1f;prefs.edit().putFloat("closed_threshold",1f).apply();restart()}){Text("Reset to 1°")}
+        Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
+        Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
         Toggle("Debug mode · black fade",debug){debug=it;booleanSetting("debug_mode",it)}
-        Text("Screenshot handoff is the default. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
+        Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         Text("Keep cover awake on close",style=MaterialTheme.typography.titleMedium)
         Toggle("Automatically keep cover awake",keepAwake){keepAwake=it;booleanSetting("auto_keep_cover_awake",it)}

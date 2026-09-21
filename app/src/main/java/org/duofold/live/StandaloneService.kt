@@ -71,6 +71,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         } else {updateDisplay();resumeIfUsable()}
     }}
     private fun usable()=::displays.isInitialized && displays.getDisplay(Display.DEFAULT_DISPLAY)?.state==Display.STATE_ON && !getSystemService(KeyguardManager::class.java).isKeyguardLocked()
+    private fun previewMode()=settings().getBoolean("cover_preview",true) && !settings().getBoolean("dual",false)
     private fun settings()=getSharedPreferences("standalone",0)
     override fun onServiceConnected(){
         instance=this;RecoveryLog.init(this);RecoveryLog.add("Accessibility service connected");handler.post(sourceGuard);displays=getSystemService(DisplayManager::class.java)
@@ -105,7 +106,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         lp.gravity=Gravity.TOP or Gravity.LEFT;lp.setFitInsetsTypes(0)
         lp.layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         lp.title="Duo Fold Live"
-        try {wm.addView(compose,lp);resumeIfUsable();requestCapture();note("Ready — Duo live shading running")}
+        try {wm.addView(compose,lp);if(previewMode())PreviewTransition.markAnimation(compose);resumeIfUsable();requestCapture();note("Ready — Duo live shading running")}
         catch(e:Exception){removeHost();note("Could not attach overlay: ${e.javaClass.simpleName}")}
     }
     private fun resumeIfUsable(){if(usable()){GlassFrames.resumeCapture();owner?.registry?.currentState=Lifecycle.State.RESUMED}}
@@ -156,25 +157,29 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
     private fun dismissSecondary(){secondaryReadySnapshot=false;val old=secondary;secondary=null;runCatching{old?.dismiss()}}
     fun refreshSecondary(){
         if(!::displays.isInitialized)return
-        if(!settings().getBoolean("enabled",false)||!settings().getBoolean("dual",true)||!LiveAngles.dualActive||!usable()){dismissSecondary();return}
+        val current=displays.getDisplay(0)
+        val primaryInner=current?.mode?.let{minOf(it.physicalWidth,it.physicalHeight).toFloat()/maxOf(it.physicalWidth,it.physicalHeight)>.7f}?:false
+        PreviewTransition.update(previewMode() && settings().getBoolean("enabled",false) && !getSystemService(KeyguardManager::class.java).isKeyguardLocked(),primaryInner)
+        val preview=!settings().getBoolean("dual",false) && settings().getBoolean("cover_preview",true) && LiveAngles.coverPreview
+        if(!settings().getBoolean("enabled",false)||(!preview && (!settings().getBoolean("dual",false)||!LiveAngles.dualActive))||!usable()){dismissSecondary();return}
         val target=displays.displays.firstOrNull{it.displayId==1 && (setOf(it.mode.physicalWidth,it.mode.physicalHeight)==setOf(1248,1972) || setOf(it.mode.physicalWidth,it.mode.physicalHeight)==setOf(2448,1848))}
         if(target==null){secondaryError="Concurrent mode has not exposed the second built-in panel";dismissSecondary();return}
-        if(secondaryKey==physicalKey(target) && secondary?.display?.displayId==target.displayId && secondary?.isShowing==true){secondary?.refresh();secondaryReadySnapshot=secondary?.ready==true;return}
+        if(secondaryKey==physicalKey(target)+":"+preview && secondary?.display?.displayId==target.displayId && secondary?.isShowing==true){secondary?.refresh();secondaryReadySnapshot=secondary?.ready==true;return}
         if(SystemClock.elapsedRealtime()<secondaryRetry)return
         dismissSecondary()
         try{
-            val next=SecondaryShade(this,target,settings().getFloat("intensity",1f)){RecoveryLog.add(it)}
+            val next=SecondaryShade(this,target,settings().getFloat("intensity",1f),preview){RecoveryLog.add(it)}
             next.setOnDismissListener{RecoveryLog.add("Secondary Presentation dismissed");if(secondary===next){secondary=null;secondaryReadySnapshot=false}}
-            secondary=next;secondaryKey=physicalKey(target);next.show();secondaryError="";RecoveryLog.add("Secondary Presentation shown, display ${target.displayId}")
+            secondary=next;secondaryKey=physicalKey(target)+":"+preview;next.show();secondaryError="";RecoveryLog.add("Secondary Presentation shown, display ${target.displayId}")
         }catch(e:Exception){dismissSecondary();secondaryError="${e.javaClass.simpleName}: ${e.message}";secondaryRetry=SystemClock.elapsedRealtime()+1500;RecoveryLog.add("Secondary Presentation error: $secondaryError")}
     }
     private fun physicalKey(d:Display)="${d.displayId}:${d.mode.physicalWidth}x${d.mode.physicalHeight}"
     private fun displayReport()=if(!::displays.isInitialized)"unavailable" else displays.displays.joinToString("; "){d->
         "id=${d.displayId} state=${d.state} mode=${d.mode.physicalWidth}x${d.mode.physicalHeight} rotation=${d.rotation}"
     }
-    fun report()="Duo Fold Live 1.6.0\nSelectable glass / live angles\n${Build.MODEL} / Android ${Build.VERSION.RELEASE}\n$status\n${LiveAngles.status}\nBackground service: ${FoldBackgroundService.running}\n${FoldBackgroundService.connectionReport()}\n${LiveAngles.latencyReport()}\nAngle age: ${LiveAngles.ageMs()} ms\nSmoothing: ${settings().getFloat("smoothing_ms",12f)} ms; full-resolution glass: ${settings().getBoolean("full_resolution_glass",false)}\nMode: ${if(settings().getBoolean("debug_mode",false)) "Debug black fade" else "Projected glass"}\n${LiveAngles.handoffStatus}\nGlass: ${GlassFrames.status}\nHandoff: ${HandoffFrames.status}\nSecondary ready: ${secondaryReady()}; draws: ${secondary?.draws ?: 0}\nSecondary layer: ${secondary?.layer ?: "none"}; strength: ${secondary?.strength ?: 0f}\nSecondary error: $secondaryError\nDisplays: ${displayReport()}\nAnimation: ${if(settings().getString("animation_style","duo")=="classic") "Classic Glass" else "iPhone Duo Inspired"}\n${FrameTelemetry.report()}\nStrength: $strength\n"+history.joinToString("\n")+"\nLifecycle / connection events:\n"+RecoveryLog.report()
+    fun report()="Duo Fold Live 1.7.0\nSelectable glass / live angles\n${Build.MODEL} / Android ${Build.VERSION.RELEASE}\n$status\n${LiveAngles.status}\nBackground service: ${FoldBackgroundService.running}\n${FoldBackgroundService.connectionReport()}\n${LiveAngles.latencyReport()}\nAngle age: ${LiveAngles.ageMs()} ms\nCover preview: ${settings().getBoolean("cover_preview",true)}\nPreview bridge: ${LiveAngles.expansionStatus}\nPreview preparation: ${PreviewTransition.status}\nBridge trace: ${LiveAngles.bridgeTrace}\nSmoothing: ${settings().getFloat("smoothing_ms",12f)} ms; full-resolution glass: ${settings().getBoolean("full_resolution_glass",false)}\nMode: ${if(settings().getBoolean("debug_mode",false)) "Debug black fade" else "Projected glass"}\n${LiveAngles.handoffStatus}\nGlass: ${GlassFrames.status}\nHandoff: ${HandoffFrames.status}\nSecondary ready: ${secondaryReady()}; draws: ${secondary?.draws ?: 0}\nSecondary layer: ${secondary?.layer ?: "none"}; strength: ${secondary?.strength ?: 0f}\nSecondary error: $secondaryError\nDisplays: ${displayReport()}\nAnimation: ${if(settings().getString("animation_style","duo")=="classic") "Classic Glass" else "iPhone Duo Inspired"}\n${FrameTelemetry.report()}\nStrength: $strength\n"+history.joinToString("\n")+"\nLifecycle / connection events:\n"+RecoveryLog.report()
     override fun onInterrupt(){hide();image=null;note("Feedback interrupted — overlay remains attached")}
-    override fun onDestroy(){removeHost();if(::displays.isInitialized)displays.unregisterDisplayListener(this);runCatching {unregisterReceiver(screenReceiver)};handler.removeCallbacksAndMessages(null);instance=null;super.onDestroy()}
+    override fun onDestroy(){PreviewTransition.update(false,false);removeHost();if(::displays.isInitialized)displays.unregisterDisplayListener(this);runCatching {unregisterReceiver(screenReceiver)};handler.removeCallbacksAndMessages(null);instance=null;super.onDestroy()}
 }
 internal class OverlayOwner:LifecycleOwner,SavedStateRegistryOwner {
     val registry=LifecycleRegistry(this)
