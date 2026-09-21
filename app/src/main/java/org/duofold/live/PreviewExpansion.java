@@ -22,7 +22,27 @@ final class PreviewExpansion extends Binder {
  private java.util.concurrent.CountDownLatch coverCommit;
  volatile String trace="No handoff yet";
  private int lastStack=-1,lastPanelState=-1;
- private void event(String text){trace=(trace+" | "+SystemClock.elapsedRealtime()+": "+text);if(trace.length()>1800)trace=trace.substring(trace.length()-1800);}
+ private long lastSample=0,maxSampleGap=0,offSince=-1,missingSince=-1,diagnosticStart=0;
+ private String lastMapping="";
+ private synchronized void diagnosticEvent(String text){event(text);}
+ private String panel(Object info)throws Exception{
+  if(info==null)return "absent";
+  return (inner(info)?"inner":"cover")+" state="+number(info,"state")+" stack="+number(info,"layerStack")+" "+number(info,"logicalWidth")+"x"+number(info,"logicalHeight");
+ }
+ private void sample(Object primary,Object secondary,Object target,long now)throws Exception{
+  if(diagnosticStart==0)return;
+  if(lastSample>0)maxSampleGap=Math.max(maxSampleGap,now-lastSample);
+  lastSample=now;
+  String mapping="d0 "+panel(primary)+"; d1 "+panel(secondary);
+  if(!mapping.equals(lastMapping)){lastMapping=mapping;diagnosticEvent(mapping);}
+  if(target==null){if(missingSince<0){missingSince=now;diagnosticEvent("Inner mapping absent");}return;}
+  if(missingSince>=0){diagnosticEvent("Inner mapping restored after "+(now-missingSince)+" ms (sampled)");missingSince=-1;}
+  boolean off=number(target,"state")==1;
+  if(off && offSince<0){offSince=now;diagnosticEvent("Inner reports OFF");}
+  if(!off && offSince>=0){diagnosticEvent("Inner OFF interval "+(now-offSince)+" ms (sampled)");offSince=-1;}
+ }
+ void releaseReturned(){final long when=SystemClock.elapsedRealtime();handler.post(()->{if(diagnosticStart>0)diagnosticEvent("Cover release call returned at +"+(when-diagnosticStart)+" ms");});}
+ private synchronized void event(String text){trace=(trace+" | "+SystemClock.elapsedRealtime()+": "+text);if(trace.length()>6000)trace=trace.substring(trace.length()-6000);}
  volatile String status="Expansion idle";
  PreviewExpansion(int owner){this.owner=owner;thread.start();handler=new Handler(thread.getLooper());attachInterface(null,TOKEN);}
  void enabled(boolean value){boolean changed=enabled!=value;enabled=value;lastLease=SystemClock.elapsedRealtime();if(!value && changed)handler.post(()->clear("Expansion disabled"));}
@@ -43,11 +63,14 @@ final class PreviewExpansion extends Binder {
   java.util.concurrent.CountDownLatch committed=new java.util.concurrent.CountDownLatch(1);
   handler.post(()->{
    if(layer==null || start>0 || !PreviewExpansionPolicy.fresh(stamp,SystemClock.elapsedRealtime())){committed.countDown();return;}
-   trace="";event("Pre-release hold requested");
+   trace="";diagnosticStart=SystemClock.elapsedRealtime();lastSample=0;maxSampleGap=0;offSince=-1;missingSince=-1;lastMapping="";
+   event("MEASURED SOFTWARE EVENTS ONLY: panel state is sampled; commit/draw is not photon visibility");
+   event("Pre-release hold requested; prepared frame age="+(diagnosticStart-stamp)+" ms");
    start=SystemClock.elapsedRealtime();ready=-1;coverCommit=committed;
    handler.removeCallbacks(tick);tick.run();
   });
-  try{committed.await(24,java.util.concurrent.TimeUnit.MILLISECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}
+  try{boolean acknowledged=committed.await(24,java.util.concurrent.TimeUnit.MILLISECONDS);
+   final long when=SystemClock.elapsedRealtime();handler.post(()->{if(diagnosticStart>0)diagnosticEvent("Pre-release wait ended +"+(when-diagnosticStart)+" ms; commit observed="+acknowledged);});}catch(InterruptedException e){Thread.currentThread().interrupt();}
  }
  private static String root(Throwable e){while(e.getCause()!=null)e=e.getCause();return e.getClass().getSimpleName()+": "+e.getMessage();}
  private Object service(String name,String stub)throws Exception{
@@ -96,6 +119,7 @@ final class PreviewExpansion extends Binder {
    if(start==0 && !PreviewExpansionPolicy.fresh(stamp,now)){clear("Expansion waiting for fresh cover frame");return;}
    Object primary=displayInfo.invoke(dm,0),secondary=displayInfo.invoke(dm,1);
    Object target=primary!=null && innerId.equals(id(primary))?primary:secondary!=null && innerId.equals(id(secondary))?secondary:null;
+   sample(primary,secondary,target,now);
    if(target==null){if(start>0 && now-start>1500){clear("Expansion panel disappeared");return;}handler.postDelayed(this,8);return;}
    boolean switched=primary!=null && innerId.equals(id(primary));
    boolean coverOff=primary!=null && !inner(primary) && number(primary,"state")!=2;
@@ -121,7 +145,8 @@ final class PreviewExpansion extends Binder {
     t.setPosition(backdrop,0,0).setAlpha(backdrop,alpha).setVisibility(backdrop,leftWidth>0);
     t.setPosition(layer,leftWidth,(h-bh*fit)/2f).setAlpha(layer,alpha).setVisibility(layer,start>0);
     if(coverCommit!=null){final java.util.concurrent.CountDownLatch fence=coverCommit;coverCommit=null;
-     t.addTransactionCommittedListener(Runnable::run,()->{fence.countDown();});
+     final long submitted=SystemClock.elapsedRealtime();
+     t.addTransactionCommittedListener(Runnable::run,()->{long committedAt=SystemClock.elapsedRealtime();fence.countDown();diagnosticEvent("Replacement transaction committed in "+(committedAt-submitted)+" ms");});
      event("Replacement submitted before cover release");
     }
     t.apply();
@@ -130,7 +155,9 @@ final class PreviewExpansion extends Binder {
   }catch(Exception e){clear("Expansion failed: "+root(e));}
  }};
  private void clear(String message){
-  if(start>0)event(message);if(coverCommit!=null){coverCommit.countDown();coverCommit=null;}
+  if(start>0){event(message+"; hold duration="+(SystemClock.elapsedRealtime()-start)+" ms; maximum state-sampling gap="+maxSampleGap+" ms");
+   if(offSince>=0)event("OFF interval still open at cleanup");if(missingSince>=0)event("Missing mapping interval still open at cleanup");}
+  diagnosticStart=0;if(coverCommit!=null){coverCommit.countDown();coverCommit=null;}
   handler.removeCallbacks(tick);polling=false;start=0;ready=-1;pendingReady=false;
   if(layer!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(layer,false).reparent(layer,null).apply();}catch(Exception ignored){}layer.release();layer=null;}
   if(backdrop!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(backdrop,false).reparent(backdrop,null).apply();}catch(Exception ignored){}backdrop.release();backdrop=null;}
