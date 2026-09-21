@@ -37,7 +37,7 @@ class SetupActivity : ComponentActivity() {
  private var bound=false
  private val args by lazy { Shizuku.UserServiceArgs(ComponentName(this,WallpaperSetupService::class.java)).daemon(false).processNameSuffix("wallpaper_setup").version(23) }
  private val listener=Shizuku.OnRequestPermissionResultListener { _, result ->
-  runOnUiThread { message=if(result==PackageManager.PERMISSION_GRANTED)"Shizuku authorized. Preparing both wallpapers…" else "Shizuku access was declined. Tap Authorize to try again." }
+  runOnUiThread { message=if(result==PackageManager.PERMISSION_GRANTED)"Shizuku authorized. Continue with wallpaper setup below." else "Shizuku access was declined. Tap Authorize to try again." }
  }
  private val connection=object:ServiceConnection {
   override fun onServiceConnected(name:ComponentName,binder:IBinder){
@@ -90,7 +90,7 @@ class SetupActivity : ComponentActivity() {
      authorized=shizuku && runCatching{Shizuku.checkSelfPermission()==PackageManager.PERMISSION_GRANTED}.getOrDefault(false)
      overlay=Settings.canDrawOverlays(this@SetupActivity)
      accessibility=StandaloneService.instance!=null
-     if(stage==2&&authorized&&!attempted&&!applying)startApply()
+
      delay(500)
     }}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null){
@@ -140,8 +140,8 @@ class SetupActivity : ComponentActivity() {
        }
        2->{
         Text("Connect Shizuku",style=MaterialTheme.typography.headlineSmall)
-        Text("Shizuku gives Duo the access needed to install the fold wallpaper on both screens and read live hinge angles. Once authorized, Duo applies both required home wallpapers automatically.")
-        Text(if(authorized)"Shizuku connected and authorized" else if(shizuku)"Shizuku running · authorization needed" else "Waiting for Shizuku to start")
+        Text("Shizuku gives Duo the access needed to install the fold wallpaper on both screens and read live hinge angles. After authorization, tap Apply required wallpapers below. Wallpaper compatibility is checked separately.")
+        Text(if(authorized)"Shizuku connected and authorized" else if(shizuku)"Shizuku connected · authorization needed" else "Duo has not received a Shizuku connection")
         OutlinedButton(onClick={link("https://shizuku.rikka.app/download/")}){Text("Download Shizuku")}
         OutlinedButton(onClick={val intent=packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api");if(intent!=null)open(intent)else link("https://shizuku.rikka.app/download/")}){Text("Open Shizuku")}
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
@@ -161,10 +161,11 @@ class SetupActivity : ComponentActivity() {
          Text("Mac / Linux: use ./adb instead of .\\adb.exe.",style=MaterialTheme.typography.bodySmall)
         }
         OutlinedButton(onClick={open(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))}){Text("Open Developer options")}
-        Button(onClick={try{Shizuku.requestPermission(74)}catch(e:Exception){message="Start Shizuku first: ${e.message}"}},enabled=shizuku&&!authorized&&!applying){Text("Authorize Duo in Shizuku")}
+        Button(onClick={message=ShizukuAccess.request(this@SetupActivity,74)},enabled=!applying){Text(if(authorized)"Check Shizuku authorization" else "Authorize / check connection")}
+        OutlinedButton(onClick={ShizukuAccess.copy(this@SetupActivity)}){Text("Copy connection report")}
         if(applying)CircularProgressIndicator()
         if(!applying&&authorized&&prefs.getBoolean("wallpaper_verified",false))Button(onClick={go(3)}){Text("Continue") }
-        if(attempted&&!applying&&!prefs.getBoolean("wallpaper_verified",false))Button(onClick={startApply()},enabled=authorized){Text("Retry wallpaper setup")}
+        if(!applying&&authorized&&!prefs.getBoolean("wallpaper_verified",false))Button(onClick={startApply()}){Text(if(attempted)"Retry wallpaper setup" else "Apply required wallpapers")}
         Text("After reboot, start Shizuku again. Allow Shizuku and Duo to run in the background; keep Developer options enabled.",style=MaterialTheme.typography.bodySmall)
         TextButton(onClick={link("https://shizuku.rikka.app/guide/setup/")}){Text("Official Shizuku setup guide")}
        }

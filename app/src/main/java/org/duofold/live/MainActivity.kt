@@ -26,12 +26,20 @@ import kotlinx.coroutines.*
 import kotlin.math.roundToInt
 
 class MainActivity:ComponentActivity(){
+ private val shizukuPermission=rikka.shizuku.Shizuku.OnRequestPermissionResultListener { code,result ->
+  if(code==42)runOnUiThread {
+   android.widget.Toast.makeText(this,if(result==0)"Shizuku authorized" else "Shizuku authorization denied. Enable Duo in Shizuku → Authorized applications.",android.widget.Toast.LENGTH_LONG).show()
+  }
+ }
+ override fun onDestroy(){rikka.shizuku.Shizuku.removeRequestPermissionResultListener(shizukuPermission);super.onDestroy()}
+
  private fun startBackground(){
   if(checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),43)
   startForegroundService(Intent(this,FoldBackgroundService::class.java))
  }
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
+  rikka.shizuku.Shizuku.addRequestPermissionResultListener(shizukuPermission)
   if(FirstRun.required(this)){startActivity(Intent(this,SetupActivity::class.java));finish();return}
   setContent{
    MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xffc9bdff),secondary=Color(0xff91ded2),background=Color(0xff10121c),surface=Color(0xff1b1e2b),surfaceVariant=Color(0xff252939))){
@@ -88,7 +96,8 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Connection & setup","Shizuku and accessibility keep the effect running in the background."){
        TextButton(onClick={setup=!setup}){Text(if(setup)"Hide setup" else "Show setup")}
        if(setup){
-        Button(onClick={try{if(rikka.shizuku.Shizuku.pingBinder())rikka.shizuku.Shizuku.requestPermission(42) else android.widget.Toast.makeText(this@MainActivity,"Start Shizuku first",1).show()}catch(e:Exception){android.widget.Toast.makeText(this@MainActivity,e.message,1).show()}}){Text("Authorize Shizuku")}
+        Button(onClick={val result=ShizukuAccess.request(this@MainActivity,42); if(result.startsWith("Permission requested"))android.widget.Toast.makeText(this@MainActivity,result,1).show() else ShizukuAccess.show(this@MainActivity,result)}){Text("Authorize Shizuku")}
+        OutlinedButton(onClick={ShizukuAccess.show(this@MainActivity,ShizukuAccess.report(this@MainActivity))}){Text("Connection report")}
         OutlinedButton(onClick={startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))}){Text("Allow overlays")}
         OutlinedButton(onClick={startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))}){Text("Enable accessibility")}
         OutlinedButton(onClick={restart()}){Text("Reconnect animation")}
