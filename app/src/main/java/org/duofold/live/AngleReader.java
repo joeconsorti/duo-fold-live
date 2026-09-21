@@ -5,6 +5,7 @@ import java.util.*;
 public class AngleReader extends Binder {
  public static final String DESCRIPTOR="org.duofold.live.wallpaperprobe.AngleReader";
  private GlassCapture capture;
+ private boolean previewAllowed=false;
  private final InnerLiveMirror mirror=new InnerLiveMirror();
  private final ConcurrentController concurrent=new ConcurrentController();
  private final CoverHandoff handoff=new CoverHandoff();
@@ -17,16 +18,17 @@ public class AngleReader extends Binder {
   data.enforceInterface(DESCRIPTOR);
   int caller=Binder.getCallingUid();if(owner<0)owner=caller;if(caller!=owner)throw new SecurityException("Wrong caller");
   if(code==6){if(capture==null)capture=new GlassCapture(caller);reply.writeNoException();reply.writeStrongBinder(capture);return true;}
-  if(code==4){int id=data.readInt();android.view.SurfaceControl parent=data.readTypedObject(android.view.SurfaceControl.CREATOR);int w=data.readInt(),h=data.readInt();Bundle result=mirror.attach(id,parent,w,h,concurrent.canMirrorSecondary());reply.writeNoException();reply.writeBundle(result);return true;}
+  if(code==4){int id=data.readInt();android.view.SurfaceControl parent=data.readTypedObject(android.view.SurfaceControl.CREATOR);int w=data.readInt(),h=data.readInt();Bundle result=mirror.attach(id,parent,w,h,previewAllowed);reply.writeNoException();reply.writeBundle(result);return true;}
   if(code==5){mirror.detach(data.readInt());reply.writeNoException();return true;}
   if(code==1){String action=data.readString();if(action==null||!action.matches("org\\.duofold\\.live\\.wallpaperprobe\\.READ_[0-9]+"))throw new IllegalArgumentException("Invalid action");start(action);reply.writeNoException();return true;}
   if(code==2){heartbeat=SystemClock.elapsedRealtime();boolean unlocked=data.readInt()!=0,dual=data.readInt()!=0,primaryInner=data.readInt()!=0,secondaryReady=data.readInt()!=0;int frozenSource=data.readInt();float openThreshold=data.readFloat();boolean live=data.readInt()!=0;
-   if(dual){handoff.release();concurrent.update(angle,last>0&&heartbeat-last<2000,unlocked,primaryInner,secondaryReady,frozenSource,openThreshold,live);}else{concurrent.release();handoff.update(angle,last>0&&heartbeat-last<750,unlocked);}
-   if(!concurrent.canMirrorSecondary())mirror.close();
-   Bundle b=new Bundle();b.putString("state",state);b.putString("mirror",mirror.status);b.putBoolean("nativeInner",concurrent.secondaryHasNativeContent());b.putBoolean("dualActive",dual&&concurrent.active());b.putString("handoff",dual?concurrent.status:handoff.status);b.putInt("uid",android.os.Process.myUid());b.putInt("count",count);b.putInt("unique",unique.size());b.putFloat("angle",angle);b.putFloat("min",min);b.putFloat("max",max);b.putLong("last",last);b.putString("raw",raw);reply.writeNoException();reply.writeBundle(b);return true;}
+   if(dual){handoff.release();concurrent.update(angle,last>0&&heartbeat-last<2000,unlocked,primaryInner,secondaryReady,frozenSource,openThreshold);}else{concurrent.release();handoff.update(angle,last>0&&heartbeat-last<750,unlocked);}
+   previewAllowed=CoverPreviewPolicy.allowed(live,dual,primaryInner,unlocked,handoff.active());
+   if(!previewAllowed)mirror.close();
+   Bundle b=new Bundle();b.putBoolean("coverPreview",previewAllowed);b.putString("state",state);b.putString("mirror",mirror.status);b.putBoolean("nativeInner",concurrent.secondaryHasNativeContent());b.putBoolean("dualActive",dual&&concurrent.active());b.putString("handoff",dual?concurrent.status:handoff.status);b.putInt("uid",android.os.Process.myUid());b.putInt("count",count);b.putInt("unique",unique.size());b.putFloat("angle",angle);b.putFloat("min",min);b.putFloat("max",max);b.putLong("last",last);b.putString("raw",raw);reply.writeNoException();reply.writeBundle(b);return true;}
   if(code==3){stop();reply.writeNoException();return true;}return super.onTransact(code,data,reply,flags);
  }
- private synchronized void stop(){if(capture!=null){capture.close();capture=null;}mirror.close();concurrent.release();handoff.release();generation++;if(process!=null){process.destroy();process=null;}state="Stopped";}
+ private synchronized void stop(){previewAllowed=false;if(capture!=null){capture.close();capture=null;}mirror.close();concurrent.release();handoff.release();generation++;if(process!=null){process.destroy();process=null;}state="Stopped";}
  private synchronized void start(String action){
   stop();count=0;unique.clear();angle=Float.NaN;min=180;max=0;last=0;raw="";state="Starting log reader";final int gen=generation;
   Thread reader=new Thread(()->{
