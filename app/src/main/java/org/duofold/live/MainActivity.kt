@@ -47,10 +47,10 @@ class MainActivity:ComponentActivity(){
     val scope=rememberCoroutineScope()
     var enabled by remember{mutableStateOf(prefs.getBoolean("enabled",false))}
     var animationStyle by remember{mutableStateOf(prefs.getString("animation_style","duo") ?: "duo")}
-    var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",false))}
+    var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
     var keepAwake by remember{mutableStateOf(prefs.getBoolean("auto_keep_cover_awake",true))}
-    var dual by remember{mutableStateOf(prefs.getBoolean("dual",true))}
+    var dual by remember{mutableStateOf(prefs.getBoolean("dual",false))}
     var advanced by remember{mutableStateOf(false)}
     var setup by remember{mutableStateOf(!enabled)}
     var smoothing by remember{mutableFloatStateOf(FrameSmoothing.sanitize(prefs.getFloat("smoothing_ms",12f)))}
@@ -130,7 +130,7 @@ class MainActivity:ComponentActivity(){
         Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
         Toggle("Debug mode · black fade",debug){debug=it;booleanSetting("debug_mode",it)}
-        Text("Screenshot handoff is the default. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
+        Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         Text("Keep cover awake on close",style=MaterialTheme.typography.titleMedium)
         Toggle("Automatically keep cover awake",keepAwake){keepAwake=it;booleanSetting("auto_keep_cover_awake",it)}
