@@ -1,3 +1,11 @@
+## 1.5.4 — Regional Fold 8 setup
+
+- Enable the SM-F971 regional family on Android 17, including unlocked U1 and Canadian W, in wallpaper setup and both display controllers.
+- Keep Samsung component/API checks, named concurrent-display-state discovery, and wallpaper configuration readback. Regional firmware compatibility remains experimental.
+- Report model/OS eligibility separately from Shizuku authorization and verified wallpaper configuration.
+- Refresh helper process versions after upgrade. No animation, capture, timing, or settings migration changes.
+- SM-F966 / Fold 7 on Android 16 remains outside this wallpaper profile.
+
 # Changelog
 
 ## v1.5.1 — privacy-clean public release (versionCode 24)
