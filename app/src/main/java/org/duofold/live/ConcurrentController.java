@@ -19,7 +19,7 @@ final class ConcurrentController {
  synchronized boolean active(){return owned!=null;}
  private void init()throws Exception{
   if(manager!=null)return;
-  if(!"SM-F971U".equals(Build.MODEL))throw new IllegalStateException("Untested model");
+  DeviceCompatibility.requireEligible(Build.MODEL, Build.VERSION.SDK_INT);
   Class<?> type=Class.forName("android.hardware.devicestate.DeviceStateManager");
   Object candidate=type.getConstructor().newInstance();
   for(Object state:(List<?>)type.getMethod("getSupportedDeviceStates").invoke(candidate)){
