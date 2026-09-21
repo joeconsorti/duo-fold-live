@@ -10,5 +10,6 @@ public final class DuoApplication extends Application {
    prefs.edit().putBoolean("cover_preview",true).putBoolean("dual",false)
     .putBoolean("defaults_170_applied",true).apply();
   }
+  new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> org.duofold.live.wallpaperlayer.WallpaperRestore.resume(this));
  }
 }
