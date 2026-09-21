@@ -122,7 +122,7 @@ class MainActivity:ComponentActivity(){
         Text("At this angle the inner effect is completely clear. Closing starts below this threshold. Default: 172°.",style=MaterialTheme.typography.bodySmall)
         TextButton(onClick={threshold=172f;prefs.edit().putFloat("open_threshold",172f).apply();restart()}){Text("Reset to 172°")}
         Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
-        Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. At the normal screen switch, a prepared frosted frame expands leftward, then fades into the inner layout. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
+        Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
         Toggle("Debug mode · black fade",debug){debug=it;booleanSetting("debug_mode",it)}
         Text("Screenshot handoff is the default. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
