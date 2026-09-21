@@ -47,6 +47,7 @@ class MainActivity:ComponentActivity(){
     val scope=rememberCoroutineScope()
     var enabled by remember{mutableStateOf(prefs.getBoolean("enabled",false))}
     var animationStyle by remember{mutableStateOf(prefs.getString("animation_style","duo") ?: "duo")}
+    var panelPower by remember{mutableStateOf(prefs.getBoolean("panel_power_continuity",true))}
     var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
     var keepAwake by remember{mutableStateOf(prefs.getBoolean("auto_keep_cover_awake",true))}
@@ -126,6 +127,8 @@ class MainActivity:ComponentActivity(){
         Slider(value=closedThreshold,onValueChange={closedThreshold=it.roundToInt().toFloat()},valueRange=1f..10f,steps=8,onValueChangeFinished={prefs.edit().putFloat("closed_threshold",closedThreshold).apply();restart()})
         Text("At or below this angle, treat the phone as fully closed and clear the cover effect. Default: 1°.",style=MaterialTheme.typography.bodySmall)
         TextButton(onClick={closedThreshold=1f;prefs.edit().putFloat("closed_threshold",1f).apply();restart()}){Text("Reset to 1°")}
+        Toggle("Inner-panel power continuity (experimental)",panelPower){panelPower=it;booleanSetting("panel_power_continuity",it)}
+        Text("Prerelease test: briefly requests inner-panel power during handoff. Requires cover preview ON and screenshot handoff OFF. Turn off to compare with v1.7.0. The helper stops after 650 ms or earlier when inner content is ready.",style=MaterialTheme.typography.bodySmall)
         Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
         Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
