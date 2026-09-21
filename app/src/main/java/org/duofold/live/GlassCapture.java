@@ -24,14 +24,17 @@ final class GlassCapture extends Binder {
     String action=data.readString();
     String previous=command("settings","get","system","fold_lock_behavior").trim();
     if(!java.util.Arrays.asList("null","stay_awake_on_fold_key","selective_stay_awake_key","sleep_on_fold_key").contains(previous))throw new IllegalStateException("Unrecognized existing fold setting; use Samsung Display settings");
-    if("always".equals(action))command("settings","put","system","fold_lock_behavior","stay_awake_on_fold_key");
+    String expected;
+    if("always".equals(action)){expected="stay_awake_on_fold_key";if(!expected.equals(previous))command("settings","put","system","fold_lock_behavior",expected);}
     else if("restore".equals(action)){
-     String original=data.readString();
+     String original=data.readString();expected=original;
      if("null".equals(original))command("settings","delete","system","fold_lock_behavior");
      else if(java.util.Arrays.asList("stay_awake_on_fold_key","selective_stay_awake_key","sleep_on_fold_key").contains(original))command("settings","put","system","fold_lock_behavior",original);
      else throw new IllegalArgumentException("Unknown original fold setting");
     }else throw new IllegalArgumentException("Unknown action");
-    result.putString("previous",previous);result.putString("value",command("settings","get","system","fold_lock_behavior").trim());result.putBoolean("ok",true);
+    String observed=command("settings","get","system","fold_lock_behavior").trim();
+    if(!expected.equals(observed))throw new IllegalStateException("Fold setting readback mismatch: "+observed);
+    result.putString("previous",previous);result.putString("value",observed);result.putBoolean("ok",true);
    }else if(code==1 || code==3){
     long captureStarted=SystemClock.elapsedRealtime();
     int n=data.readInt();if(n<1||n>4)throw new IllegalArgumentException("No valid overlay exclusion surfaces");
