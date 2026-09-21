@@ -14,6 +14,7 @@ public final class LiveAngles {
  private static long last=0;
  public static boolean dualActive=false;
  public static boolean coverPreview=false;
+ public static String expansionStatus="Expansion idle";
  public static String mirrorStatus="Inner live mirror idle";
  public static boolean nativeInner=false;
  private static volatile LiveAngles current;
@@ -34,6 +35,10 @@ public final class LiveAngles {
  }
  public static void detachMirror(int id){LiveAngles self=current;if(id<=0||self==null||self.worker==null)return;
   self.worker.post(()->{Parcel p=Parcel.obtain(),r=Parcel.obtain();try{p.writeInterfaceToken(AngleReader.DESCRIPTOR);p.writeInt(id);if(self.reader!=null){self.reader.transact(5,p,r,0);r.readException();}}catch(Exception ignored){}finally{p.recycle();r.recycle();}});
+ }
+ public static void previewCommand(int code,Parcel p,Parcel r)throws Exception{
+  LiveAngles self=current;IBinder binder=self==null?null:self.reader;
+  if(binder==null || !binder.transact(code,p,r,0))throw new IllegalStateException("Preview helper unavailable");
  }
  public static IBinder captureBinder()throws Exception{
   LiveAngles self=current;IBinder remote=self==null?null:self.reader;
@@ -79,7 +84,7 @@ public final class LiveAngles {
    running=true;current=this;last=0;count=0;action="org.duofold.live.wallpaperprobe.READ_"+SystemClock.elapsedRealtime();
    ensureAnchors();
    thread=new HandlerThread("duofold-angle-ipc");thread.start();worker=new Handler(thread.getLooper());
-   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(147);
+   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(148);
    bound=true;Shizuku.bindUserService(args,connection);status="Connecting to Shizuku…";
    main.postDelayed(()->{if(running&&reader==null){status="Connection timed out — reconnect in app";stop();}},12000);
   }catch(Exception e){status=e.getMessage();stop();}
@@ -117,7 +122,7 @@ public final class LiveAngles {
     p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("dual",true)?1:0);
     android.view.Display display=context.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
     android.view.Display.Mode mode=display.getMode();p.writeInt(Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight())/(float)Math.max(mode.getPhysicalWidth(),mode.getPhysicalHeight())>.7f?1:0);
-    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",false)?1:0);
+    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",false)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("enabled",false)?1:0);
    }
    if(!b.transact(code,p,r,0))throw new IllegalStateException("Unsupported reader");r.readException();return code==2?r.readBundle(getClass().getClassLoader()):null;
   }finally{p.recycle();r.recycle();}
@@ -135,7 +140,7 @@ public final class LiveAngles {
    String nextHandoff=b.getString("handoff", "Unknown display status");
    if(!nextHandoff.equals(handoffStatus))RecoveryLog.add(nextHandoff);
    handoffStatus=nextHandoff;
-   dualActive=b.getBoolean("dualActive");coverPreview=b.getBoolean("coverPreview");
+   dualActive=b.getBoolean("dualActive");coverPreview=b.getBoolean("coverPreview");expansionStatus=b.getString("expansion","Expansion idle");
    mirrorStatus=b.getString("mirror","Inner mirror status unavailable");nativeInner=b.getBoolean("nativeInner");
    StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null)host.refreshSecondary();
    lastPoll=SystemClock.elapsedRealtime();
