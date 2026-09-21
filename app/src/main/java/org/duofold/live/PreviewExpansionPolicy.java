@@ -5,7 +5,7 @@ final class PreviewExpansionPolicy {
  static float progress(long elapsed){float t=Math.max(0f,Math.min(1f,elapsed/240f));return 1f-(1f-t)*(1f-t)*(1f-t);}
  static float opacity(long elapsed,long readyElapsed){
   if(elapsed>=1500)return 0f;
-  long fadeStart=readyElapsed<0?1200:Math.max(240,readyElapsed);
-  return Math.max(0f,Math.min(1f,1f-(elapsed-fadeStart)/180f));
+  long fadeStart=readyElapsed<0?1200:Math.max(0,readyElapsed);
+  return Math.max(0f,Math.min(1f,1f-(elapsed-fadeStart)/120f));
  }
 }
