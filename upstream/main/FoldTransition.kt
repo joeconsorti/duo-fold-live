@@ -1,4 +1,4 @@
-package com.mccal.folio
+package org.duofold.live
 
 import android.content.Context
 import android.graphics.RenderEffect

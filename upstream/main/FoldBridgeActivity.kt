@@ -1,4 +1,4 @@
-package com.mccal.folio
+package org.duofold.live
 
 import android.app.Activity
 import android.app.ActivityOptions
@@ -71,7 +71,7 @@ class FoldBridgeActivity : Activity() {
     }
 
     companion object {
-        private const val TAG = "FolioFold"
+        private const val TAG = "DuoFoldLive"
         private const val TIMEOUT_MS = 2_500L
         private const val HANDOFF_MS = 220L
         private var instance = WeakReference<FoldBridgeActivity>(null)

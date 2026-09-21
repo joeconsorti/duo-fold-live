@@ -4,7 +4,7 @@ This repository preserves the upstream notices in `app/src/main/assets/licenses/
 
 | Component | Source | License |
 | --- | --- | --- |
-| Folio fold engine, originally derived from Duo Launcher | https://github.com/McCal-Codes/folio/tree/v0.6.0 | MIT; Duo Launcher contributors |
+| Upstream animation engine, originally derived from Duo Launcher | https://github.com/McCal-Codes/folio/tree/v0.6.0 | MIT; Duo Launcher contributors |
 | iPhone Duo shader reference and adapted animation | https://github.com/chuspeeism/iphone-duo | MIT; jadon7 |
 | FoldUO portions credited in the existing distribution | `app/src/main/assets/licenses/FOLDUO-MIT.txt` | MIT; bunkaich |
 | Shizuku API and provider | https://github.com/RikkaApps/Shizuku-API | Apache-2.0 |

@@ -1,4 +1,4 @@
-package com.mccal.folio
+package org.duofold.live
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame

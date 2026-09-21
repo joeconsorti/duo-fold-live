@@ -5,7 +5,7 @@ Use the GitHub account you want to own this project. It does not need to match y
 ## Package contents
 
 - `source/`: complete repository contents, including README, MIT license, third-party notices, build wrapper, and tests. Publish the **contents** of this folder as the repository root.
-- `release/Duo-Fold-Live-v1.5.0.apk`: signed installable APK.
+- `release/Duo-Fold-Live-v1.5.1.apk`: signed installable APK.
 - `release/RELEASE-NOTES.md`: text to paste into the GitHub release.
 - `release/SHA256SUMS.txt`: APK checksum.
 - `release/VALIDATION.txt`: build/test/signature verification and handset-test limits.
@@ -17,7 +17,7 @@ Only `source/` goes into the source repository. The APK goes in a GitHub **Relea
 1. Install [GitHub Desktop](https://desktop.github.com/) and sign into the account that should own the project. Check the account under Settings → Accounts.
 2. Choose File → New repository. Name it `duo-fold-live`, choose a local folder, and create it. Do not add a license or README; this package already contains them.
 3. Open the newly created repository folder. Copy everything **inside** this package's `source/` folder into that repository folder, including `.gitignore`. Do not nest the whole `source` folder inside it.
-4. In GitHub Desktop, review the changed files. Commit them with the summary `Initial public release v1.5.0`.
+4. In GitHub Desktop, review the changed files. Commit them with the summary `Initial public release v1.5.1`.
 5. Click Publish repository, select the intended owner/account, and uncheck “Keep this code private” to make it open source. Publish.
 
 All source files should appear on GitHub as real browsable files, rather than as one ZIP attachment. On Windows, build with `gradlew.bat`; on Linux/macOS, use `sh gradlew` if executable permissions were not retained while extracting the ZIP.
@@ -25,20 +25,22 @@ All source files should appear on GitHub as real browsable files, rather than as
 ## Create the release
 
 1. Open the repository on GitHub, then Releases → Draft a new release.
-2. Create tag **v1.5.0**, targeting the main branch.
-3. Set the title to **Duo Fold Live v1.5.0**.
+2. Create tag **v1.5.1**, targeting the main branch.
+3. Set the title to **Duo Fold Live v1.5.1**.
 4. Paste `release/RELEASE-NOTES.md` into the description.
-5. Attach `Duo-Fold-Live-v1.5.0.apk` and `SHA256SUMS.txt` from `release/`.
-6. Save as a draft until you have checked this APK on your phone. New-install onboarding also needs a supported-phone test; your existing installation intentionally skips it. Do not uninstall your working copy just to test onboarding.
+5. Attach `Duo-Fold-Live-v1.5.1.apk` and `SHA256SUMS.txt` from `release/`.
+6. Save as a draft until you have checked this APK on your phone. This new identity runs onboarding on first launch. Keep your old working app installed but disabled while testing the new app.
 7. When satisfied, publish the release. You may mark it as a pre-release while collecting first-install feedback.
 
-The internal version code is **23**, so this public v1.5.0 APK can update the earlier private v1.6.0 APK (code 22). Existing users should install over the old app, not uninstall it.
+This release has a new neutral package identity and signer. It installs separately from earlier private builds. Stop the old app's animation/photo layer before enabling this one. It does not overwrite the old app's settings.
 
-## Future releases and signing
+## Signing
 
-The repository builds an unsigned release unless you supply the signing variables documented in README. The delivered APK uses the same certificate as your previous working build. Keep the original signing keystore privately backed up; it is intentionally absent from this publication kit. Your earlier private 1.6.0 source archive contained `signing/standalone.jks`; do **not** publish that archive or key. If that private key is lost, a new signer cannot directly update these existing installations.
+No private signing key is included in this publishing kit. Keep the new release signing key privately backed up for future releases. Do not upload any signing key or older private source archives. Future updates to this new application must retain `org.duofold.live` and the new signing identity and increase versionCode above 24.
 
-Increase `versionCode` beyond 23 for the next release, regardless of the displayed version name. Keep package name `com.consorti.foliofold` unchanged for compatible updates.
+## Replacing already-published files
+
+Old commits and release assets can retain the previous identifying text even after you replace files. For a newly created repository with no work to preserve, publish this clean source in a fresh repository and remove the old repository and old release assets. Copies already downloaded by others cannot be recalled. Never upload the old publishing kit alongside this one.
 
 ## Official references
 

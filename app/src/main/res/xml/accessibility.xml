@@ -5,4 +5,4 @@
  android:notificationTimeout="250"
  android:canRetrieveWindowContent="false"
  android:canTakeScreenshot="false"
- android:settingsActivity="com.mccal.folio.MainActivity"/>
+ android:settingsActivity="org.duofold.live.MainActivity"/>

@@ -1,4 +1,4 @@
-Folio Fold Standalone — independent personal extraction of McCal-Codes/folio v0.6.0.
+Duo Fold Live — independent adaptation of McCal-Codes/folio v0.6.0.
 https://github.com/McCal-Codes/folio/releases/tag/v0.6.0
 Fold engine and diagnostic code: MIT License, copyright (c) 2026 Duo Launcher contributors.
 Folio is derived from Duo Launcher by jakesgoodapps. See FOLIO-MIT.txt.
@@ -7,4 +7,4 @@ New code is limited to the standalone setup, lifecycle/overlay hosting and conte
 
 1.5.0: screen shader adapted through Duo-Fold-Slider-01 from chuspeeism/iphone-duo. The Android implementation uses RuntimeShader/AGSL and seven explicit downsampled bitmap levels. No Apple phone model or imagery is bundled in this change.
 
-Public v1.5.0: Duo Fold Live includes standalone setup, Shizuku-assisted angle/capture/display controls, photo compositor hosting, and first-install onboarding. See the public repository THIRD_PARTY_NOTICES.md.
+Public v1.5.1: Duo Fold Live includes standalone setup, Shizuku-assisted angle/capture/display controls, photo compositor hosting, and first-install onboarding. See the public repository THIRD_PARTY_NOTICES.md.

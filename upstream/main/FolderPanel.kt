@@ -1,4 +1,4 @@
-package com.mccal.folio
+package org.duofold.live
 
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler

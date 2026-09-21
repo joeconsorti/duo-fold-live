@@ -6,7 +6,7 @@
   <item name="android:fontFamily">sans</item>
   <item name="android:colorAccent">#8CCDC7</item>
  </style>
- <style name="Theme.Folio.FoldBridge" parent="android:style/Theme.Translucent.NoTitleBar">
+ <style name="Theme.Duo.FoldBridge" parent="android:style/Theme.Translucent.NoTitleBar">
   <item name="android:windowAnimationStyle">@null</item>
   <item name="android:windowBackground">@android:color/transparent</item>
   <item name="android:backgroundDimEnabled">false</item>

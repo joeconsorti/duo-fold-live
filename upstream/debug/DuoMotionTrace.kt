@@ -1,4 +1,4 @@
-package com.mccal.folio
+package org.duofold.live
 
 import android.util.Log
 import java.util.concurrent.atomic.AtomicLong

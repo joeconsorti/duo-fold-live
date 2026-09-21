@@ -1,4 +1,4 @@
-package com.mccal.folio
+package org.duofold.live
 
 /** Release builds contain no active motion diagnostics. */
 internal object DuoMotionTrace {

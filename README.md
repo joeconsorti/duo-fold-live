@@ -1,6 +1,10 @@
-# Duo Fold Live · v1.5.0
+# Duo Fold Live · v1.5.1
 
-Hinge-driven fold transitions for the Samsung Galaxy Z Fold 8, with a two-screen screenshot handoff and an optional custom photo wallpaper.
+Hinge-driven opening and closing animations for the Samsung Galaxy Z Fold 8, running over One UI and ordinary apps without replacing your launcher. Includes two-screen screenshot handoff and an optional custom photo wallpaper.
+
+The animation follows live hinge measurements; the outgoing screen content is a freeze frame during handoff. This is an Android overlay app, not a system feature supplied by Samsung. See the known issues below before installing.
+
+**Release target: v1.5.1.** Use the v1.5.1 APK when it is attached to this repository's Releases page; the source update alone does not publish an APK.
 
 **Supported automatic setup: SM-F971U, Android 17 / SDK 37.** Samsung private APIs and the installed FoldInteractive wallpaper engine are required. Other models and firmware are not verified. This is an independent project, unaffiliated with Samsung, Apple, Shizuku, or the upstream animation authors.
 
@@ -34,11 +38,19 @@ On macOS/Linux, replace `.\adb.exe` with `./adb`. If Shizuku shows a different s
 
 Shizuku generally needs to be started again after a reboot. Allow Shizuku and Duo to run in the background. The app cannot silently enable Android debugging or approve its own Shizuku/accessibility access.
 
+## How it works
+
+Samsung’s interactive fold wallpaper runs on both home-screen wallpaper slots, including the cover slot that is normally unavailable through Samsung’s picker. A Shizuku-assisted reader obtains the angle reported by that engine. The animation uses those measurements rather than a fixed-duration playback.
+
+During a handoff, Duo Fold Live captures the outgoing display and animates that frozen content while switching the incoming display into use. The optional photo layer covers the Samsung home wallpaper visually while preserving it as the angle source. This does **not** mean both screens contain independent, fully live apps throughout the transition.
+
+The supported setup uses official Shizuku in **ADB mode** (wireless or USB debugging). Root-mode setup and Shizuku forks have not been verified for this release; the automatic wallpaper helper explicitly requires the ADB-shell identity. No claim is made that other foldables expose unrestricted hinge data.
+
 ## Existing users
 
-Install the release over your existing signed Duo Fold Live app. **Do not uninstall first.** Application ID and signing identity are retained. Existing installations skip onboarding and retain their preferences, photo, wallpaper bindings, and animation state. A setup already in progress resumes after an update.
+This privacy-clean release uses the new Android application ID `org.duofold.live` and a new neutral signing certificate. It installs separately from earlier private builds and cannot update or automatically read their private settings. Your old app is left untouched. Disable its animation and custom wallpaper before enabling this app, then complete setup here. Do not run both animation hosts together.
 
-This is the first public release numbered **v1.5.0**, with Android `versionCode 23`. It succeeds the private build labeled `1.6.0` (`versionCode 22`); Android uses the increasing version code for updates.
+Public version **v1.5.1**, Android `versionCode 24`. Existing-install bypass still applies to future upgrades of this new application ID.
 
 ## Controls
 
@@ -46,17 +58,25 @@ This is the first public release numbered **v1.5.0**, with Android `versionCode 
 - **Classic Glass** preserves the earlier animation.
 - The animation selector is directly below Enable animation.
 - The default fully-open endpoint is 172°, adjustable in Advanced.
-- Keep cover awake on close defaults on for new setup. Existing settings remain unchanged.
+- Keep cover awake on close defaults on for new setup. Future updates under this new app identity preserve settings.
 - Screenshot handoff, display switching, smoothing, shaders, and wallpaper renderer are unchanged from the previous private build.
 - Custom wallpaper remains an in-memory layer while the host runs. The Samsung home wallpaper stays installed as the hinge source. Disable removes the custom layer; it does not restore the home wallpaper that preceded Samsung's fold wallpaper. Restore another home wallpaper through Samsung Settings if desired; doing so removes the required angle source.
 
-## Known limitations
+## Known issues and ways to contribute
 
-- Custom wallpaper can still briefly reveal the underlying Samsung wallpaper during unlock. Rotation retention is implemented. This release does not claim to fix the unlock flash.
-- Photo layers may need enabling again after a reboot or if Android ends the host.
-- Restricted/secure content may not be captured. Display handoff depends on Samsung firmware behavior.
-- Refresh requests target supported display rates up to 120 Hz. Actual FPS is device/workload dependent; no 120 FPS guarantee.
-- First-install automatic wallpaper setup is new in this release and needs on-device verification. Existing users do not exercise this code on upgrade.
+1. **Brief black screen during screenshot handoff.** Capturing/freezing the outgoing screen and lighting the incoming display can introduce a visible pause or black flash. Earlier testing observed roughly 0.5–1 second in some transitions. Help is welcome with capture timing, retaining a valid frame, and reducing display-switch latency without reintroducing ghosting.
+2. **Custom wallpaper flashes on unlock.** Samsung’s underlying live wallpaper may appear briefly before the custom photo. Retaining the photo across rotation has improved, but the unlock flash remains unresolved. Contributions should preserve live angle delivery and keep photo layers below app content.
+3. **Shizuku availability.** If the Shizuku service stops, the animation cannot use its live angle source until Shizuku is running and authorized again. Reconnection/recovery improvements are welcome. Reboot also normally requires starting Shizuku again.
+4. **Long-term goal: live content on both panels.** Both physical panels have been illuminated in experiments, but two independent live app surfaces throughout the transition are not implemented. The current method deliberately retains screenshot handoff. Work on simultaneous live composition is welcome.
+5. **Background photo host.** The photo layer may need enabling again after a reboot or if Android ends the host.
+6. **Capture and performance limits.** Secure/restricted content may not be captured. Display behavior depends on Samsung firmware. Refresh requests target supported rates up to 120 Hz; actual FPS is workload dependent.
+7. **Device and setup coverage.** The animation has been developed and tested on SM-F971U. The renamed v1.5.1 helper components and fresh-install automatic wallpaper setup still need handset verification. Other foldables and firmware are not supported by the current automatic setup.
+
+Issues and pull requests are welcome, especially for these items. Include app version, model, Android/One UI version, direction of the fold, and reproduction steps. Review diagnostic logs and recordings for personal information before sharing. Keep upstream licenses and avoid committing signing keys, personal photos, or device logs into source.
+
+## Optional support
+
+Duo Fold Live is free and open source. Tips would be optional and would not unlock features or promise fixes. Donation details are not configured yet; a verified tip address or support link will be added here when ready. Bug reports, testing, and pull requests are equally welcome.
 
 ## Build
 
@@ -79,8 +99,14 @@ Compile-only framework stubs in `wallpaper-stubs/` describe hidden Android inter
 - `DuoGlass`, `ClassicGlassShader`, `FrameSmoothing`: renderers and frame-rate-independent smoothing.
 - `FirstRun`, `OnboardingPolicy`, `SetupActivity`: first-install flow and upgrade preservation.
 - `WallpaperSetupService`: short-lived ADB-mode helper for required home-wallpaper setup.
-- `com.consorti.wallpaperlayer`: retained custom-photo compositor host and diagnostics.
+- `org.duofold.live.wallpaperlayer`: retained custom-photo compositor host and diagnostics.
 
-## License and acknowledgments
+## Credits and license
 
-MIT for project code, subject to the preserved third-party licenses. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Animation code includes adaptations from [McCal-Codes/folio v0.6.0](https://github.com/McCal-Codes/folio/releases/tag/v0.6.0) and [chuspeeism/iphone-duo](https://github.com/chuspeeism/iphone-duo). Original license notices are bundled in the app.
+Duo Fold Live is the name of this app. The following are separate upstream projects whose work deserves credit:
+
+- **[Folio launcher — McCal-Codes/folio](https://github.com/McCal-Codes/folio)**: the [v0.6.0 release](https://github.com/McCal-Codes/folio/releases/tag/v0.6.0) supplied a starting point for the fold engine and diagnostics. Its upstream lineage includes Duo Launcher. The preserved MIT notice credits Duo Launcher contributors.
+- **[iPhone Duo animation concept — chuspeeism/iphone-duo](https://github.com/chuspeeism/iphone-duo)**: the interactive Three.js reference for projected screen content, progressive blur, and darkening. The iPhone Duo Inspired option adapts this work to Android rendering; it does not embed the Three.js demo unchanged. The upstream MIT notice credits jadon7.
+- **[Shizuku](https://github.com/RikkaApps/Shizuku)** and its API contributors: the ADB-assisted access used by the live angle reader and helpers.
+
+Thank you to the original authors and contributors. These credits do not imply their endorsement of this app. MIT for project code, subject to preserved third-party licenses; see [LICENSE](LICENSE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the notices bundled under `app/src/main/assets/licenses/`.
