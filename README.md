@@ -1,10 +1,10 @@
-# Duo Fold Live · v1.6.0
+# Duo Fold Live · v1.7.0
 
-Hinge-driven opening and closing animations for the Samsung Galaxy Z Fold 8, running over One UI and ordinary apps without replacing your launcher. Includes two-screen screenshot handoff and an optional custom photo wallpaper.
+Hinge-driven opening and closing animations for the Samsung Galaxy Z Fold 8, running over One UI and ordinary apps without replacing your launcher. Includes a live cover preview on the inner screen and an optional custom photo wallpaper.
 
-The animation follows live hinge measurements; the outgoing screen content is a freeze frame during handoff. This is an Android overlay app, not a system feature supplied by Samsung. See the known issues below before installing.
+The animation follows live hinge measurements. The default mode mirrors cover content onto the inner screen, with a frosted copy on the left and a clean mirror on the right. A prepared image briefly holds during the display handoff. This is an Android overlay app, not a system feature supplied by Samsung. See the known issues below before installing.
 
-**v1.6.0 is available in Releases.** Download `Duo-Fold-Live-v1.6.0.apk`. It updates public v1.5.1 without uninstalling. Promotes the user-tested alpha.4 performance improvements unchanged: 1 ms minimum polling wait, direct frame-loop rendering, half-resolution glass by default, and adjustable 12–120 ms motion smoothing (12 ms default). Regional firmware still needs on-device confirmation.
+**v1.7.0 is available in Releases.** Download `Duo-Fold-Live-v1.7.0.apk`. Install over public versions or 1.7.0 alphas without uninstalling. Promotes the user-tested alpha.7 behavior: cover preview ON and screenshot handoff OFF. These two settings are applied once on upgrade; you can change them afterward in Advanced. Other settings and setup are retained. Regional firmware still needs on-device confirmation.
 
 **Automatic setup enabled: regional SM-F971 variants on Android 17 / SDK 37, including U1 and W.** Samsung private APIs and the installed FoldInteractive wallpaper engine are required. Regional support is experimental; only SM-F971U has been tested on-device. Fold 7 (SM-F966, including SM-F966W) is not supported by this wallpaper profile. This is an independent project, unaffiliated with Samsung, Apple, Shizuku, or the upstream animation authors.
 
@@ -42,15 +42,15 @@ Shizuku generally needs to be started again after a reboot. Allow Shizuku and Du
 
 Samsung’s interactive fold wallpaper runs on both home-screen wallpaper slots, including the cover slot that is normally unavailable through Samsung’s picker. A Shizuku-assisted reader obtains the angle reported by that engine. The animation uses those measurements rather than a fixed-duration playback.
 
-During a handoff, Duo Fold Live captures the outgoing display and animates that frozen content while switching the incoming display into use. The optional photo layer covers the Samsung home wallpaper visually while preserving it as the angle source. This does **not** mean both screens contain independent, fully live apps throughout the transition.
+By default, Duo mirrors the cover content without its animation onto the inner display, with a frosted copy on the left. At 98°, it requests inner-primary concurrent mode, briefly holds the prepared image, then fades it into inner content. Normal display control resumes at the fully-open threshold. The previous screenshot-handoff mode remains available in Advanced. The optional photo layer covers the Samsung home wallpaper visually while preserving it as the angle source. This does **not** mean both screens contain independent, fully live apps throughout the transition.
 
 The supported setup uses official Shizuku in **ADB mode** (wireless or USB debugging). Root-mode setup and Shizuku forks have not been verified for this release; the automatic wallpaper helper explicitly requires the ADB-shell identity. No claim is made that other foldables expose unrestricted hinge data.
 
 ## Existing users
 
-This privacy-clean release uses the new Android application ID `org.duofold.live` and a new neutral signing certificate. It installs separately from earlier private builds and cannot update or automatically read their private settings. Your old app is left untouched. Disable its animation and custom wallpaper before enabling this app, then complete setup here. Do not run both animation hosts together.
+Public installs using `org.duofold.live` update in place with the existing release signature. Setup, wallpaper selection, and other preferences are retained. On the first launch of v1.7.0, cover preview is enabled and screenshot handoff disabled once. Subsequent choices are preserved. Very early private builds with a different package ID still install separately; disable those before running the public app.
 
-Public version **v1.6.0**, Android `versionCode 32`. Existing-install bypass still applies to future upgrades of this new application ID.
+Public version **v1.7.0**, Android `versionCode 40`. Existing-install bypass still applies to future upgrades of this new application ID.
 
 ## Controls
 
@@ -58,16 +58,18 @@ Public version **v1.6.0**, Android `versionCode 32`. Existing-install bypass sti
 - **Classic Glass** preserves the earlier animation.
 - The animation selector is directly below Enable animation.
 - The default fully-open endpoint is 172°, adjustable in Advanced.
+- Fully-closed threshold defaults to 1°, adjustable from 1–10° in Advanced. Angles at or below it count as closed.
+- Cover preview on inner screen (experimental) defaults ON; dual-screen screenshot handoff defaults OFF.
 - Keep cover awake on close defaults on for new setup. Future updates under this new app identity preserve settings.
-- Half-resolution glass is the default; enable Full-resolution glass to compare quality and GPU cost. Motion smoothness is adjustable from 12–120 ms, default 12 ms. Higher smoothing adds delay rather than rendering FPS. Display-switch angles, screenshot handoff and wallpaper behavior are unchanged from alpha.4.
+- Half-resolution glass is the default; enable Full-resolution glass to compare quality and GPU cost. Motion smoothness is adjustable from 12–120 ms, default 12 ms. Higher smoothing adds delay rather than rendering FPS. The v1.7.0 animation and direct handoff behavior match the tested 1.7.0-alpha.7.
 - Custom wallpaper remains an in-memory layer while the host runs. The Samsung home wallpaper stays installed as the hinge source. Disable removes the custom layer; it does not restore the home wallpaper that preceded Samsung's fold wallpaper. Restore another home wallpaper through Samsung Settings if desired; doing so removes the required angle source.
 
 ## Known issues and ways to contribute
 
-1. **Brief black screen during screenshot handoff.** Capturing/freezing the outgoing screen and lighting the incoming display can introduce a visible pause or black flash. Earlier testing observed roughly 0.5–1 second in some transitions. Help is welcome with capture timing, retaining a valid frame, and reducing display-switch latency without reintroducing ghosting.
+1. **Brief blackout midway through unfolding.** The tester reports that the initial opening blackout is resolved in the default preview mode, but a blackout remains when the primary display changes. One alpha.7 diagnostic run measured an approximately 52 ms reported inner-panel OFF interval; this is sampled software state, not an exact measure of the visible blackout. The older screenshot mode can still show its initial capture pause. Further work on panel remapping and rendering latency is welcome.
 2. **Custom wallpaper flashes on unlock.** Samsung’s underlying live wallpaper may appear briefly before the custom photo. Retaining the photo across rotation has improved, but the unlock flash remains unresolved. Contributions should preserve live angle delivery and keep photo layers below app content.
 3. **Shizuku availability.** If the Shizuku service stops, the animation cannot use its live angle source until Shizuku is running and authorized again. Reconnection/recovery improvements are welcome. Reboot also normally requires starting Shizuku again.
-4. **Long-term goal: live content on both panels.** Both physical panels have been illuminated in experiments, but two independent live app surfaces throughout the transition are not implemented. The current method deliberately retains screenshot handoff. Work on simultaneous live composition is welcome.
+4. **Long-term goal: live content on both panels.** Both physical panels have been illuminated in experiments, but two independent live app surfaces throughout the transition are not implemented. The new default uses a live mirrored preview plus a brief prepared-image hold. It does not provide two independent live apps throughout handoff. Work on simultaneous live composition is welcome.
 5. **Background photo host.** The photo layer may need enabling again after a reboot or if Android ends the host.
 6. **Capture and performance limits.** Secure/restricted content may not be captured. Display behavior depends on Samsung firmware. Refresh requests target supported rates up to 120 Hz; actual FPS is workload dependent.
 7. **Device and setup coverage.** The animation has been developed and tested on SM-F971U. The renamed helper components and fresh-install automatic wallpaper setup still need handset verification. Regional SM-F971 models on Android 17 can now attempt setup; component/API checks and wallpaper readback remain required. Other foldables and Android versions are not enabled.
@@ -104,7 +106,8 @@ Compile-only framework stubs in `wallpaper-stubs/` describe hidden Android inter
 ## Architecture
 
 - `LiveAngles` / `AngleReader`: Shizuku-assisted Samsung wallpaper angle reader.
-- `ConcurrentController`, `HandoffFrames`, `FreezePolicy`: dual-panel screenshot handoff.
+- `CoverHandoff`, `DirectHandoffPolicy`, `InnerLiveMirror`, `PreviewExpansion`: default preview and direct concurrent handoff.
+- `ConcurrentController`, `HandoffFrames`, `FreezePolicy`: optional dual-panel screenshot handoff.
 - `DuoGlass`, `ClassicGlassShader`, `FrameSmoothing`: renderers and frame-rate-independent smoothing.
 - `FirstRun`, `OnboardingPolicy`, `SetupActivity`: first-install flow and upgrade preservation.
 - `WallpaperSetupService`: short-lived ADB-mode helper for required home-wallpaper setup.
