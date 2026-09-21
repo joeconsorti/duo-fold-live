@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.lifecycle.*
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
@@ -24,10 +25,13 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
  private val life=OverlayOwner()
  private var compose:ComposeView?=null
  private var inner=false
+ private val live=service.getSharedPreferences("standalone",0).getBoolean("live_mirror_experiment",false)
+ private var mirrorReady=false
+ private var mirrorView:LivePanelSurface?=null
  var strength=0f;private set
  var draws=0;private set
- val layer:String get()="Frozen outgoing ${if(inner) "inner" else "cover"}; own frame=${HandoffFrames.forPanel(inner)!=null}"
- val ready:Boolean get()=isShowing && draws>0 && HandoffFrames.forPanel(inner)!=null && display.state==Display.STATE_ON
+ val layer:String get()=if(live) "Live mirror; ready=$mirrorReady; ${LiveAngles.mirrorStatus}" else "Frozen outgoing ${if(inner) "inner" else "cover"}; own frame=${HandoffFrames.forPanel(inner)!=null}"
+ val ready:Boolean get()=isShowing && draws>0 && (if(live)mirrorReady else HandoffFrames.forPanel(inner)!=null) && display.state==Display.STATE_ON
  fun refresh(){compose?.invalidate()}
  override fun onCreate(saved:Bundle?){
   super.onCreate(saved);life.registry.currentState=Lifecycle.State.CREATED
@@ -41,7 +45,13 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
    CompositionLocalProvider(LocalConfiguration provides context.resources.configuration,LocalHinge provides null){
     val frozen=HandoffFrames.forPanel(inner)
     Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)){
-     if(frozen!=null){
+     if(live){
+      AndroidView(factory={LivePanelSurface(it){ok,note->mirrorReady=ok;event(note)}.also{mirrorView=it}},modifier=Modifier.fillMaxSize())
+      DuoLiveShade(object:StandaloneFoldHost{
+       override fun onMovement(){}
+       override fun onFrame(active:Boolean,strength:Float){this@SecondaryShade.strength=strength}
+      },intensity,inner,forceVeil=true)
+     }else if(frozen!=null){
       Image(frozen.bitmap.asImageBitmap(),contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Fit)
       DuoLiveShade(object:StandaloneFoldHost{
        override fun onMovement(){}
@@ -60,5 +70,5 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
  }
  override fun onStart(){super.onStart();window?.setLayout(-1,-1);life.registry.currentState=Lifecycle.State.RESUMED}
  override fun onStop(){if(life.registry.currentState!=Lifecycle.State.DESTROYED)life.registry.currentState=Lifecycle.State.CREATED;super.onStop()}
- override fun dismiss(){life.registry.currentState=Lifecycle.State.DESTROYED;compose?.disposeComposition();compose=null;super.dismiss()}
+ override fun dismiss(){mirrorView?.close();mirrorView=null;mirrorReady=false;life.registry.currentState=Lifecycle.State.DESTROYED;compose?.disposeComposition();compose=null;super.dismiss()}
 }
