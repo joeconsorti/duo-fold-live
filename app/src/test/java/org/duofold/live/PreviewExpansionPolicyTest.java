@@ -7,11 +7,10 @@ public class PreviewExpansionPolicyTest {
   assertEquals(1f,PreviewExpansionPolicy.progress(240),0);
   assertTrue(PreviewExpansionPolicy.progress(120)>.5f);
  }
- @Test public void readyFrameCannotCutExpansionShort(){
-  assertEquals(1f,PreviewExpansionPolicy.opacity(100,50),0);
-  assertEquals(1f,PreviewExpansionPolicy.opacity(240,50),0);
-  assertEquals(.5f,PreviewExpansionPolicy.opacity(330,50),.001f);
-  assertEquals(0f,PreviewExpansionPolicy.opacity(420,50),0);
+ @Test public void readyFrameStartsFadeWithoutExpansionDelay(){
+  assertEquals(1f,PreviewExpansionPolicy.opacity(50,50),0);
+  assertEquals(.5f,PreviewExpansionPolicy.opacity(110,50),.001f);
+  assertEquals(0f,PreviewExpansionPolicy.opacity(170,50),0);
  }
  @Test public void missingInnerFrameHasBoundedFallback(){
   assertEquals(1f,PreviewExpansionPolicy.opacity(1000,-1),0);
