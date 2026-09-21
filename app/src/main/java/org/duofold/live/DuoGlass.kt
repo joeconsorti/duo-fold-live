@@ -107,6 +107,14 @@ internal object DuoGlassShader {
 }
 internal class FrostSurface(context:Context,private val preview:Boolean=false):SurfaceView(context),SurfaceHolder.Callback {
  private var hingeAngle=Float.NaN
+ private var targetAngle=Float.NaN
+ private var renderedAngle=Float.NaN
+ private var lastFrameNanos=0L
+ private var angleListening=false
+ private var openThreshold=172f
+ private val angleListener=LiveAngles.Listener { value,_ ->
+  if(value.isFinite() && value!=targetAngle){targetAngle=value;requestDraw()}
+ }
  private var frozen=false;private var frame:GlassFrame?=null;private var amount=0f;private var intensity=1f;private var inner=false;private var rotation=0
  private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
  private var program:RuntimeShader?=null
@@ -116,9 +124,21 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
  private var dirty=true
  private var appliedRate=0f
  private val choreographer=Choreographer.getInstance()
- private val vsync=Choreographer.FrameCallback {
+ private val vsync=Choreographer.FrameCallback { now ->
   frameQueued=false
-  if(holder.surface.isValid && dirty){dirty=false;drawFrame()}
+  if(holder.surface.isValid && dirty){
+   dirty=false
+   if(!preview && targetAngle.isFinite() && LiveAngles.fresh()){
+    val dt=if(lastFrameNanos==0L)8.33f else ((now-lastFrameNanos)/1_000_000f).coerceIn(1f,50f)
+    renderedAngle=FrameSmoothing.step(renderedAngle,targetAngle,dt)
+    hingeAngle=renderedAngle
+    amount=if(inner && targetAngle>=FoldThreshold.sanitize(openThreshold))0f
+      else DuoShadeCurve.progress(renderedAngle,inner,openThreshold)
+   }
+   lastFrameNanos=now
+   drawFrame()
+   if(!preview && LiveAngles.fresh() && targetAngle.isFinite() && kotlin.math.abs(renderedAngle-targetAngle)>=.01f)requestDraw()
+  }
  }
  private fun requestDraw(){dirty=true;if(!frameQueued && holder.surface.isValid){frameQueued=true;choreographer.postFrameCallback(vsync)}}
  private fun preferFastRefresh(){
@@ -129,12 +149,20 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
   try{classic=context.getSharedPreferences("standalone",0).getString("animation_style","duo")=="classic";program=RuntimeShader(if(classic)ClassicGlassShader.source else DuoGlassShader.source)}catch(e:Exception){RecoveryLog.add("Glass shader compilation failed: ${e.message}")}
  }
  fun configure(next:GlassFrame?,amount:Float,intensity:Float,inner:Boolean,rotation:Int,frozen:Boolean=false,angle:Float=Float.NaN){this.hingeAngle=angle;this.frozen=frozen;frame=next;this.amount=amount;this.intensity=intensity;this.inner=inner;this.rotation=rotation
+  openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
   val selected=context.getSharedPreferences("standalone",0).getString("animation_style","duo")=="classic"
   if(selected!=classic){classic=selected;bitmap=null;program=runCatching{RuntimeShader(if(classic)ClassicGlassShader.source else DuoGlassShader.source)}.getOrElse{RecoveryLog.add("Glass shader compilation failed: ${it.message}");null}}
   requestDraw()}
- override fun surfaceCreated(h:SurfaceHolder){if(!preview)GlassFrames.surface(this,surfaceControl);preferFastRefresh();requestDraw()}
+ override fun surfaceCreated(h:SurfaceHolder){
+  if(!preview){
+   GlassFrames.surface(this,surfaceControl)
+   openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
+   if(!angleListening){angleListening=true;LiveAngles.add(angleListener)}
+  }
+  preferFastRefresh();requestDraw()
+ }
  override fun surfaceChanged(h:SurfaceHolder,format:Int,w:Int,height:Int){if(!preview)GlassFrames.surface(this,surfaceControl);preferFastRefresh();requestDraw()}
- override fun surfaceDestroyed(h:SurfaceHolder){choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview)GlassFrames.surface(this,null);bitmap=null;frame=null;paint.shader=null}
+ override fun surfaceDestroyed(h:SurfaceHolder){if(angleListening){LiveAngles.remove(angleListener);angleListening=false};targetAngle=Float.NaN;renderedAngle=Float.NaN;lastFrameNanos=0L;choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview)GlassFrames.surface(this,null);bitmap=null;frame=null;paint.shader=null}
  private fun drawFrame(){
   if(!holder.surface.isValid || width<=0 || height<=0)return
   runCatching{
