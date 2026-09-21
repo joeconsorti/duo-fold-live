@@ -166,6 +166,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
  override fun surfaceCreated(h:SurfaceHolder){
   if(!preview){
    GlassFrames.surface(this,surfaceControl)
+   if(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",false) && !context.getSharedPreferences("standalone",0).getBoolean("dual",true))PreviewTransition.markAnimation(surfaceControl)
    smoothingMs=FrameSmoothing.sanitize(context.getSharedPreferences("standalone",0).getFloat("smoothing_ms",12f))
   openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
    if(!angleListening){angleListening=true;LiveAngles.add(angleListener)}
