@@ -18,7 +18,7 @@ object ShizukuAccess {
   }
  } catch(e: Exception){"Shizuku request failed: ${e.javaClass.simpleName}: ${e.message}"}
  fun report(context: Context): String = buildString {
-  append("Duo Fold Live 1.7.0-alpha.7 · connection report\n")
+  append("Duo Fold Live 1.7.0 · connection report\n")
   append("${Build.MODEL} / Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}\n")
   append("Package: ${context.packageName}\n")
   append("Official Shizuku installed in this profile: "+runCatching{context.packageManager.getPackageInfo("moe.shizuku.privileged.api",0);true}.getOrDefault(false)+"\n")
