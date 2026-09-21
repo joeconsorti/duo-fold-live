@@ -45,6 +45,7 @@ final class CoverHandoff {
   }catch(Exception e){owned=null;Throwable root=e;while(root.getCause()!=null)root=root.getCause();status="Handoff unavailable: "+root.getClass().getSimpleName()+": "+root.getMessage();}
   finally{Binder.restoreCallingIdentity(identity);}
  }
+ synchronized boolean active(){return owned!=null;}
  synchronized void release(){
   policy.reset();if(owned==null)return;long identity=Binder.clearCallingIdentity();
   try{cancel.invoke(manager);owned=null;status="Normal display control restored";}catch(Exception e){status="Display release pending";}finally{Binder.restoreCallingIdentity(identity);}
