@@ -146,7 +146,7 @@ class MainActivity:ComponentActivity(){
        }
        OutlinedButton(onClick={val report=StandaloneService.instance?.report()?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report copied",0).show()}){Text("Copy status report")}
       }
-      Text("Duo Fold Live 1.5.1 · Glass reference: chuspeeism/iphone-duo (MIT). Duo-derived diagnostics. Screen frames stay in memory.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+      Text("Duo Fold Live ${BuildConfig.VERSION_NAME} · Glass reference: chuspeeism/iphone-duo (MIT). Duo-derived diagnostics. Screen frames stay in memory.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      }
     }
    }
