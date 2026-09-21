@@ -52,6 +52,8 @@ class MainActivity:ComponentActivity(){
     var dual by remember{mutableStateOf(prefs.getBoolean("dual",true))}
     var advanced by remember{mutableStateOf(false)}
     var setup by remember{mutableStateOf(!enabled)}
+    var smoothing by remember{mutableFloatStateOf(FrameSmoothing.sanitize(prefs.getFloat("smoothing_ms",12f)))}
+    var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
     var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",1f))}
     var threshold by remember{mutableFloatStateOf(FoldThreshold.sanitize(prefs.getFloat("open_threshold",172f)))}
     var preview by remember{mutableFloatStateOf(.45f)}
@@ -85,6 +87,12 @@ class MainActivity:ComponentActivity(){
        key(animationStyle){Box(Modifier.fillMaxWidth().height(150.dp)){GlassPreview(preview)}}
        Slider(value=preview,onValueChange={preview=it})
        Text("Preview selected animation",style=MaterialTheme.typography.labelMedium)
+       Text("Motion smoothness · ${smoothing.roundToInt()} ms")
+       Slider(value=smoothing,onValueChange={smoothing=it},valueRange=12f..120f,onValueChangeFinished={prefs.edit().putFloat("smoothing_ms",smoothing).apply();restart()})
+       Text("12 ms is the current default. Higher values soften motion with more delay; they do not increase rendering FPS.",style=MaterialTheme.typography.bodySmall)
+       TextButton(onClick={smoothing=12f;prefs.edit().putFloat("smoothing_ms",12f).apply();restart()}){Text("Reset smoothness")}
+       Toggle("Full-resolution glass · higher GPU cost",fullResolution){fullResolution=it;booleanSetting("full_resolution_glass",it)}
+       Text("Off renders the effect at half resolution in each direction to reduce GPU work. Screen content and handoff angles stay the same.",style=MaterialTheme.typography.bodySmall)
        Text("Glass strength · ${(intensity*100).roundToInt()}%")
        Slider(value=intensity,onValueChange={intensity=it},valueRange=.3f..1.5f,onValueChangeFinished={prefs.edit().putFloat("intensity",intensity).apply();restart()})
        Text("Fully open at ${threshold.roundToInt()}°. Adjust this in Advanced.",style=MaterialTheme.typography.bodySmall)

@@ -50,6 +50,18 @@ public final class LiveAngles {
  private WindowManager wm; private View anchor;
  private WindowManager secondaryWm;private View secondaryAnchor;private String anchorKey="",secondaryKey=""; private Shizuku.UserServiceArgs args;
  private volatile long lastPoll;
+ private boolean pollInFlight,urgentPoll;
+ private long pollStarted;
+ private static long roundTripMs;
+ private static String rateSummary="Collecting polling rates";
+ private long rateStarted;private int ratePolls,rateReplies,rateChanges,rateReceived;
+ public static String latencyReport(){return "Angle poll minimum wait: 1 ms; last round trip: "+roundTripMs+" ms; "+rateSummary;}
+ public static void handoffReady(){LiveAngles self=current;if(self==null)return;self.main.post(()->{
+  if(!self.running)return;
+  if(self.pollInFlight){self.urgentPoll=true;return;}
+  self.main.removeCallbacks(self.poll);self.main.post(self.poll);
+ });}
+
  public boolean stalled(){return running && reader!=null && SystemClock.elapsedRealtime()-lastPoll>6000;}
  private boolean bound; private String action; private int count;
  public LiveAngles(Context c){context=c;}
@@ -66,7 +78,7 @@ public final class LiveAngles {
    running=true;current=this;last=0;count=0;action="org.duofold.live.wallpaperprobe.READ_"+SystemClock.elapsedRealtime();
    ensureAnchors();
    thread=new HandlerThread("duofold-angle-ipc");thread.start();worker=new Handler(thread.getLooper());
-   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(143);
+   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(145);
    bound=true;Shizuku.bindUserService(args,connection);status="Connecting to Shizuku…";
    main.postDelayed(()->{if(running&&reader==null){status="Connection timed out — reconnect in app";stop();}},12000);
   }catch(Exception e){status=e.getMessage();stop();}
@@ -110,12 +122,13 @@ public final class LiveAngles {
   }finally{p.recycle();r.recycle();}
  }
  private final Runnable poll=new Runnable(){public void run(){
-  if(!running)return;
+  if(!running||pollInFlight)return;
+  pollInFlight=true;pollStarted=SystemClock.elapsedRealtime();
   boolean on=context.getSystemService(PowerManager.class).isInteractive();
   try{if(on){ensureAnchors();sendAngleCommand(anchor);sendAngleCommand(secondaryAnchor);}}
   catch(Exception e){fail(e);return;}
   worker.post(()->{try{Bundle b=call(2);
-   if(ReaderRecovery.needsRestart(b.getString("state"))){call(1);main.post(()->{if(running){last=0;count=0;lastPoll=SystemClock.elapsedRealtime();RecoveryLog.add("Restarting expired wallpaper reader lease");status="Restarting wallpaper log reader";main.postDelayed(poll,50);}});return;}
+   if(ReaderRecovery.needsRestart(b.getString("state"))){call(1);main.post(()->{if(running){last=0;count=0;lastPoll=SystemClock.elapsedRealtime();pollInFlight=false;urgentPoll=false;RecoveryLog.add("Restarting expired wallpaper reader lease");status="Restarting wallpaper log reader";main.postDelayed(poll,50);}});return;}
    main.post(()->{
    if(!running)return;
    String nextHandoff=b.getString("handoff", "Unknown display status");
@@ -126,6 +139,16 @@ public final class LiveAngles {
    StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null)host.refreshSecondary();
    lastPoll=SystemClock.elapsedRealtime();
    long stamp=b.getLong("last");int received=b.getInt("count");
+   ratePolls++;
+   if(received>rateReceived){rateReplies+=received-rateReceived;if(Float.compare(angle,b.getFloat("angle"))!=0)rateChanges++;}
+   rateReceived=received;
+   long rateNow=SystemClock.elapsedRealtime();
+   if(rateStarted==0){rateStarted=rateNow;ratePolls=rateReplies=rateChanges=0;}
+   if(rateNow-rateStarted>=1000){
+    double seconds=(rateNow-rateStarted)/1000.0;
+    rateSummary=String.format(Locale.US,"%.1f polls/s; %.1f replies/s; %.1f observed angle changes/s",ratePolls/seconds,rateReplies/seconds,rateChanges/seconds);
+    rateStarted=rateNow;ratePolls=rateReplies=rateChanges=0;
+   }
    if(received>count && stamp>0 && SystemClock.elapsedRealtime()-stamp<750){
     count=received;angle=b.getFloat("angle");last=stamp;
     for(Listener l:new ArrayList<>(listeners))l.angle(angle,stamp*1000000L);
@@ -135,11 +158,14 @@ public final class LiveAngles {
    boolean innerNow=Math.min(currentMode.getPhysicalWidth(),currentMode.getPhysicalHeight())/(float)Math.max(currentMode.getPhysicalWidth(),currentMode.getPhysicalHeight())>.7f;
    HandoffFrames.update(innerNow,dualActive,angle,fresh(),context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f),context.getSharedPreferences("standalone",0).getBoolean("enabled",false) && context.getSharedPreferences("standalone",0).getBoolean("dual",true) && context.getSystemService(PowerManager.class).isInteractive() && !context.getSystemService(android.app.KeyguardManager.class).isKeyguardLocked());
    status=(fresh()?String.format(Locale.US,"LIVE %.0f°",angle):"Waiting for fresh wallpaper angles")+" · "+received+" replies · "+b.getInt("unique")+" distinct · UID "+b.getInt("uid");
-   main.postDelayed(poll,on?50:500);
+   roundTripMs=SystemClock.elapsedRealtime()-pollStarted;
+   pollInFlight=false;
+   long delay=PollCadence.delay(on,roundTripMs,urgentPoll);urgentPoll=false;
+   main.postDelayed(poll,delay);
   });}catch(Exception e){fail(e);}});
  }};
  private void fail(Exception e){main.post(()->{if(running){RecoveryLog.add("Reader error: "+e.getClass().getSimpleName());status="Reader error: "+e.getMessage();stop();}});}
- public void stop(){HandoffFrames.clear();if(current==this)current=null;nativeInner=false;running=false;dualActive=false;last=0;if(status.startsWith("LIVE")||status.startsWith("Waiting")||status.startsWith("Connecting"))status="Angle reader stopped";main.removeCallbacksAndMessages(null);
+ public void stop(){HandoffFrames.clear();if(current==this)current=null;nativeInner=false;running=false;pollInFlight=false;urgentPoll=false;dualActive=false;last=0;if(status.startsWith("LIVE")||status.startsWith("Waiting")||status.startsWith("Connecting"))status="Angle reader stopped";main.removeCallbacksAndMessages(null);
   if(bound){try{Shizuku.unbindUserService(args,connection,true);}catch(Exception ignored){}bound=false;}
   reader=null;if(thread!=null){thread.quitSafely();thread=null;}
   if(secondaryAnchor!=null){try{secondaryWm.removeViewImmediate(secondaryAnchor);}catch(Exception ignored){}secondaryAnchor=null;}

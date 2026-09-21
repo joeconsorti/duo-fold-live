@@ -1,3 +1,14 @@
+## 1.6.0 — Tested performance release
+
+Promotes 1.6.0-alpha.4 behavior unchanged. Only stable version metadata and release documentation differ.
+
+- 1 ms minimum wait between completed interactive angle polls, without overlapping requests.
+- Direct vsync glass rendering, half-resolution by default, optional full resolution.
+- Motion smoothness slider: 12–120 ms, default 12 ms.
+- Existing handoff angles, screenshot mode, wallpapers, and settings preserved.
+- User testing on SM-F971U reported smooth behavior and last-active samples of 55.7 cover / 108.1 inner submitted FPS. These are not guaranteed panel FPS or controlled benchmarks; angle age is not end-to-end latency.
+- Screenshot removal and unlock wallpaper flash remain separate future work.
+
 ## 1.5.4 — Regional Fold 8 setup
 
 - Enable the SM-F971 regional family on Android 17, including unlocked U1 and Canadian W, in wallpaper setup and both display controllers.
