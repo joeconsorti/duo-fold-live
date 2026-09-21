@@ -230,7 +230,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
      paint.shader=LinearGradient(0f,0f,if(horizontal)0f else width.toFloat(),if(horizontal)height.toFloat() else 0f,colors,null,Shader.TileMode.CLAMP)
      canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint)
     }
-   }finally{holder.unlockCanvasAndPost(canvas);if(!preview)FrameTelemetry.record(inner,SystemClock.elapsedRealtimeNanos(),SystemClock.elapsedRealtimeNanos()-started,appliedRate)}
+   }finally{holder.unlockCanvasAndPost(canvas);if(!preview && inner)PreviewTransition.innerFrameSubmitted(frame);if(!preview)FrameTelemetry.record(inner,SystemClock.elapsedRealtimeNanos(),SystemClock.elapsedRealtimeNanos()-started,appliedRate)}
   }.onFailure{RecoveryLog.add("Glass draw error: ${it.javaClass.simpleName}")}
  }
 }
