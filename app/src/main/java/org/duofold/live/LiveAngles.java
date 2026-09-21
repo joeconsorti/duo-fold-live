@@ -53,7 +53,9 @@ public final class LiveAngles {
  private boolean pollInFlight,urgentPoll;
  private long pollStarted;
  private static long roundTripMs;
- public static String latencyReport(){return "Angle poll target: 16 ms; last round trip: "+roundTripMs+" ms";}
+ private static String rateSummary="Collecting polling rates";
+ private long rateStarted;private int ratePolls,rateReplies,rateChanges,rateReceived;
+ public static String latencyReport(){return "Angle poll minimum wait: 1 ms; last round trip: "+roundTripMs+" ms; "+rateSummary;}
  public static void handoffReady(){LiveAngles self=current;if(self==null)return;self.main.post(()->{
   if(!self.running)return;
   if(self.pollInFlight){self.urgentPoll=true;return;}
@@ -76,7 +78,7 @@ public final class LiveAngles {
    running=true;current=this;last=0;count=0;action="org.duofold.live.wallpaperprobe.READ_"+SystemClock.elapsedRealtime();
    ensureAnchors();
    thread=new HandlerThread("duofold-angle-ipc");thread.start();worker=new Handler(thread.getLooper());
-   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(144);
+   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(145);
    bound=true;Shizuku.bindUserService(args,connection);status="Connecting to Shizuku…";
    main.postDelayed(()->{if(running&&reader==null){status="Connection timed out — reconnect in app";stop();}},12000);
   }catch(Exception e){status=e.getMessage();stop();}
@@ -137,6 +139,16 @@ public final class LiveAngles {
    StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null)host.refreshSecondary();
    lastPoll=SystemClock.elapsedRealtime();
    long stamp=b.getLong("last");int received=b.getInt("count");
+   ratePolls++;
+   if(received>rateReceived){rateReplies+=received-rateReceived;if(Float.compare(angle,b.getFloat("angle"))!=0)rateChanges++;}
+   rateReceived=received;
+   long rateNow=SystemClock.elapsedRealtime();
+   if(rateStarted==0){rateStarted=rateNow;ratePolls=rateReplies=rateChanges=0;}
+   if(rateNow-rateStarted>=1000){
+    double seconds=(rateNow-rateStarted)/1000.0;
+    rateSummary=String.format(Locale.US,"%.1f polls/s; %.1f replies/s; %.1f observed angle changes/s",ratePolls/seconds,rateReplies/seconds,rateChanges/seconds);
+    rateStarted=rateNow;ratePolls=rateReplies=rateChanges=0;
+   }
    if(received>count && stamp>0 && SystemClock.elapsedRealtime()-stamp<750){
     count=received;angle=b.getFloat("angle");last=stamp;
     for(Listener l:new ArrayList<>(listeners))l.angle(angle,stamp*1000000L);
