@@ -39,9 +39,6 @@ internal fun DuoLiveShade(host: StandaloneFoldHost, intensity: Float, innerPanel
         while(true){
             val fresh=LiveAngles.fresh() && angle.isFinite()
             if(!fresh){amount=0f;visualAngle=Float.NaN;previous=0L;delay(30);continue}
-            if(visualAngle.isFinite() && kotlin.math.abs(visualAngle-angle)<.01f){
-                amount=DuoShadeCurve.progress(angle,latestExpanded,openThreshold);previous=0L;delay(8);continue
-            }
             withFrameNanos { now ->
                 val dt=if(previous==0L)8.33f else ((now-previous)/1_000_000f).coerceIn(1f,50f)
                 previous=now
