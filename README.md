@@ -1,12 +1,12 @@
-# Duo Fold Live · v1.5.3
+# Duo Fold Live · v1.5.4
 
 Hinge-driven opening and closing animations for the Samsung Galaxy Z Fold 8, running over One UI and ordinary apps without replacing your launcher. Includes two-screen screenshot handoff and an optional custom photo wallpaper.
 
 The animation follows live hinge measurements; the outgoing screen content is a freeze frame during handoff. This is an Android overlay app, not a system feature supplied by Samsung. See the known issues below before installing.
 
-**v1.5.3 is available in Releases.** Download `Duo-Fold-Live-v1.5.3.apk`. It updates public v1.5.1 without uninstalling. Authorization handling and on-phone diagnostics are improved; confirmation from affected phones is still needed.
+**v1.5.4 is available in Releases.** Download `Duo-Fold-Live-v1.5.4.apk`. It updates public v1.5.1 without uninstalling. This release removes exact-model restrictions from wallpaper setup and both display controllers. Regional firmware still needs on-device confirmation.
 
-**Supported automatic setup: SM-F971U, Android 17 / SDK 37.** Samsung private APIs and the installed FoldInteractive wallpaper engine are required. Other models and firmware are not verified. This is an independent project, unaffiliated with Samsung, Apple, Shizuku, or the upstream animation authors.
+**Automatic setup enabled: regional SM-F971 variants on Android 17 / SDK 37, including U1 and W.** Samsung private APIs and the installed FoldInteractive wallpaper engine are required. Regional support is experimental; only SM-F971U has been tested on-device. Fold 7 (SM-F966, including SM-F966W) is not supported by this wallpaper profile. This is an independent project, unaffiliated with Samsung, Apple, Shizuku, or the upstream animation authors.
 
 ## Install and set up
 
@@ -50,7 +50,7 @@ The supported setup uses official Shizuku in **ADB mode** (wireless or USB debug
 
 This privacy-clean release uses the new Android application ID `org.duofold.live` and a new neutral signing certificate. It installs separately from earlier private builds and cannot update or automatically read their private settings. Your old app is left untouched. Disable its animation and custom wallpaper before enabling this app, then complete setup here. Do not run both animation hosts together.
 
-Public version **v1.5.3**, Android `versionCode 26`. Existing-install bypass still applies to future upgrades of this new application ID.
+Public version **v1.5.4**, Android `versionCode 27`. Existing-install bypass still applies to future upgrades of this new application ID.
 
 ## Controls
 
@@ -70,7 +70,7 @@ Public version **v1.5.3**, Android `versionCode 26`. Existing-install bypass sti
 4. **Long-term goal: live content on both panels.** Both physical panels have been illuminated in experiments, but two independent live app surfaces throughout the transition are not implemented. The current method deliberately retains screenshot handoff. Work on simultaneous live composition is welcome.
 5. **Background photo host.** The photo layer may need enabling again after a reboot or if Android ends the host.
 6. **Capture and performance limits.** Secure/restricted content may not be captured. Display behavior depends on Samsung firmware. Refresh requests target supported rates up to 120 Hz; actual FPS is workload dependent.
-7. **Device and setup coverage.** The animation has been developed and tested on SM-F971U. The renamed helper components and fresh-install automatic wallpaper setup still need handset verification. Other foldables and firmware are not supported by the current automatic setup.
+7. **Device and setup coverage.** The animation has been developed and tested on SM-F971U. The renamed helper components and fresh-install automatic wallpaper setup still need handset verification. Regional SM-F971 models on Android 17 can now attempt setup; component/API checks and wallpaper readback remain required. Other foldables and Android versions are not enabled.
 
 Issues and pull requests are welcome, especially for these items. Include app version, model, Android/One UI version, direction of the fold, and reproduction steps. Review diagnostic logs and recordings for personal information before sharing. Keep upstream licenses and avoid committing signing keys, personal photos, or device logs into source.
 
