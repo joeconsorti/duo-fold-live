@@ -44,7 +44,7 @@ internal object PreviewTransition {
   val p=Parcel.obtain();val r=Parcel.obtain();var blurred:Bitmap?=null
   try{
    p.writeInterfaceToken(PreviewExpansion.TOKEN)
-   if(frame!=null){blurred=frost(frame.bitmap);p.writeTypedObject(blurred,0);p.writeLong(frame.stamp)}
+   if(frame!=null){blurred=frost(frame.bitmap);p.writeTypedObject(blurred,0);p.writeTypedObject(frame.bitmap,0);p.writeLong(frame.stamp)}
    binder().transact(code,p,r,0);r.readException();return r.readString()?:"Expansion ready"
   }catch(e:Exception){remote=null;throw e}finally{blurred?.recycle();p.recycle();r.recycle()}
  }
@@ -90,7 +90,7 @@ internal object PreviewTransition {
    out.copyInto(pixels)
   }
   val result=Bitmap.createBitmap(pixels,w,h,Bitmap.Config.ARGB_8888)
-  Canvas(result).drawColor(Color.argb(38,235,240,245))
+  // Preserve content brightness: no white tint or flash at handoff.
   return result
  }
 }
