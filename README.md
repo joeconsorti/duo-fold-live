@@ -76,7 +76,16 @@ Issues and pull requests are welcome, especially for these items. Include app ve
 
 ## Optional support
 
-Duo Fold Live is free and open source. Tips would be optional and would not unlock features or promise fixes. Donation details are not configured yet; a verified tip address or support link will be added here when ready. Bug reports, testing, and pull requests are equally welcome.
+Duo Fold Live is free and open source. If you find it useful and would like to support the work, tips are welcome and entirely optional.
+
+- **USD tips:** [Support Duo Fold Live on Ko-fi](https://ko-fi.com/joeconsorti)
+- **Bitcoin tips (BTC, Bitcoin mainnet):**
+
+```text
+bc1qz86gl559xlg8k3qur45xrlel2x79wu5ecaw0ss
+```
+
+Tips do not unlock features or promise fixes. Bug reports, testing, and pull requests are equally appreciated.
 
 ## Build
 
