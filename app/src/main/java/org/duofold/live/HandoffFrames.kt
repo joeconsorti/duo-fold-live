@@ -34,7 +34,8 @@ internal object HandoffFrames {
    val nowCapture=SystemClock.elapsedRealtime()
    if(captured!=null && FreezePolicy.accepts(inner,captured.width,captured.height,captured.stamp,nowCapture)){
     frame=captured;readyAt=nowCapture;ready=if(inner)1 else 0
-    status="Frozen ${if(inner) "inner" else "cover"} ${captured.width}×${captured.height}; ready for incoming display"
+    LiveAngles.handoffReady()
+    status="Frozen ${if(inner) "inner" else "cover"} ${captured.width}×${captured.height}; ready for incoming display · $note"
     RecoveryLog.add(status)
    }else{status="Freeze handoff waiting: $note";retryAt=nowCapture+500;RecoveryLog.add(status)}
   }
