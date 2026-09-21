@@ -57,15 +57,19 @@ internal object PreviewTransition {
   val frame=GlassFrames.frame?:return
   val now=SystemClock.elapsedRealtime()
   val isInner=minOf(frame.width,frame.height).toFloat()/maxOf(frame.width,frame.height)>.7f
-  if(primaryInner && isInner && !readySent && PreviewExpansionPolicy.fresh(frame.stamp,now)){
-   readySent=true;executor.execute{runCatching{send(2)}.onSuccess{note->main.post{status=note}}};return
-  }
   if(!cover || isInner || pending || frame.stamp==lastStamp || !PreviewExpansionPolicy.fresh(frame.stamp,now))return
   lastStamp=frame.stamp;pending=true;val gen=serial
   executor.execute{
    val note=runCatching{send(1,frame)}.getOrElse{"Expansion preparation: ${it.message}"}
    main.post{pending=false;if(gen==serial)status=note}
   }
+ }
+ fun innerFrameSubmitted(frame:GlassFrame?){
+  if(!active || wasCover || readySent || frame==null)return
+  if(minOf(frame.width,frame.height).toFloat()/maxOf(frame.width,frame.height)<=.7f ||
+     !PreviewExpansionPolicy.fresh(frame.stamp,SystemClock.elapsedRealtime()))return
+  readySent=true
+  executor.execute{runCatching{send(2)}.onSuccess{note->main.post{status=note}}.onFailure{main.post{readySent=false}}}
  }
  // Small separable box blur, prepared off the render and angle-reader threads.
  private fun frost(source:Bitmap):Bitmap{
