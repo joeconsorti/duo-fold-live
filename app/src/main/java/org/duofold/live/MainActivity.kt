@@ -47,7 +47,7 @@ class MainActivity:ComponentActivity(){
     val scope=rememberCoroutineScope()
     var enabled by remember{mutableStateOf(prefs.getBoolean("enabled",false))}
     var animationStyle by remember{mutableStateOf(prefs.getString("animation_style","duo") ?: "duo")}
-    var liveMirror by remember{mutableStateOf(prefs.getBoolean("live_mirror_experiment",false))}
+    var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",false))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
     var keepAwake by remember{mutableStateOf(prefs.getBoolean("auto_keep_cover_awake",true))}
     var dual by remember{mutableStateOf(prefs.getBoolean("dual",true))}
@@ -121,8 +121,8 @@ class MainActivity:ComponentActivity(){
         Slider(value=threshold,onValueChange={threshold=it.roundToInt().toFloat()},valueRange=165f..179f,steps=13,onValueChangeFinished={prefs.edit().putFloat("open_threshold",threshold).apply();restart()})
         Text("At this angle the inner effect is completely clear. Closing starts below this threshold. Default: 172°.",style=MaterialTheme.typography.bodySmall)
         TextButton(onClick={threshold=172f;prefs.edit().putFloat("open_threshold",172f).apply();restart()}){Text("Reset to 172°")}
-        Toggle("Experimental live outgoing panel",liveMirror){liveMirror=it;booleanSetting("live_mirror_experiment",it)}
-        Text("Mirrors the active screen onto the other panel without an outgoing screenshot. It uses a black veil for this test; layouts may match the incoming screen. Turn off to restore the proven glass screenshot mode.",style=MaterialTheme.typography.bodySmall)
+        Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
+        Text("For use with Dual-screen screenshot handoff OFF. Shows a live, right-aligned copy of the cover on the inner panel until the normal screen switch. Switch angles and the existing animation stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
         Toggle("Debug mode · black fade",debug){debug=it;booleanSetting("debug_mode",it)}
         Text("Screenshot handoff is the default. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
