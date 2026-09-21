@@ -78,7 +78,7 @@ public final class LiveAngles {
    running=true;current=this;last=0;count=0;action="org.duofold.live.wallpaperprobe.READ_"+SystemClock.elapsedRealtime();
    ensureAnchors();
    thread=new HandlerThread("duofold-angle-ipc");thread.start();worker=new Handler(thread.getLooper());
-   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(145);
+   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(146);
    bound=true;Shizuku.bindUserService(args,connection);status="Connecting to Shizuku…";
    main.postDelayed(()->{if(running&&reader==null){status="Connection timed out — reconnect in app";stop();}},12000);
   }catch(Exception e){status=e.getMessage();stop();}
@@ -116,7 +116,7 @@ public final class LiveAngles {
     p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("dual",true)?1:0);
     android.view.Display display=context.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
     android.view.Display.Mode mode=display.getMode();p.writeInt(Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight())/(float)Math.max(mode.getPhysicalWidth(),mode.getPhysicalHeight())>.7f?1:0);
-    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f));
+    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("live_mirror_experiment",false)?1:0);
    }
    if(!b.transact(code,p,r,0))throw new IllegalStateException("Unsupported reader");r.readException();return code==2?r.readBundle(getClass().getClassLoader()):null;
   }finally{p.recycle();r.recycle();}
@@ -156,7 +156,7 @@ public final class LiveAngles {
    android.view.Display currentDisplay=context.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
    android.view.Display.Mode currentMode=currentDisplay.getMode();
    boolean innerNow=Math.min(currentMode.getPhysicalWidth(),currentMode.getPhysicalHeight())/(float)Math.max(currentMode.getPhysicalWidth(),currentMode.getPhysicalHeight())>.7f;
-   HandoffFrames.update(innerNow,dualActive,angle,fresh(),context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f),context.getSharedPreferences("standalone",0).getBoolean("enabled",false) && context.getSharedPreferences("standalone",0).getBoolean("dual",true) && context.getSystemService(PowerManager.class).isInteractive() && !context.getSystemService(android.app.KeyguardManager.class).isKeyguardLocked());
+   HandoffFrames.update(innerNow,dualActive,angle,fresh(),context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f),!context.getSharedPreferences("standalone",0).getBoolean("live_mirror_experiment",false) && context.getSharedPreferences("standalone",0).getBoolean("enabled",false) && context.getSharedPreferences("standalone",0).getBoolean("dual",true) && context.getSystemService(PowerManager.class).isInteractive() && !context.getSystemService(android.app.KeyguardManager.class).isKeyguardLocked());
    status=(fresh()?String.format(Locale.US,"LIVE %.0f°",angle):"Waiting for fresh wallpaper angles")+" · "+received+" replies · "+b.getInt("unique")+" distinct · UID "+b.getInt("uid");
    roundTripMs=SystemClock.elapsedRealtime()-pollStarted;
    pollInFlight=false;
