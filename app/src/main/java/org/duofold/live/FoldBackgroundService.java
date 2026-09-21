@@ -7,12 +7,13 @@ import rikka.shizuku.Shizuku;
 public class FoldBackgroundService extends Service {
  public static boolean running=false;
  private final Handler main=new Handler(Looper.getMainLooper());
+ private boolean wanted(){return getSharedPreferences("standalone",0).getBoolean("enabled",false)||org.duofold.live.wallpaperlayer.WallpaperRestore.enabled(this);}
  private LiveAngles angles;
  private String lastNotice="";
  private boolean lastReachable=false;
- private final rikka.shizuku.Shizuku.OnBinderReceivedListener binderReady=()->main.post(()->{RecoveryLog.add("Shizuku Binder received");kick();});
+ private final rikka.shizuku.Shizuku.OnBinderReceivedListener binderReady=()->main.post(()->{RecoveryLog.add("Shizuku Binder received");FoldAwakeDefault.reconnect();kick();});
  private final rikka.shizuku.Shizuku.OnBinderDeadListener binderDead=()->main.post(()->{RecoveryLog.add("Shizuku Binder death notification");clearEffect();kick();});
- private final BroadcastReceiver screen=new BroadcastReceiver(){public void onReceive(Context c,Intent i){RecoveryLog.add("Background received "+i.getAction());if(Intent.ACTION_SCREEN_OFF.equals(i.getAction()))clearEffect();kick();}};
+ private final BroadcastReceiver screen=new BroadcastReceiver(){public void onReceive(Context c,Intent i){RecoveryLog.add("Background received "+i.getAction());if(Intent.ACTION_SCREEN_OFF.equals(i.getAction()))clearEffect();else FoldAwakeDefault.reconnect();kick();}};
  private void clearEffect(){StandaloneService service=StandaloneService.Companion.getInstance();if(service!=null)service.clearUnavailableEffect();}
  private void kick(){if(!running)return;main.removeCallbacks(supervise);main.post(supervise);}
  public static String connectionReport(){
@@ -34,17 +35,21 @@ getSystemService(NotificationManager.class).createNotificationChannel(new Notifi
   startForeground(112,notification("Connecting to the live angle reader"));lastNotice="";
   if(i!=null&&"STOP".equals(i.getAction())){
    getSharedPreferences("standalone",0).edit().putBoolean("enabled",false).apply();
+   try{org.duofold.live.wallpaperlayer.WallpaperRestore.setEnabled(this,false);}catch(java.io.IOException e){RecoveryLog.add("Could not save wallpaper stop: "+e.getClass().getSimpleName());}
    if(StandaloneService.Companion.getInstance()!=null)StandaloneService.Companion.getInstance().restart();
-   stopSelf();return START_NOT_STICKY;
+   if(!wanted()){stopSelf();return START_NOT_STICKY;}
   }
-  if(!getSharedPreferences("standalone",0).getBoolean("enabled",false)){stopSelf();return START_NOT_STICKY;}
+  if(!wanted()){stopSelf();return START_NOT_STICKY;}
   if(!running){running=true;main.post(supervise);}
   return START_STICKY;
  }
  private final Runnable supervise=new Runnable(){public void run(){
   if(!running)return;
-  if(!getSharedPreferences("standalone",0).getBoolean("enabled",false)){stopSelf();return;}
+  if(!wanted()){stopSelf();return;}
+  org.duofold.live.wallpaperlayer.WallpaperRestore.tick(FoldBackgroundService.this);
+  boolean foldEnabled=getSharedPreferences("standalone",0).getBoolean("enabled",false);
   try{
+   if(!foldEnabled){if(angles!=null){angles.stop();angles=null;}LiveAngles.status="Fold animation disabled";}else{
    boolean reachable=Shizuku.pingBinder();
    if(reachable!=lastReachable){lastReachable=reachable;RecoveryLog.add("Shizuku reachability="+reachable);}
    if(!reachable){
@@ -58,9 +63,10 @@ getSystemService(NotificationManager.class).createNotificationChannel(new Notifi
     if(angles!=null)angles.stop();
     angles=new LiveAngles(FoldBackgroundService.this);angles.start();
    }
+   }
   }catch(Exception e){LiveAngles.status="Waiting for Shizuku: "+e.getClass().getSimpleName();}
-  FoldAwakeDefault.tick(FoldBackgroundService.this);
-  String notice=LiveAngles.fresh()?"Live hinge control active":LiveAngles.status;
+  if(foldEnabled)FoldAwakeDefault.tick(FoldBackgroundService.this);
+  String notice=!foldEnabled?org.duofold.live.wallpaperlayer.WallpaperRestore.status:LiveAngles.fresh()?"Live hinge control active":LiveAngles.status;
   if(!notice.equals(lastNotice)){lastNotice=notice;getSystemService(NotificationManager.class).notify(112,notification(notice));}
   main.postDelayed(this,2000);
  }};
