@@ -142,8 +142,10 @@ class SetupActivity : ComponentActivity() {
         Text("Connect Shizuku",style=MaterialTheme.typography.headlineSmall)
         Text("Shizuku gives Duo the access needed to install the fold wallpaper on both screens and read live hinge angles. After authorization, tap Apply required wallpapers below. Wallpaper compatibility is checked separately.")
         Text(if(authorized)"Shizuku connected and authorized" else if(shizuku)"Shizuku connected · authorization needed" else "Duo has not received a Shizuku connection")
-        OutlinedButton(onClick={link("https://shizuku.rikka.app/download/")}){Text("Download Shizuku")}
-        OutlinedButton(onClick={val intent=packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api");if(intent!=null)open(intent)else link("https://shizuku.rikka.app/download/")}){Text("Open Shizuku")}
+        Button(onClick={link("https://github.com/thejaustin/ShizukuPlus/releases")}){Text("Download Shizuku+ (Recommended)")}
+        Text("Recommended for automatic recovery features. Compatibility with Duo is still being verified. Download the APK from GitHub Releases and use ADB mode.",style=MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick={link("https://shizuku.rikka.app/download/")}){Text("Official Shizuku (Alternative)")}
+        OutlinedButton(onClick={val intent=packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api");if(intent!=null)open(intent)else link("https://github.com/thejaustin/ShizukuPlus/releases")}){Text("Open installed Shizuku")}
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
          FilterChip(selected=!usb,onClick={usb=false},label={Text("Wireless")})
          FilterChip(selected=usb,onClick={usb=true},label={Text("USB / computer")})
