@@ -4,7 +4,7 @@ Hinge-driven opening and closing animations for the Samsung Galaxy Z Fold 8, run
 
 The animation follows live hinge measurements; the outgoing screen content is a freeze frame during handoff. This is an Android overlay app, not a system feature supplied by Samsung. See the known issues below before installing.
 
-**Release target: v1.5.1.** Use the v1.5.1 APK when it is attached to this repository's Releases page; the source update alone does not publish an APK.
+**v1.5.1 is available in this repository’s Releases section.** Download `Duo-Fold-Live-v1.5.1.apk`; `SHA256SUMS.txt` is provided for verification.
 
 **Supported automatic setup: SM-F971U, Android 17 / SDK 37.** Samsung private APIs and the installed FoldInteractive wallpaper engine are required. Other models and firmware are not verified. This is an independent project, unaffiliated with Samsung, Apple, Shizuku, or the upstream animation authors.
 
