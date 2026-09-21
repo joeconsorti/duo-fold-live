@@ -112,6 +112,15 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
  private var lastFrameNanos=0L
  private var angleListening=false
  private var openThreshold=172f
+ private var smoothingMs=12f
+ private var bufferWidth=0;private var bufferHeight=0
+ private fun updateBufferSize(){
+  if(preview || width<=0 || height<=0)return
+  val full=context.getSharedPreferences("standalone",0).getBoolean("full_resolution_glass",false)
+  val w=if(full)width else maxOf(1,width/2);val h=if(full)height else maxOf(1,height/2)
+  if(w!=bufferWidth || h!=bufferHeight){bufferWidth=w;bufferHeight=h;holder.setFixedSize(w,h)}
+ }
+ override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int){super.onSizeChanged(w,h,oldw,oldh);updateBufferSize()}
  private val angleListener=LiveAngles.Listener { value,_ ->
   if(value.isFinite() && value!=targetAngle){targetAngle=value;requestDraw()}
  }
@@ -130,7 +139,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
    dirty=false
    if(!preview && targetAngle.isFinite() && LiveAngles.fresh()){
     val dt=if(lastFrameNanos==0L)8.33f else ((now-lastFrameNanos)/1_000_000f).coerceIn(1f,50f)
-    renderedAngle=FrameSmoothing.step(renderedAngle,targetAngle,dt)
+    renderedAngle=FrameSmoothing.step(renderedAngle,targetAngle,dt,smoothingMs)
     hingeAngle=renderedAngle
     amount=if(inner && targetAngle>=FoldThreshold.sanitize(openThreshold))0f
       else DuoShadeCurve.progress(renderedAngle,inner,openThreshold)
@@ -149,6 +158,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
   try{classic=context.getSharedPreferences("standalone",0).getString("animation_style","duo")=="classic";program=RuntimeShader(if(classic)ClassicGlassShader.source else DuoGlassShader.source)}catch(e:Exception){RecoveryLog.add("Glass shader compilation failed: ${e.message}")}
  }
  fun configure(next:GlassFrame?,amount:Float,intensity:Float,inner:Boolean,rotation:Int,frozen:Boolean=false,angle:Float=Float.NaN){this.hingeAngle=angle;this.frozen=frozen;frame=next;this.amount=amount;this.intensity=intensity;this.inner=inner;this.rotation=rotation
+  smoothingMs=FrameSmoothing.sanitize(context.getSharedPreferences("standalone",0).getFloat("smoothing_ms",12f))
   openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
   val selected=context.getSharedPreferences("standalone",0).getString("animation_style","duo")=="classic"
   if(selected!=classic){classic=selected;bitmap=null;program=runCatching{RuntimeShader(if(classic)ClassicGlassShader.source else DuoGlassShader.source)}.getOrElse{RecoveryLog.add("Glass shader compilation failed: ${it.message}");null}}
@@ -156,10 +166,11 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
  override fun surfaceCreated(h:SurfaceHolder){
   if(!preview){
    GlassFrames.surface(this,surfaceControl)
-   openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
+   smoothingMs=FrameSmoothing.sanitize(context.getSharedPreferences("standalone",0).getFloat("smoothing_ms",12f))
+  openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
    if(!angleListening){angleListening=true;LiveAngles.add(angleListener)}
   }
-  preferFastRefresh();requestDraw()
+  updateBufferSize();preferFastRefresh();requestDraw()
  }
  override fun surfaceChanged(h:SurfaceHolder,format:Int,w:Int,height:Int){if(!preview)GlassFrames.surface(this,surfaceControl);preferFastRefresh();requestDraw()}
  override fun surfaceDestroyed(h:SurfaceHolder){if(angleListening){LiveAngles.remove(angleListener);angleListening=false};targetAngle=Float.NaN;renderedAngle=Float.NaN;lastFrameNanos=0L;choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview)GlassFrames.surface(this,null);bitmap=null;frame=null;paint.shader=null}
@@ -170,11 +181,12 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
    val canvas=holder.lockHardwareCanvas()
    try{
     canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR)
+    canvas.scale(canvas.width.toFloat()/width,canvas.height.toFloat()/height)
     if(preview && frame!=null)canvas.drawBitmap(frame!!.bitmap,null,RectF(0f,0f,width.toFloat(),height.toFloat()),null)
     if(amount<=.003f || (!preview && !LiveAngles.fresh()))return@runCatching
     val f=frame
-    val primary=context.getSystemService(DisplayManager::class.java).getDisplay(0)
-    val size=Point();primary?.getRealSize(size)
+    val size=Point()
+    if(!preview && !frozen)context.getSystemService(DisplayManager::class.java).getDisplay(0)?.getRealSize(size)
     val fresh=f!=null && (preview || frozen || (GlassFramePolicy.usable(f.stamp,SystemClock.elapsedRealtime(),f.width,f.height,size.x,size.y)))
     val shader=program
     if(fresh && shader!=null && f!=null){
