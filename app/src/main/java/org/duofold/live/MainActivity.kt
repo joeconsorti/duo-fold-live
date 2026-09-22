@@ -85,6 +85,7 @@ class MainActivity:ComponentActivity(){
        Toggle("Enable animation",enabled){enabled=it;booleanSetting("enabled",it)}
        Text(if(enabled){if(LiveAngles.fresh()) "Connected · ready to fold" else "Waiting for the Shizuku connection"} else "Off · your phone uses its normal display behavior",style=MaterialTheme.typography.bodySmall)
       }
+      if(!DeviceCompatibility.isRecognized(android.os.Build.MODEL)) Text(DeviceCompatibility.modelWarning(android.os.Build.MODEL),color=MaterialTheme.colorScheme.error)
       if(supportBanner){
        SettingsCard("Enjoying Duo Fold Live?","Your support helps fund more updates. Always optional."){
         Button(onClick={SupportPrompts.open(this@MainActivity);supportBanner=false}){Text("Yes, support on Ko-fi")}

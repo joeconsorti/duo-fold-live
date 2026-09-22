@@ -118,13 +118,14 @@ class SetupActivity : ComponentActivity() {
       Text("Make the fold yours.",style=MaterialTheme.typography.headlineLarge)
       Text("Setup ${stage+1} of 4",style=MaterialTheme.typography.labelLarge)
       LinearProgressIndicator(progress={(stage+1)/4f},modifier=Modifier.fillMaxWidth())
+      if(!DeviceCompatibility.isRecognized(Build.MODEL)) Text(DeviceCompatibility.modelWarning(Build.MODEL),color=MaterialTheme.colorScheme.error)
       when(stage){
        0->{
         Text("The wallpaper that powers the fold",style=MaterialTheme.typography.headlineSmall)
         Text("Duo uses Samsung’s interactive fold wallpaper to read the hinge angle. Setup will apply it to BOTH the inner and cover home screens, including the cover-screen option Samsung normally hides.")
         Text("This replaces your current home wallpapers and remains applied if you disable Duo. You can change them later in Samsung wallpaper settings. Your lock-screen wallpaper is not changed by this setup.")
         Text("Next, choose whether to cover it with your own photo. Then we’ll connect Shizuku and apply the required wallpaper automatically. No root is needed.")
-        Text("Setup is enabled for regional SM-F971 models on Android 17, including U1 and W. Regional support is experimental: Samsung wallpaper components and APIs are checked before applying. Fold 7 (SM-F966) is not supported by this profile.",style=MaterialTheme.typography.bodySmall)
+        Text("Regional SM-F971, SM-F976, and SM-F966 model numbers are recognized. Other models may also proceed with a warning. Android 17 is still required; Samsung wallpaper components and APIs are checked separately. Only SM-F971U has been tested.",style=MaterialTheme.typography.bodySmall)
         Button(onClick={go(1)}){Text("Continue")}
        }
        1->{
