@@ -11,6 +11,9 @@ final class HandoffFade {
  private final HandlerThread thread=new HandlerThread("duo-handoff-fade");
  private final Handler handler;
  private final HandoffFadePolicy policy=new HandoffFadePolicy();
+ private final ClosingMirrorFadePolicy closingMirror=new ClosingMirrorFadePolicy();
+ private volatile long mirrorSubmitted=-1;
+ void mirrorSubmitted(){mirrorSubmitted=SystemClock.elapsedRealtime();}
  private final SurfaceControl[] layers=new SurfaceControl[2];
  private volatile boolean enabled,closed,drawnInner;
  private volatile float angle,smoothing=FadeSettings.DEFAULT_SMOOTHING,gradualness=FadeSettings.DEFAULT_GRADUALNESS;
@@ -76,11 +79,15 @@ final class HandoffFade {
    boolean inner=Math.min(value(p,"logicalWidth"),value(p,"logicalHeight"))/(float)Math.max(value(p,"logicalWidth"),value(p,"logicalHeight"))>.7f;
    policy.settings(smoothing,gradualness);
    float alpha=policy.opacity(now,inner,angle,true,value(p,"state")==2,drawn,drawnInner);
+   Object secondary=info.invoke(dm,1);
+   boolean secondaryInner=secondary!=null&&Math.min(value(secondary,"logicalWidth"),value(secondary,"logicalHeight"))/(float)Math.max(value(secondary,"logicalWidth"),value(secondary,"logicalHeight"))>.7f;
+   float mirrorAlpha=closingMirror.opacity(now,inner,secondaryInner&&value(secondary,"state")==2,mirrorSubmitted,gradualness);
    try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){
     boolean changed=false;
     for(int i=0;i<2;i++){
-     Object d=i==0?p:info.invoke(dm,i);
-     if(d==null){if(layers[i]!=null&&alphas[i]!=alpha){t.setAlpha(layers[i],alpha).setVisibility(layers[i],alpha>0);alphas[i]=alpha;changed=true;}continue;}
+     Object d=i==0?p:secondary;
+     float layerAlpha=i==1&&!inner?Math.max(alpha,mirrorAlpha):alpha;
+     if(d==null){if(layers[i]!=null&&alphas[i]!=layerAlpha){t.setAlpha(layers[i],layerAlpha).setVisibility(layers[i],layerAlpha>0);alphas[i]=layerAlpha;changed=true;}continue;}
      if(layers[i]==null){
       SurfaceControl.Builder builder=new SurfaceControl.Builder().setName("Duo handoff black fade "+i).setHidden(true);
       colorLayer.invoke(builder);layers[i]=builder.build();changed=true;
@@ -91,7 +98,7 @@ final class HandoffFade {
      if(stacks[i]!=targetStack){stack.invoke(t,layers[i],targetStack);stacks[i]=targetStack;changed=true;}
      int extent=Math.max(2448,Math.max(value(d,"logicalWidth"),value(d,"logicalHeight")));
      if(extents[i]!=extent){crop.invoke(t,layers[i],extent,extent);extents[i]=extent;changed=true;}
-     if(alphas[i]!=alpha){t.setAlpha(layers[i],alpha).setVisibility(layers[i],alpha>0);alphas[i]=alpha;changed=true;}
+     if(alphas[i]!=layerAlpha){t.setAlpha(layers[i],layerAlpha).setVisibility(layers[i],layerAlpha>0);alphas[i]=layerAlpha;changed=true;}
     }
     if(changed)t.apply();
    }
@@ -101,7 +108,7 @@ final class HandoffFade {
  }};
  private void clear(){
   handler.removeCallbacks(tick);if(frames!=null)frames.removeFrameCallback(frame);
-  java.util.Arrays.fill(alphas,-1);java.util.Arrays.fill(stacks,-1);java.util.Arrays.fill(extents,-1);ticking=false;policy.reset();
+  java.util.Arrays.fill(alphas,-1);java.util.Arrays.fill(stacks,-1);java.util.Arrays.fill(extents,-1);ticking=false;policy.reset();closingMirror.reset();mirrorSubmitted=-1;
   for(int i=0;i<layers.length;i++)if(layers[i]!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(layers[i],false).reparent(layers[i],null).apply();}catch(Exception ignored){}layers[i].release();layers[i]=null;}
   status="Handoff fade idle";
  }
