@@ -11,6 +11,8 @@ public final class DuoApplication extends Application {
    prefs.edit().putBoolean("cover_preview",true).putBoolean("dual",false)
     .putBoolean("defaults_170_applied",true).apply();
   }
+  // Set once; never overwrite a saved mode or the user's fade tuning on updates.
+  if(!prefs.contains("animation_mode"))prefs.edit().putString("animation_mode",AnimationModePolicy.DEFAULT).apply();
   new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> org.duofold.live.wallpaperlayer.WallpaperRestore.resume(this));
  }
 }

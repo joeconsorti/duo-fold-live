@@ -7,6 +7,7 @@ public class AngleReader extends Binder {
  private GlassCapture capture;
  private PreviewExpansion expansion;
  private HandoffFade fade;
+ private final AnimationModePolicy animationMode=new AnimationModePolicy();
  private boolean previewAllowed=false;
  private final InnerLiveMirror mirror=new InnerLiveMirror();
  private final ConcurrentController concurrent=new ConcurrentController();
@@ -42,20 +43,24 @@ public class AngleReader extends Binder {
   if(code==2){heartbeat=SystemClock.elapsedRealtime();boolean unlocked=data.readInt()!=0,dual=data.readInt()!=0,primaryInner=data.readInt()!=0,secondaryReady=data.readInt()!=0;int frozenSource=data.readInt();float openThreshold=data.readFloat();boolean live=data.readInt()!=0;boolean appEnabled=data.readInt()!=0;float closedThreshold=FoldThreshold.sanitizeClosed(data.readFloat());float effectiveAngle=FoldThreshold.effectiveAngle(angle,closedThreshold);long probeRequest=data.dataAvail()>=8?data.readLong():0;
    float fadeSmoothing=data.dataAvail()>=4?data.readFloat():FadeSettings.DEFAULT_SMOOTHING;
    float fadeGradualness=data.dataAvail()>=4?data.readFloat():FadeSettings.DEFAULT_GRADUALNESS;
+   String mode=data.dataAvail()>0?AnimationModePolicy.sanitize(data.readString()):AnimationModePolicy.DEFAULT;
+   boolean effectAllowed=animationMode.update(mode,effectiveAngle,last>0&&heartbeat-last<750);
+   boolean mirrorMode=AnimationModePolicy.mirrors(mode);
+   appEnabled=appEnabled&&effectAllowed;
    if(fade==null)fade=new HandoffFade();
    fade.settings(fadeSmoothing,fadeGradualness);
    fade.update(live&&!dual&&appEnabled&&!handoff.probeHolding(),effectiveAngle,last>0&&heartbeat-last<750);
-   if(expansion!=null)expansion.enabled(live&&!dual&&appEnabled&&!handoff.probeHolding());
-   if(live && !dual && unlocked && appEnabled && handoff.active() && !handoff.probeHolding() && angle>=98f && last>0 && heartbeat-last<750 && expansion!=null)expansion.holdBeforeRelease();
+   if(expansion!=null)expansion.enabled(mirrorMode&&live&&!dual&&appEnabled&&!handoff.probeHolding());
+   if(mirrorMode && live && !dual && unlocked && appEnabled && handoff.active() && !handoff.probeHolding() && angle>=98f && last>0 && heartbeat-last<750 && expansion!=null)expansion.holdBeforeRelease();
    boolean wasCoverHeld=handoff.active();
-   if(dual){handoff.release();concurrent.update(effectiveAngle,last>0&&heartbeat-last<2000,unlocked,primaryInner,secondaryReady,frozenSource,openThreshold);}else{concurrent.release();handoff.update(effectiveAngle,last>0&&heartbeat-last<750,unlocked,live&&appEnabled,openThreshold,probeRequest);}
+   if(!effectAllowed){handoff.release();concurrent.release();}else if(dual){handoff.release();concurrent.update(effectiveAngle,last>0&&heartbeat-last<2000,unlocked,primaryInner,secondaryReady,frozenSource,openThreshold);}else{concurrent.release();handoff.update(effectiveAngle,last>0&&heartbeat-last<750,unlocked,live&&appEnabled,openThreshold,probeRequest);}
    if(wasCoverHeld && !handoff.active() && expansion!=null)expansion.releaseReturned();
    if(handoff.probeHolding()&&fade!=null)fade.update(false,effectiveAngle,false);
    if(expansion!=null&&handoff.probeHolding())expansion.enabled(false);
-   previewAllowed=!handoff.probeNative()&&CoverPreviewPolicy.allowed(live,dual,primaryInner,unlocked,handoff.active());
+   previewAllowed=mirrorMode&&effectAllowed&&!handoff.probeNative()&&CoverPreviewPolicy.allowed(live,dual,primaryInner,unlocked,handoff.active());
    if(!previewAllowed)mirror.close();
    continuity.sample(handoff.probeHolding(),handoff.probeStatus());
-   Bundle b=new Bundle();b.putString("handoffFade",fade==null?"Handoff fade idle":fade.status);b.putString("continuityProbe",handoff.probeStatus());b.putString("continuityTrace",continuity.report());b.putString("bridgeTrace",expansion==null?"No bridge":expansion.trace);b.putString("expansion",expansion==null?"Expansion idle":expansion.status);b.putBoolean("coverPreview",previewAllowed);b.putString("state",state);b.putString("mirror",mirror.status);b.putBoolean("continuityNative",handoff.probeNative());b.putBoolean("nativeInner",concurrent.secondaryHasNativeContent()||handoff.probeNative());b.putBoolean("dualActive",dual&&concurrent.active());b.putString("handoff",dual?concurrent.status:handoff.status);b.putInt("uid",android.os.Process.myUid());b.putInt("count",count);b.putInt("unique",unique.size());b.putFloat("rawAngle",angle);b.putFloat("angle",effectiveAngle);b.putFloat("min",min);b.putFloat("max",max);b.putLong("last",last);b.putString("raw",raw);reply.writeNoException();reply.writeBundle(b);return true;}
+   Bundle b=new Bundle();b.putBoolean("effectAllowed",effectAllowed);b.putString("handoffFade",fade==null?"Handoff fade idle":fade.status);b.putString("continuityProbe",handoff.probeStatus());b.putString("continuityTrace",continuity.report());b.putString("bridgeTrace",expansion==null?"No bridge":expansion.trace);b.putString("expansion",expansion==null?"Expansion idle":expansion.status);b.putBoolean("coverPreview",previewAllowed);b.putString("state",state);b.putString("mirror",mirror.status);b.putBoolean("continuityNative",handoff.probeNative());b.putBoolean("nativeInner",concurrent.secondaryHasNativeContent()||handoff.probeNative());b.putBoolean("dualActive",dual&&concurrent.active());b.putString("handoff",dual?concurrent.status:handoff.status);b.putInt("uid",android.os.Process.myUid());b.putInt("count",count);b.putInt("unique",unique.size());b.putFloat("rawAngle",angle);b.putFloat("angle",effectiveAngle);b.putFloat("min",min);b.putFloat("max",max);b.putLong("last",last);b.putString("raw",raw);reply.writeNoException();reply.writeBundle(b);return true;}
   if(code==3){stop();reply.writeNoException();return true;}return super.onTransact(code,data,reply,flags);
  }
  private synchronized void stop(){previewAllowed=false;if(fade!=null){fade.close();fade=null;}if(expansion!=null){expansion.close();expansion=null;}if(capture!=null){capture.close();capture=null;}mirror.close();concurrent.release();handoff.release();generation++;if(process!=null){process.destroy();process=null;}state="Stopped";}

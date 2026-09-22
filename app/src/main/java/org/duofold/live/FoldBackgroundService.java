@@ -75,6 +75,7 @@ getSystemService(NotificationManager.class).createNotificationChannel(new Notifi
   InnerDecorRecovery.tick(FoldBackgroundService.this);
   String notice=!foldEnabled?FoldAwakeDefault.status:LiveAngles.fresh()?"Live hinge control active":LiveAngles.status;
   if(!notice.equals(lastNotice)){lastNotice=notice;getSystemService(NotificationManager.class).notify(112,notification(notice));}
+  SupportPrompts.tick(FoldBackgroundService.this);
   main.postDelayed(this,2000);
  }};
  public void onTaskRemoved(Intent intent){RecoveryLog.add("Settings task dismissed; background service remains running");super.onTaskRemoved(intent);}

@@ -114,7 +114,7 @@ class SetupActivity : ComponentActivity() {
     }}
     Surface(Modifier.fillMaxSize()){
      Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
-      Text("DUO / FOLD LIVE",color=Color(0xff91ded2),style=MaterialTheme.typography.labelLarge)
+      Text("Duo Fold Live",color=Color(0xff91ded2),style=MaterialTheme.typography.labelLarge)
       Text("Make the fold yours.",style=MaterialTheme.typography.headlineLarge)
       Text("Setup ${stage+1} of 4",style=MaterialTheme.typography.labelLarge)
       LinearProgressIndicator(progress={(stage+1)/4f},modifier=Modifier.fillMaxWidth())
@@ -179,7 +179,7 @@ class SetupActivity : ComponentActivity() {
         Text("If Android blocks accessibility: App info → ⋮ → Allow restricted settings, then return to Accessibility. Duo uses screen capture and overlays for the fold effect; enable it only if you trust the app.",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))}){Text("Open app info")}
         OutlinedButton(onClick={if(checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),75)}){Text("Allow service notifications")}
-        Text("Default: iPhone Duo Inspired. You can switch to Classic Glass at the top of the app. Closing keeps the cover awake by default; change that in Advanced.")
+        Text("Default: Windowed Glass, inspired by iPhone Duo with even more windowed glass. Choose styles in Folding animation styles. Keep-awake is always on and checked in the background.")
         Button(onClick={
          if(!authorized){message="Start Shizuku again before finishing.";attempted=false;go(2);return@Button}
          prefs.edit().putInt("state",2).commit()

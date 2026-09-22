@@ -72,7 +72,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         } else {updateDisplay();resumeIfUsable()}
     }}
     private fun usable()=::displays.isInitialized && displays.getDisplay(Display.DEFAULT_DISPLAY)?.state==Display.STATE_ON && !getSystemService(KeyguardManager::class.java).isKeyguardLocked()
-    private fun previewMode()=settings().getBoolean("cover_preview",true) && !settings().getBoolean("dual",false)
+    private fun previewMode()=AnimationModePolicy.mirrors(settings().getString("animation_mode",AnimationModePolicy.DEFAULT)) && LiveAngles.effectAllowed && settings().getBoolean("cover_preview",true) && !settings().getBoolean("dual",false)
     private fun settings()=getSharedPreferences("standalone",0)
     override fun onServiceConnected(){
         instance=this;RecoveryLog.init(this);RecoveryLog.add("Accessibility service connected");handler.post(sourceGuard);displays=getSystemService(DisplayManager::class.java)
@@ -115,8 +115,9 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
     override fun onMovement(){requestCapture()}
     override fun onFrame(active:Boolean,strength:Float){
         val changed=this.active!=active;this.active=active;this.strength=strength
-        if(!usable() || !LiveAngles.fresh()){hide();this.strength=0f;return}
+        if(!usable() || !LiveAngles.fresh() || !LiveAngles.effectAllowed){hide();this.strength=0f;return}
         view?.alpha=if(active && (liveVeil || image!=null))1f else 0f
+        if(changed && !active)SupportPrompts.recordUse(this)
         if(changed)note(if(active)"Duo transition active" else "Ready — Duo transition complete")
         if(active)requestCapture()
     }
@@ -164,7 +165,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         PreviewTransition.update(!LiveAngles.nativeInner && previewMode() && settings().getBoolean("enabled",false) && !getSystemService(KeyguardManager::class.java).isKeyguardLocked(),primaryInner)
         val native=LiveAngles.continuityNative && !primaryInner
         val preview=!settings().getBoolean("dual",false) && settings().getBoolean("cover_preview",true) && LiveAngles.coverPreview
-        if(!settings().getBoolean("enabled",false)||(!native && !preview && (!settings().getBoolean("dual",false)||!LiveAngles.dualActive))||!usable()){dismissSecondary();return}
+        if(!LiveAngles.effectAllowed||!settings().getBoolean("enabled",false)||(!native && !preview && (!settings().getBoolean("dual",false)||!LiveAngles.dualActive))||!usable()){dismissSecondary();return}
         val target=displays.displays.firstOrNull{it.displayId==1 && (setOf(it.mode.physicalWidth,it.mode.physicalHeight)==setOf(1248,1972) || setOf(it.mode.physicalWidth,it.mode.physicalHeight)==setOf(2448,1848))}
         if(target==null){secondaryError="Concurrent mode has not exposed the second built-in panel";dismissSecondary();return}
         if(native){
@@ -192,7 +193,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
     private fun displayReport()=if(!::displays.isInitialized)"unavailable" else displays.displays.joinToString("; "){d->
         "id=${d.displayId} state=${d.state} mode=${d.mode.physicalWidth}x${d.mode.physicalHeight} rotation=${d.rotation}"
     }
-    fun report()="Duo Fold Live ${BuildConfig.VERSION_NAME}\nSelectable glass / live angles\n${Build.MODEL} / Android ${Build.VERSION.RELEASE}\n$status\n${LiveAngles.status}\n${FoldAwakeDefault.status}\nCustom wallpaper: ${org.duofold.live.wallpaperlayer.WallpaperRestore.status}\nBackground service: ${FoldBackgroundService.running}\n${FoldBackgroundService.connectionReport()}\n${LiveAngles.latencyReport()}\nAngle age: ${LiveAngles.ageMs()} ms\nCover preview: ${settings().getBoolean("cover_preview",true)}\nPreview bridge: ${LiveAngles.expansionStatus}\nPreview preparation: ${PreviewTransition.status}\nBridge trace: ${LiveAngles.bridgeTrace}\nSmoothing: ${settings().getFloat("smoothing_ms",12f)} ms; full-resolution glass: ${settings().getBoolean("full_resolution_glass",false)}\nMode: ${if(settings().getBoolean("debug_mode",false)) "Debug black fade" else "Projected glass"}\n${LiveAngles.handoffStatus}\n${LiveAngles.handoffFade}\n${LiveAngles.continuityStatus}\n${InnerDecorRecovery.apiStatus}\n${InnerDecorRecovery.status}\n${LiveAngles.continuityTrace}\nGlass: ${GlassFrames.status}\nHandoff: ${HandoffFrames.status}\nSecondary ready: ${secondaryReady()}; draws: ${nativeOverlay?.draws ?: secondary?.draws ?: 0}\nSecondary layer: ${if(nativeOverlay!=null)"Native inner accessibility overlay" else secondary?.layer ?: "none"}; strength: ${nativeOverlay?.strength ?: secondary?.strength ?: 0f}\nSecondary error: $secondaryError\nDisplays: ${displayReport()}\nAnimation: ${if(settings().getString("animation_style","duo")=="classic") "Classic Glass" else "iPhone Duo Inspired"}\n${FrameTelemetry.report()}\nStrength: $strength\n"+history.joinToString("\n")+"\nLifecycle / connection events:\n"+RecoveryLog.report()
+    fun report()="Duo Fold Live ${BuildConfig.VERSION_NAME}\nSelectable glass / live angles\n${Build.MODEL} / Android ${Build.VERSION.RELEASE}\n$status\n${LiveAngles.status}\n${FoldAwakeDefault.status}\nCustom wallpaper: ${org.duofold.live.wallpaperlayer.WallpaperRestore.status}\nBackground service: ${FoldBackgroundService.running}\n${FoldBackgroundService.connectionReport()}\n${LiveAngles.latencyReport()}\nAngle age: ${LiveAngles.ageMs()} ms\nCover preview: ${settings().getBoolean("cover_preview",true)}\nPreview bridge: ${LiveAngles.expansionStatus}\nPreview preparation: ${PreviewTransition.status}\nBridge trace: ${LiveAngles.bridgeTrace}\nSmoothing: ${settings().getFloat("smoothing_ms",12f)} ms; full-resolution glass: ${settings().getBoolean("full_resolution_glass",false)}\nMode: ${if(settings().getBoolean("debug_mode",false)) "Debug black fade" else "Projected glass"}\n${LiveAngles.handoffStatus}\n${LiveAngles.handoffFade}\n${LiveAngles.continuityStatus}\n${InnerDecorRecovery.apiStatus}\n${InnerDecorRecovery.status}\n${LiveAngles.continuityTrace}\nGlass: ${GlassFrames.status}\nHandoff: ${HandoffFrames.status}\nSecondary ready: ${secondaryReady()}; draws: ${nativeOverlay?.draws ?: secondary?.draws ?: 0}\nSecondary layer: ${if(nativeOverlay!=null)"Native inner accessibility overlay" else secondary?.layer ?: "none"}; strength: ${nativeOverlay?.strength ?: secondary?.strength ?: 0f}\nSecondary error: $secondaryError\nDisplays: ${displayReport()}\nAnimation: ${AnimationModePolicy.label(settings().getString("animation_mode",AnimationModePolicy.DEFAULT))}\n${FrameTelemetry.report()}\nStrength: $strength\n"+history.joinToString("\n")+"\nLifecycle / connection events:\n"+RecoveryLog.report()
     override fun onInterrupt(){hide();image=null;note("Feedback interrupted — overlay remains attached")}
     override fun onDestroy(){PreviewTransition.update(false,false);removeHost();if(::displays.isInitialized)displays.unregisterDisplayListener(this);runCatching {unregisterReceiver(screenReceiver)};handler.removeCallbacksAndMessages(null);instance=null;super.onDestroy()}
 }

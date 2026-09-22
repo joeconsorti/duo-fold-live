@@ -42,10 +42,14 @@ class MainActivity:ComponentActivity(){
   rikka.shizuku.Shizuku.addRequestPermissionResultListener(shizukuPermission)
   if(FirstRun.required(this)){startActivity(Intent(this,SetupActivity::class.java));finish();return}
   setContent{
-   MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xffc9bdff),secondary=Color(0xff91ded2),background=Color(0xff10121c),surface=Color(0xff1b1e2b),surfaceVariant=Color(0xff252939))){
+   MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xff9dc4ff),secondary=Color(0xffa8d5c2),background=Color(0xff080a0e),surface=Color(0xff171a20),surfaceVariant=Color(0xff242830))){
     val prefs=remember{getSharedPreferences("standalone",0)}
     val scope=rememberCoroutineScope()
     var enabled by remember{mutableStateOf(prefs.getBoolean("enabled",false))}
+    var mode by remember{mutableStateOf(AnimationModePolicy.sanitize(prefs.getString("animation_mode",AnimationModePolicy.DEFAULT)))}
+    var legacy by remember{mutableStateOf(false)}
+    var supportBanner by remember{mutableStateOf(false)}
+    var supportReminders by remember{mutableStateOf(SupportPrompts.enabled(this))}
     var animationStyle by remember{mutableStateOf(prefs.getString("animation_style","duo") ?: "duo")}
     var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
@@ -64,8 +68,9 @@ class MainActivity:ComponentActivity(){
     var photo by remember{mutableStateOf(BitmapFactory.decodeFile(WallpaperFiles.photoFile(this).absolutePath))}
     var photoStatus by remember{mutableStateOf("")}
     var exporting by remember{mutableStateOf(false)}
-    LaunchedEffect(Unit){while(true){enabled=prefs.getBoolean("enabled",false);status=LiveAngles.status+"\n"+LiveAngles.handoffStatus;delay(600)}}
+    LaunchedEffect(Unit){while(true){enabled=prefs.getBoolean("enabled",false);status=LiveAngles.status+"\n"+LiveAngles.handoffStatus;if(!supportBanner && SupportPrompts.inAppDue(this@MainActivity)){supportBanner=true;SupportPrompts.seenInApp(this@MainActivity)};delay(600)}}
     fun restart(){startBackground();StandaloneService.instance?.restart()}
+    fun selectMode(value:String){mode=value;animationStyle="duo";dual=false;liveMirror=true;prefs.edit().putString("animation_mode",value).putBoolean("dual",false).putBoolean("cover_preview",true).putString("animation_style","duo").putBoolean("debug_mode",false).apply();debug=false;restart()}
     fun booleanSetting(key:String,value:Boolean){prefs.edit().putBoolean(key,value).apply();restart()}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)scope.launch{
      photoStatus="Preparing image…"
@@ -73,22 +78,35 @@ class MainActivity:ComponentActivity(){
     }}
     Surface(Modifier.fillMaxSize()){
      Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
-      Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xff30314b),Color(0xff193b40))),RoundedCornerShape(28.dp)).padding(24.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-       Text("DUO / FOLD LIVE",style=MaterialTheme.typography.labelLarge,color=Color(0xffacede2))
-       Text("A smoother fold.",style=MaterialTheme.typography.headlineLarge)
-       Text("Screenshot handoff · Duo reference glass",style=MaterialTheme.typography.bodyLarge)
+      Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xff1d3048),Color(0xff172128))),RoundedCornerShape(28.dp)).padding(24.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+       Text("Duo Fold Live",style=MaterialTheme.typography.headlineLarge)
+       Text("Make every fold feel fluid.",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
        Toggle("Enable animation",enabled){enabled=it;booleanSetting("enabled",it)}
-       Text("Folding animation",style=MaterialTheme.typography.labelLarge)
-       Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-        FilterChip(selected=animationStyle=="duo",onClick={animationStyle="duo";prefs.edit().putString("animation_style","duo").apply();restart()},label={Text("iPhone Duo Inspired")})
-        FilterChip(selected=animationStyle=="classic",onClick={animationStyle="classic";prefs.edit().putString("animation_style","classic").apply();restart()},label={Text("Classic Glass")})
-       }
        Text(if(enabled)status else "Off · your phone uses its normal display behavior",style=MaterialTheme.typography.bodySmall)
       }
-      SettingsCard("Animation","Your outgoing screen is frozen; the incoming screen stays live."){
-       key(animationStyle){Box(Modifier.fillMaxWidth().height(150.dp)){GlassPreview(preview)}}
+      if(supportBanner && supportReminders){
+       SettingsCard("Enjoying Duo Fold Live?","Your support helps fund more updates. Always optional."){
+        Button(onClick={SupportPrompts.open(this@MainActivity);supportBanner=false}){Text("Yes, support on Ko-fi")}
+        TextButton(onClick={supportBanner=false}){Text("Not today")}
+        TextButton(onClick={supportReminders=false;supportBanner=false;SupportPrompts.enabled(this@MainActivity,false)}){Text("Don’t ask again")}
+       }
+      }
+      SettingsCard("Folding animation styles","Choose how your Fold moves between screens."){
+       listOf("windowed" to "Inspired by iPhone Duo with even more windowed glass. Default.","duo_classic" to "Native inner-screen glass with a black reveal. No mirrored cover or frosted preview.","fold_only" to "Windowed Glass when closing. Normal behavior when opening.","unfold_only" to "Windowed Glass when opening. Normal behavior when closing.").forEach{(id,description)->
+        Surface(onClick={selectMode(id)},shape=RoundedCornerShape(20.dp),color=if(mode==id)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,modifier=Modifier.fillMaxWidth()){
+         Row(Modifier.padding(14.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
+          RadioButton(selected=mode==id,onClick={selectMode(id)})
+          Column(Modifier.weight(1f).padding(start=8.dp)){Text(AnimationModePolicy.label(id),style=MaterialTheme.typography.titleMedium);Text(description,style=MaterialTheme.typography.bodySmall)}
+         }
+        }
+       }
+      }
+      ShizukuHelp()
+      SettingsCard("Fine-tune your animation","Your saved glass and fade settings apply to each style."){
+
+       key(animationStyle,mode){Box(Modifier.fillMaxWidth().height(150.dp)){GlassPreview(preview)}}
        Slider(value=preview,onValueChange={preview=it})
-       Text("Preview selected animation",style=MaterialTheme.typography.labelMedium)
+       Text("Glass appearance preview · direction and handoff are shown on your device",style=MaterialTheme.typography.labelMedium)
        Text("Motion smoothness · ${smoothing.roundToInt()} ms")
        Slider(value=smoothing,onValueChange={smoothing=it},valueRange=12f..120f,onValueChangeFinished={prefs.edit().putFloat("smoothing_ms",smoothing).apply();restart()})
        Text("12 ms is the current default. Higher values soften motion with more delay; they do not increase rendering FPS.",style=MaterialTheme.typography.bodySmall)
@@ -106,9 +124,9 @@ class MainActivity:ComponentActivity(){
        Slider(value=intensity,onValueChange={intensity=it},valueRange=.3f..1.5f,onValueChangeFinished={prefs.edit().putFloat("intensity",intensity).apply();restart()})
        Text("Fully open at ${threshold.roundToInt()}°. Adjust this in Advanced.",style=MaterialTheme.typography.bodySmall)
       }
-      SettingsCard("Custom wallpaper","Your photo behind the icons, with Samsung’s hinge wallpaper still running underneath."){
+      SettingsCard("Custom wallpaper","Your photo on Home, with live hinge support in the background."){
        Button(onClick={startActivity(Intent(this@MainActivity,org.duofold.live.wallpaperlayer.WallpaperActivity::class.java))}){Text("Choose & manage custom wallpaper")}
-       Text("Disable the separate Duo Wallpaper Layer app before enabling the built-in wallpaper. Choose your photo here once. Wallpaper behavior, including the existing unlock flash, is unchanged.",style=MaterialTheme.typography.bodySmall)
+       Text("Disable the separate Duo Wallpaper Layer app before enabling the built-in wallpaper. Your saved photo and enabled choice carry across compatible app updates. A brief wallpaper flash can still occur during unlock.",style=MaterialTheme.typography.bodySmall)
       }
       SettingsCard("Connection & setup","Shizuku and accessibility keep the effect running in the background."){
        TextButton(onClick={setup=!setup}){Text(if(setup)"Hide setup" else "Show setup")}
@@ -125,6 +143,13 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Advanced","Display thresholds, fold behavior, and diagnostics."){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
+        TextButton(onClick={legacy=!legacy}){Text(if(legacy)"Hide legacy & experimental visuals" else "Legacy & experimental visuals")}
+        if(legacy){
+         Text("Older visuals · optional",style=MaterialTheme.typography.titleSmall)
+         OutlinedButton(onClick={animationStyle="classic";prefs.edit().putString("animation_style","classic").apply();restart()}){Text("Use legacy Classic Glass")}
+         Toggle("Classic black shading (debug)",debug){debug=it;booleanSetting("debug_mode",it)}
+         TextButton(onClick={selectMode("windowed")}){Text("Restore Windowed Glass")}
+        }
         Text("Screen continuity test",style=MaterialTheme.typography.titleMedium)
         Text("Arm, return to Home or the app you want to test, fully close, then unfold within 30 seconds. During the 20-second hold, opening past 98° tries moving real content to the inner display. The inner animation uses the transferred app. Check that content stays visible, with full-size layout, touch and navigation. Folding below 94° returns content; only one transfer per test. Temporarily requests system navigation on the inner display; restores the prior display policy after the test. Samsung may reject Home routing. Exit may still flash. Copy the connection report afterward.",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(enabled=enabled&&liveMirror&&!dual,onClick={LiveAngles.startContinuityProbe()}){Text("Arm 20-second continuity test")}
@@ -142,7 +167,6 @@ class MainActivity:ComponentActivity(){
         Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
         Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
-        Toggle("Debug mode · black fade",debug){debug=it;booleanSetting("debug_mode",it)}
         Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         Text("Keep cover awake on close",style=MaterialTheme.typography.titleMedium)
@@ -155,6 +179,12 @@ class MainActivity:ComponentActivity(){
        }
        OutlinedButton(onClick={val report=StandaloneService.instance?.report()?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report copied",android.widget.Toast.LENGTH_SHORT).show()}){Text("Copy status report")}
       }
+      SettingsCard("Support Duo Fold Live","Free, independent, and built with care for your Fold."){
+       Text("If Duo makes your phone more enjoyable, you can help support development with a donation. Every feature stays available either way.")
+       Button(onClick={SupportPrompts.open(this@MainActivity);supportBanner=false}){Text("Support on Ko-fi")}
+       Toggle("Daily support reminders",supportReminders){supportReminders=it;SupportPrompts.enabled(this@MainActivity,it);if(!it)supportBanner=false}
+       Text("After successful use, at most once every 24 hours in the app and in notifications. Notification permission is required; Android controls delivery.",style=MaterialTheme.typography.bodySmall)
+      }
       Text("Duo Fold Live ${BuildConfig.VERSION_NAME} · Glass reference: chuspeeism/iphone-duo (MIT). Duo-derived diagnostics. Screen frames stay in memory.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      }
     }
@@ -162,7 +192,7 @@ class MainActivity:ComponentActivity(){
   }
  }
 }
-@Composable private fun SettingsCard(title:String,subtitle:String,content:@Composable ColumnScope.()->Unit){
+@Composable internal fun SettingsCard(title:String,subtitle:String,content:@Composable ColumnScope.()->Unit){
  Card(shape=RoundedCornerShape(24.dp),modifier=Modifier.fillMaxWidth()){
   Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
    Text(title,style=MaterialTheme.typography.titleLarge);Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);content()
