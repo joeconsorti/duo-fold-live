@@ -4,7 +4,7 @@ import static org.junit.Assert.*;
 import java.util.*;
 /** Exercise routing and cleanup against a framework-shaped fake; no mocked success bundles. */
 public class NativeHomeRoutingTest {
- public static class Window {public int getActivityType(){return 2;}}
+ public static class Window {public int type=2;public int getActivityType(){return type;}}
  public static class Configuration {public Window windowConfiguration=new Window();}
  public static class Info {
   public int taskId,displayId;public Object topActivity="launcher";
@@ -42,5 +42,31 @@ public class NativeHomeRoutingTest {
  @Test public void unrelatedInnerFocusDoesNotVerify()throws Exception{
   Manager m=new Manager();TaskDisplayRouter r=new TaskDisplayRouter(m,Manager.class);r.beginProbe();
   m.focused=new Info(99,1);assertFalse(r.probeVerified());
+ }
+ @Test public void placementAndFocusAreReportedSeparately()throws Exception{
+  Manager m=new Manager();TaskDisplayRouter r=new TaskDisplayRouter(m,Manager.class);r.beginProbe();
+  m.focused=new Info(99,0);assertTrue(r.probePlaced());assertFalse(r.probeVerified());
+  assertTrue(r.probeSnapshot().contains("inner root [task=10 display=1"));
+  assertTrue(r.probeSnapshot().contains("focused [task=99 display=0"));
+  r.repairProbe();assertTrue(r.probeVerified());
+ }
+ @Test public void fallbackMovesOnlySelectedAppRootAndReturnsIt()throws Exception{
+  Manager m=new Manager();TaskDisplayRouter r=new TaskDisplayRouter(m,Manager.class);r.beginProbe();r.endProbe(true);
+  // Simulate a standard app after selection without calling Android Bundle APIs.
+  java.lang.reflect.Field f=TaskDisplayRouter.class.getDeclaredField("probeTask");f.setAccessible(true);f.setInt(r,10);
+  m.cover.configuration.windowConfiguration.type=1;
+  r.repairProbe();assertTrue(r.probeVerified());r.endProbe(true);assertEquals(0,m.cover.displayId);
+ }
+ @Test public void fallbackRefusesRootContainingAnotherTask()throws Exception{
+  Manager m=new Manager();TaskDisplayRouter r=new TaskDisplayRouter(m,Manager.class);
+  java.lang.reflect.Field f=TaskDisplayRouter.class.getDeclaredField("probeTask");f.setAccessible(true);f.setInt(r,10);
+  m.cover.configuration.windowConfiguration.type=1;m.cover.childTaskIds=new int[]{10,11};
+  try{r.repairProbe();fail("must preserve other task");}catch(IllegalStateException expected){}
+  assertEquals(0,m.moves);
+ }
+ @Test public void selectsFocusedHomeInsteadOfStaleRecentApp()throws Exception{
+  Manager m=new Manager(){@Override public List<Info> getTasks(int n,boolean a,boolean b,int d){return Collections.singletonList(new Info(77,d));}};
+  TaskDisplayRouter r=new TaskDisplayRouter(m,Manager.class);
+  assertTrue(r.beginProbe().contains("Home task 10"));assertTrue(r.probeVerified());
  }
 }

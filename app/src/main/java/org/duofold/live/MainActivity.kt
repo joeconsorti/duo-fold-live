@@ -119,7 +119,7 @@ class MainActivity:ComponentActivity(){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
         Text("Screen continuity test",style=MaterialTheme.typography.titleMedium)
-        Text("Arm, return to Home or the app you want to test, fully close, then unfold within 30 seconds. During the 20-second hold, opening past 98° tries moving real content to the inner display. Check full-size layout, touch and navigation. Folding below 94° returns content; only one transfer per test. Samsung may reject Home routing. Exit may still flash. Copy the connection report afterward.",style=MaterialTheme.typography.bodySmall)
+        Text("Arm, return to Home or the app you want to test, fully close, then unfold within 30 seconds. During the 20-second hold, opening past 98° tries moving real content to the inner display. The inner animation uses the transferred app. Check that content stays visible, with full-size layout, touch and navigation. Folding below 94° returns content; only one transfer per test. Samsung may reject Home routing. Exit may still flash. Copy the connection report afterward.",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(enabled=enabled&&liveMirror&&!dual,onClick={LiveAngles.startContinuityProbe()}){Text("Arm 20-second continuity test")}
         TextButton(onClick={LiveAngles.cancelContinuityProbe()}){Text("Stop continuity test")}
         Text(LiveAngles.continuityStatus,style=MaterialTheme.typography.bodySmall)

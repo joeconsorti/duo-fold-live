@@ -42,7 +42,8 @@ jobs:
           import os, re
           from pathlib import Path
           p = Path('app/build.gradle.kts')
-          code = 1000 + int(os.environ['GITHUB_RUN_NUMBER'])
+          current = int(re.search(r'\bversionCode\s*=\s*(\d+)', p.read_text()).group(1))
+          code = max(current, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
           text, count = re.subn(r'\bversionCode\s*=\s*\d+', f'versionCode = {code}', p.read_text())
           if count != 1:
               raise SystemExit('Expected exactly one numeric versionCode in app/build.gradle.kts')
@@ -88,7 +89,7 @@ jobs:
         run: |
           tag="ci-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
           printf 'Automated build of %s at %s.\nVersion code: %s\n' \
-            "$GITHUB_REF_NAME" "$GITHUB_SHA" "$((1000 + GITHUB_RUN_NUMBER))" > "$RUNNER_TEMP/release-notes.txt"
+            "$GITHUB_REF_NAME" "$GITHUB_SHA" "$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts)" > "$RUNNER_TEMP/release-notes.txt"
           gh release create "$tag" dist/*.apk dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Duo Fold Live $tag" --prerelease --latest=false \

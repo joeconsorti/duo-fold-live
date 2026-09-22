@@ -160,17 +160,18 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         val current=displays.getDisplay(0)
         val primaryInner=current?.mode?.let{minOf(it.physicalWidth,it.physicalHeight).toFloat()/maxOf(it.physicalWidth,it.physicalHeight)>.7f}?:false
         PreviewTransition.update(!LiveAngles.nativeInner && previewMode() && settings().getBoolean("enabled",false) && !getSystemService(KeyguardManager::class.java).isKeyguardLocked(),primaryInner)
+        val native=LiveAngles.continuityNative && !primaryInner
         val preview=!settings().getBoolean("dual",false) && settings().getBoolean("cover_preview",true) && LiveAngles.coverPreview
-        if(!settings().getBoolean("enabled",false)||(!preview && (!settings().getBoolean("dual",false)||!LiveAngles.dualActive))||!usable()){dismissSecondary();return}
+        if(!settings().getBoolean("enabled",false)||(!native && !preview && (!settings().getBoolean("dual",false)||!LiveAngles.dualActive))||!usable()){dismissSecondary();return}
         val target=displays.displays.firstOrNull{it.displayId==1 && (setOf(it.mode.physicalWidth,it.mode.physicalHeight)==setOf(1248,1972) || setOf(it.mode.physicalWidth,it.mode.physicalHeight)==setOf(2448,1848))}
         if(target==null){secondaryError="Concurrent mode has not exposed the second built-in panel";dismissSecondary();return}
-        if(secondaryKey==physicalKey(target)+":"+preview && secondary?.display?.displayId==target.displayId && secondary?.isShowing==true){secondary?.refresh();secondaryReadySnapshot=secondary?.ready==true;return}
+        if(secondaryKey==physicalKey(target)+":"+preview+":"+native && secondary?.display?.displayId==target.displayId && secondary?.isShowing==true){secondary?.refresh();secondaryReadySnapshot=secondary?.ready==true;return}
         if(SystemClock.elapsedRealtime()<secondaryRetry)return
         dismissSecondary()
         try{
-            val next=SecondaryShade(this,target,settings().getFloat("intensity",1f),preview){RecoveryLog.add(it)}
+            val next=SecondaryShade(this,target,settings().getFloat("intensity",1f),preview,native){RecoveryLog.add(it)}
             next.setOnDismissListener{RecoveryLog.add("Secondary Presentation dismissed");if(secondary===next){secondary=null;secondaryReadySnapshot=false}}
-            secondary=next;secondaryKey=physicalKey(target)+":"+preview;next.show();secondaryError="";RecoveryLog.add("Secondary Presentation shown, display ${target.displayId}")
+            secondary=next;secondaryKey=physicalKey(target)+":"+preview+":"+native;next.show();secondaryError="";RecoveryLog.add("Secondary Presentation shown, display ${target.displayId}")
         }catch(e:Exception){dismissSecondary();secondaryError="${e.javaClass.simpleName}: ${e.message}";secondaryRetry=SystemClock.elapsedRealtime()+1500;RecoveryLog.add("Secondary Presentation error: $secondaryError")}
     }
     private fun physicalKey(d:Display)="${d.displayId}:${d.mode.physicalWidth}x${d.mode.physicalHeight}"

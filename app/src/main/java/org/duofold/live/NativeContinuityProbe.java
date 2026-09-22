@@ -4,7 +4,7 @@ import java.util.ArrayDeque;
 /** A single native-task excursion per timed hold; never requests a device state. */
 final class NativeContinuityProbe {
  private TaskDisplayRouter router;
- private boolean active,attempted,verified,finished;
+ private boolean active,attempted,verified,finished,repaired,focusReported;
  private long requestedAt;
  private String cover,inner;
  private final ArrayDeque<String> events=new ArrayDeque<>();
@@ -23,22 +23,29 @@ final class NativeContinuityProbe {
   long identity=Binder.clearCallingIdentity();
   try{
    if(!holding){if(active)finish(interactive);active=false;return;}
-   if(!active){active=true;attempted=false;verified=false;finished=false;router=null;cover=null;inner=null;events.clear();note("Fixed mapping hold started; native route waits for 98 degrees");}
+   if(!active){active=true;attempted=false;verified=false;finished=false;repaired=false;focusReported=false;router=null;cover=null;inner=null;events.clear();note("Fixed mapping hold started; native route waits for 98 degrees");}
    if(finished)return;
    if(!attempted&&angle>=98){
     attempted=true;requestedAt=SystemClock.elapsedRealtime();
     cover=panel(0);inner=panel(1);
-    router=new TaskDisplayRouter();note(router.beginProbe());
+    router=new TaskDisplayRouter();note(router.beginProbe());note(router.probeSnapshot());requestedAt=SystemClock.elapsedRealtime();
    }
    if(attempted&&router!=null){
     if(!sameMapping())throw new IllegalStateException("Physical mapping changed during native task test");
     if(angle<=94){finish(interactive);return;}
-    if(!verified){
-     if(router.probeVerified()){verified=true;note("Task on display 1 and inner focus verified; cover mirror removed. Check native size, touch and navigation on phone.");}
-     else if(SystemClock.elapsedRealtime()-requestedAt>=1500)throw new IllegalStateException("Native task/focus not verified within 1500 ms");
+    boolean placed=router.probePlaced();
+    if(placed&&!verified){verified=true;note("Task placement on inner verified; removing cover mirror. Global focus checked separately; no timed rollback of a placed task.");note(router.probeSnapshot());}
+    if(!focusReported&&router.probeVerified()){focusReported=true;note("Global focus verified on inner task");}
+    if(!repaired&&!focusReported&&SystemClock.elapsedRealtime()-requestedAt>=350){
+     repaired=true;note(router.probeSnapshot());
+     try{note(router.repairProbe());}catch(Exception e){note("One-time placement/focus repair failed: "+error(e));}
     }
+    if(!placed&&!verified&&SystemClock.elapsedRealtime()-requestedAt>=2000){
+     note(router.probeSnapshot());throw new IllegalStateException("Task placement not verified within 2000 ms");
+    }
+
    }
-  }catch(Exception e){note("Native route failed: "+error(e));finish(interactive);}
+  }catch(Exception e){note("Native route failed: "+error(e));if(router!=null)try{note(router.probeSnapshot());}catch(Exception ignored){}finish(interactive);}
   finally{Binder.restoreCallingIdentity(identity);}
  }
  private void finish(boolean interactive){
