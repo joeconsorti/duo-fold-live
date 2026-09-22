@@ -7,6 +7,7 @@ public class AngleReader extends Binder {
  private GlassCapture capture;
  private PreviewExpansion expansion;
  private HandoffFade fade;
+ private FoldRotationHold rotation;
  private final AnimationModePolicy animationMode=new AnimationModePolicy();
  private boolean previewAllowed=false;
  private final InnerLiveMirror mirror=new InnerLiveMirror();
@@ -47,6 +48,8 @@ public class AngleReader extends Binder {
    boolean effectAllowed=animationMode.update(mode,effectiveAngle,last>0&&heartbeat-last<750);
    boolean mirrorMode=AnimationModePolicy.mirrors(mode);
    appEnabled=appEnabled&&effectAllowed;
+   if(rotation==null)rotation=new FoldRotationHold(caller/100000);
+   rotation.update(appEnabled&&unlocked,last>0&&heartbeat-last<750,effectiveAngle,openThreshold);
    if(fade==null)fade=new HandoffFade();
    fade.settings(fadeSmoothing,fadeGradualness);
    fade.update(live&&!dual&&appEnabled&&!handoff.probeHolding(),effectiveAngle,last>0&&heartbeat-last<750);
@@ -60,10 +63,10 @@ public class AngleReader extends Binder {
    previewAllowed=mirrorMode&&effectAllowed&&!handoff.probeNative()&&CoverPreviewPolicy.allowed(live,dual,primaryInner,unlocked,handoff.active());
    if(!previewAllowed)mirror.close();
    continuity.sample(handoff.probeHolding(),handoff.probeStatus());
-   Bundle b=new Bundle();b.putBoolean("effectAllowed",effectAllowed);b.putString("handoffFade",fade==null?"Handoff fade idle":fade.status);b.putString("continuityProbe",handoff.probeStatus());b.putString("continuityTrace",continuity.report());b.putString("bridgeTrace",expansion==null?"No bridge":expansion.trace);b.putString("expansion",expansion==null?"Expansion idle":expansion.status);b.putBoolean("coverPreview",previewAllowed);b.putString("state",state);b.putString("mirror",mirror.status);b.putBoolean("continuityNative",handoff.probeNative());b.putBoolean("nativeInner",concurrent.secondaryHasNativeContent()||handoff.probeNative());b.putBoolean("dualActive",dual&&concurrent.active());b.putString("handoff",dual?concurrent.status:handoff.status);b.putInt("uid",android.os.Process.myUid());b.putInt("count",count);b.putInt("unique",unique.size());b.putFloat("rawAngle",angle);b.putFloat("angle",effectiveAngle);b.putFloat("min",min);b.putFloat("max",max);b.putLong("last",last);b.putString("raw",raw);reply.writeNoException();reply.writeBundle(b);return true;}
+   Bundle b=new Bundle();b.putString("rotationHold",rotation==null?"Rotation hold idle":rotation.status);b.putBoolean("effectAllowed",effectAllowed);b.putString("handoffFade",fade==null?"Handoff fade idle":fade.status);b.putString("continuityProbe",handoff.probeStatus());b.putString("continuityTrace",continuity.report());b.putString("bridgeTrace",expansion==null?"No bridge":expansion.trace);b.putString("expansion",expansion==null?"Expansion idle":expansion.status);b.putBoolean("coverPreview",previewAllowed);b.putString("state",state);b.putString("mirror",mirror.status);b.putBoolean("continuityNative",handoff.probeNative());b.putBoolean("nativeInner",concurrent.secondaryHasNativeContent()||handoff.probeNative());b.putBoolean("dualActive",dual&&concurrent.active());b.putString("handoff",dual?concurrent.status:handoff.status);b.putInt("uid",android.os.Process.myUid());b.putInt("count",count);b.putInt("unique",unique.size());b.putFloat("rawAngle",angle);b.putFloat("angle",effectiveAngle);b.putFloat("min",min);b.putFloat("max",max);b.putLong("last",last);b.putString("raw",raw);reply.writeNoException();reply.writeBundle(b);return true;}
   if(code==3){stop();reply.writeNoException();return true;}return super.onTransact(code,data,reply,flags);
  }
- private synchronized void stop(){previewAllowed=false;if(fade!=null){fade.close();fade=null;}if(expansion!=null){expansion.close();expansion=null;}if(capture!=null){capture.close();capture=null;}mirror.close();concurrent.release();handoff.release();generation++;if(process!=null){process.destroy();process=null;}state="Stopped";}
+ private synchronized void stop(){previewAllowed=false;if(rotation!=null){rotation.close();rotation=null;}if(fade!=null){fade.close();fade=null;}if(expansion!=null){expansion.close();expansion=null;}if(capture!=null){capture.close();capture=null;}mirror.close();concurrent.release();handoff.release();generation++;if(process!=null){process.destroy();process=null;}state="Stopped";}
  private synchronized void start(String action){
   stop();count=0;unique.clear();angle=Float.NaN;min=180;max=0;last=0;raw="";state="Starting log reader";final int gen=generation;
   Thread reader=new Thread(()->{

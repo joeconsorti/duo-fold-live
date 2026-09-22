@@ -17,6 +17,7 @@ public class FoldSettingsService extends Binder {
   String action=data.readString(),original=data.readString();int user=caller/100000;
   Bundle out=new Bundle();long identity=Binder.clearCallingIdentity();
   try{
+   if("always".equals(action))FoldRotationHold.recoverAbandoned(user);
    if(action.startsWith("decor_")){out=decor(action,original);}else{
    String before=command(user,"get",null),expected;
    if(!known(before))throw new IllegalStateException("Unrecognized fold setting: "+before);
