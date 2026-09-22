@@ -18,6 +18,7 @@ public final class LiveAngles {
  public static String continuityStatus="Continuity test idle",continuityTrace="No continuity samples";
  public static void startContinuityProbe(){continuityRequest=SystemClock.elapsedRealtime();handoffReady();}
  public static void cancelContinuityProbe(){continuityRequest=0;handoffReady();}
+ public static String handoffFade="Handoff fade idle";
  public static String bridgeTrace="No bridge";
  public static String expansionStatus="Expansion idle";
  public static String mirrorStatus="Inner live mirror idle";
@@ -145,7 +146,7 @@ public final class LiveAngles {
    String nextHandoff=b.getString("handoff", "Unknown display status");
    if(!nextHandoff.equals(handoffStatus))RecoveryLog.add(nextHandoff);
    handoffStatus=nextHandoff;continuityStatus=b.getString("continuityProbe","Continuity status unavailable");continuityTrace=b.getString("continuityTrace","");
-   dualActive=b.getBoolean("dualActive");coverPreview=b.getBoolean("coverPreview");expansionStatus=b.getString("expansion","Expansion idle");bridgeTrace=b.getString("bridgeTrace","No bridge");
+   handoffFade=b.getString("handoffFade","Handoff fade idle");dualActive=b.getBoolean("dualActive");coverPreview=b.getBoolean("coverPreview");expansionStatus=b.getString("expansion","Expansion idle");bridgeTrace=b.getString("bridgeTrace","No bridge");
    mirrorStatus=b.getString("mirror","Inner mirror status unavailable");nativeInner=b.getBoolean("nativeInner");continuityNative=b.getBoolean("continuityNative");
    StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null)host.refreshSecondary();
    lastPoll=SystemClock.elapsedRealtime();

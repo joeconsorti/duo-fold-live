@@ -49,7 +49,6 @@ class MainActivity:ComponentActivity(){
     var animationStyle by remember{mutableStateOf(prefs.getString("animation_style","duo") ?: "duo")}
     var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
-    var keepAwake by remember{mutableStateOf(prefs.getBoolean("auto_keep_cover_awake",true))}
     var dual by remember{mutableStateOf(prefs.getBoolean("dual",false))}
     var advanced by remember{mutableStateOf(false)}
     var setup by remember{mutableStateOf(!enabled)}
@@ -63,9 +62,8 @@ class MainActivity:ComponentActivity(){
     var photo by remember{mutableStateOf(BitmapFactory.decodeFile(WallpaperFiles.photoFile(this).absolutePath))}
     var photoStatus by remember{mutableStateOf("")}
     var exporting by remember{mutableStateOf(false)}
-    var foldStatus by remember{mutableStateOf("")}
     LaunchedEffect(Unit){while(true){enabled=prefs.getBoolean("enabled",false);status=LiveAngles.status+"\n"+LiveAngles.handoffStatus;delay(600)}}
-    fun restart(){if(prefs.getBoolean("enabled",false)||org.duofold.live.wallpaperlayer.WallpaperRestore.enabled(this@MainActivity))startBackground() else stopService(Intent(this@MainActivity,FoldBackgroundService::class.java));StandaloneService.instance?.restart()}
+    fun restart(){startBackground();StandaloneService.instance?.restart()}
     fun booleanSetting(key:String,value:Boolean){prefs.edit().putBoolean(key,value).apply();restart()}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)scope.launch{
      photoStatus="Preparing image…"
@@ -119,7 +117,7 @@ class MainActivity:ComponentActivity(){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
         Text("Screen continuity test",style=MaterialTheme.typography.titleMedium)
-        Text("Arm, return to Home or the app you want to test, fully close, then unfold within 30 seconds. During the 20-second hold, opening past 98° tries moving real content to the inner display. The inner animation uses the transferred app. Check that content stays visible, with full-size layout, touch and navigation. Folding below 94° returns content; only one transfer per test. Samsung may reject Home routing. Exit may still flash. Copy the connection report afterward.",style=MaterialTheme.typography.bodySmall)
+        Text("Arm, return to Home or the app you want to test, fully close, then unfold within 30 seconds. During the 20-second hold, opening past 98° tries moving real content to the inner display. The inner animation uses the transferred app. Check that content stays visible, with full-size layout, touch and navigation. Folding below 94° returns content; only one transfer per test. Temporarily requests system navigation on the inner display; restores the prior display policy after the test. Samsung may reject Home routing. Exit may still flash. Copy the connection report afterward.",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(enabled=enabled&&liveMirror&&!dual,onClick={LiveAngles.startContinuityProbe()}){Text("Arm 20-second continuity test")}
         TextButton(onClick={LiveAngles.cancelContinuityProbe()}){Text("Stop continuity test")}
         Text(LiveAngles.continuityStatus,style=MaterialTheme.typography.bodySmall)
@@ -139,13 +137,8 @@ class MainActivity:ComponentActivity(){
         Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         Text("Keep cover awake on close",style=MaterialTheme.typography.titleMedium)
-        Toggle("Automatically keep cover awake",keepAwake){keepAwake=it;booleanSetting("auto_keep_cover_awake",it)}
-        Text("On by default. Applied through Shizuku while the animation runs. Turn this off while connected to restore your previous fold setting. The system setting persists when the animation is stopped.",style=MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick={startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS))}){Text("Samsung display settings")}
-        Text("Display → Continue apps on cover screen → Always. Home may be handled separately.",style=MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick={FoldSettingsClient.request(this@MainActivity,"always",null){r->if(r.getBoolean("ok")){if(!prefs.contains("previous_fold_lock"))prefs.edit().putString("previous_fold_lock",r.getString("previous","null")).apply();foldStatus="Keep-awake setting applied"}else foldStatus="Could not apply: ${r.getString("error")}"}}){Text("Apply keep-awake setting")}
-        TextButton(onClick={keepAwake=false;prefs.edit().putBoolean("auto_keep_cover_awake",false).apply();val original=prefs.getString("previous_fold_lock",null);if(original==null)foldStatus="No saved setting" else FoldSettingsClient.request(this@MainActivity,"restore",original){r->if(r.getBoolean("ok")){prefs.edit().remove("previous_fold_lock").apply();foldStatus="Previous setting restored"}else foldStatus="Restore failed: ${r.getString("error")}"}}){Text("Restore previous setting")}
-        if(foldStatus.isNotEmpty())Text(foldStatus,style=MaterialTheme.typography.bodySmall)
+        Text("Always ON. Saved across updates and checked in the background, including when the animation is off. Reconnects automatically when authorized Shizuku becomes available.",style=MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick={FoldAwakeDefault.reconnect();FoldAwakeDefault.tick(this@MainActivity);startBackground()}){Text("Recheck keep-awake now")}
         Text(FoldAwakeDefault.status,style=MaterialTheme.typography.bodySmall)
         Text(GlassFrames.status,style=MaterialTheme.typography.bodySmall)
         Text(HandoffFrames.status,style=MaterialTheme.typography.bodySmall)

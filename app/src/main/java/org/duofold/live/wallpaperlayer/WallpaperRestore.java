@@ -37,7 +37,7 @@ public final class WallpaperRestore {
  public static Shizuku.UserServiceArgs args(Context c){return new Shizuku.UserServiceArgs(new ComponentName(c,HostLauncher.class)).daemon(true).processNameSuffix("wallpaper_layer").version(BuildConfig.VERSION_CODE);}
  public static void resume(Context context){
   Context c=context.getApplicationContext();
-  if(!enabled(c)&&!c.getSharedPreferences("standalone",0).getBoolean("enabled",false))return;
+  org.duofold.live.FoldAwakeDefault.persist(c);
   try{c.startForegroundService(new Intent(c,FoldBackgroundService.class));}catch(Exception e){status="Wallpaper choice saved; open Duo to resume: "+e.getClass().getSimpleName();}
  }
  public static void tick(Context context){

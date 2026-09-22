@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 public final class DuoApplication extends Application {
  @Override public void onCreate(){
   super.onCreate();
+  FoldAwakeDefault.persist(this);
   SharedPreferences prefs=getSharedPreferences("standalone",MODE_PRIVATE);
   if(!prefs.getBoolean("defaults_170_applied",false)){
    prefs.edit().putBoolean("cover_preview",true).putBoolean("dual",false)

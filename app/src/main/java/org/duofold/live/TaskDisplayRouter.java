@@ -105,7 +105,7 @@ final class TaskDisplayRouter {
     }
     // One task owned by the bounded continuity experiment. Never sweep other tasks.
     private int probeTask=-1,probeHomeRoot=-1,probeCoverRoot=-1,probeAppRoot=-1;
-    private String probeComponent="unknown";
+    private String probeComponent="unknown",sourceConfiguration="unknown";
     synchronized String beginProbe() throws Exception {
         List<?> visible=tasks(0);
         if(visible.isEmpty())throw new IllegalStateException("No visible cover task");
@@ -119,6 +119,7 @@ final class TaskDisplayRouter {
             for(Object candidate:candidates)if(containsTask(focused,number(candidate,"taskId"))&&Objects.equals(top,candidate.getClass().getField("topActivity").get(candidate))){task=candidate;break;}
         }
         if(task==null)throw new IllegalStateException("No task matches focused cover root");
+        sourceConfiguration=String.valueOf(task.getClass().getField("configuration").get(task));
         int type=activityType(task);probeComponent=String.valueOf(task.getClass().getField("topActivity").get(task));
         if(type!=1&&type!=2)throw new UnsupportedOperationException("System screen cannot be routed");
         probeTask=number(task,"taskId");
@@ -183,10 +184,10 @@ final class TaskDisplayRouter {
     }
     private String describe(Object info)throws Exception{
         if(info==null)return "none";
-        return "task="+number(info,"taskId")+" display="+number(info,"displayId")+" type="+activityType(info)+" top="+info.getClass().getField("topActivity").get(info)+" children="+Arrays.toString((int[])info.getClass().getField("childTaskIds").get(info));
+        return "task="+number(info,"taskId")+" display="+number(info,"displayId")+" type="+activityType(info)+" top="+info.getClass().getField("topActivity").get(info)+" config="+info.getClass().getField("configuration").get(info)+" children="+Arrays.toString((int[])info.getClass().getField("childTaskIds").get(info));
     }
     synchronized String probeSnapshot()throws Exception{
-        return "Selected "+probeTask+" "+probeComponent+"; cover root ["+describe(probeRoot(0))+"]; inner root ["+describe(probeRoot(1))+"]; focused ["+describe(api.getMethod("getFocusedRootTaskInfo").invoke(manager))+"]";
+        return "Source config="+sourceConfiguration+"; Selected "+probeTask+" "+probeComponent+"; cover root ["+describe(probeRoot(0))+"]; inner root ["+describe(probeRoot(1))+"]; focused ["+describe(api.getMethod("getFocusedRootTaskInfo").invoke(manager))+"]";
     }
     synchronized void endProbe(boolean interactive) throws Exception {
         try{
