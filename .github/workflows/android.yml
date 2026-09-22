@@ -1,4 +1,4 @@
-name: Android signed prerelease
+name: Android signed release
 
 on:
   push:
@@ -91,12 +91,17 @@ jobs:
           printf 'Automated build of %s at %s.\nVersion code: %s\n' \
             "$GITHUB_REF_NAME" "$GITHUB_SHA" "$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts)" > "$RUNNER_TEMP/release-notes.txt"
           version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
-          if [ -f docs/2.0.0-CHANGELOG.md ]; then
-            cat docs/2.0.0-CHANGELOG.md >> "$RUNNER_TEMP/release-notes.txt"
+          if [ -f docs/3.0.0-CHANGELOG.md ]; then
+            cat docs/3.0.0-CHANGELOG.md >> "$RUNNER_TEMP/release-notes.txt"
+          fi
+          release_flags=(--prerelease --latest=false)
+          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            tag="v$version"
+            release_flags=(--latest=true)
           fi
           gh release create "$tag" dist/*.apk dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Duo Fold Live $version ($tag)" --prerelease --latest=false \
+            --title "Duo Fold Live $version" "${release_flags[@]}" \
             --notes-file "$RUNNER_TEMP/release-notes.txt"
 
       - name: Remove temporary signing files
