@@ -171,7 +171,8 @@ final class TaskDisplayRouter {
         Object inner=probeRoot(1);
         if(inner!=null){
             api.getMethod("setFocusedRootTask",int.class).invoke(manager,number(inner,"taskId"));
-            return "Task placement found on inner; explicitly requested focus for root "+number(inner,"taskId");
+            api.getMethod("setFocusedTask",int.class).invoke(manager,probeTask);
+            return "Task placement found on inner; root and direct task focus requested for "+probeTask;
         }
         Object source=probeRoot(0);
         if(source==null||probeCoverRoot>=0||!exclusivelyOwnedApp(source))throw new IllegalStateException("No exclusively owned app root available for fallback");

@@ -17,6 +17,7 @@ public class NativeHomeRoutingTest {
   public List<Info> getAllRootTaskInfosOnDisplay(int d){List<Info> l=new ArrayList<>();if(cover.displayId==d)l.add(cover);if(inner!=null&&inner.displayId==d)l.add(inner);return l;}
   public void moveRootTaskToDisplayOnTopOrBottom(int id,int display,boolean top){if(reject)throw new SecurityException("Home forbidden");moves++;if(!ignore&&id==10)cover.displayId=display;}
   public void setFocusedRootTask(int id){focused=id==10?cover:inner;}
+  public void setFocusedTask(int id){setFocusedRootTask(id);}
   public Info getFocusedRootTaskInfo(){return focused;}
  }
  @Test public void transfersActualHomeAndRestoresOnlyOwnedRoot()throws Exception{

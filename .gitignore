@@ -13,3 +13,5 @@ signing/
 .env
 .env.*
 captures/
+
+.kotlin/

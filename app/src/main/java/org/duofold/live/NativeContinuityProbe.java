@@ -5,7 +5,7 @@ import java.util.ArrayDeque;
 final class NativeContinuityProbe {
  private TaskDisplayRouter router;
  private boolean active,attempted,verified,finished,repaired,focusReported;
- private long requestedAt;
+ private long requestedAt;private boolean focusSnapshot;
  private String cover,inner;
  private final ArrayDeque<String> events=new ArrayDeque<>();
  boolean nativeVisible(){return active&&verified&&!finished;}
@@ -23,7 +23,7 @@ final class NativeContinuityProbe {
   long identity=Binder.clearCallingIdentity();
   try{
    if(!holding){if(active)finish(interactive);active=false;return;}
-   if(!active){active=true;attempted=false;verified=false;finished=false;repaired=false;focusReported=false;router=null;cover=null;inner=null;events.clear();note("Fixed mapping hold started; native route waits for 98 degrees");}
+   if(!active){active=true;attempted=false;verified=false;finished=false;repaired=false;focusReported=false;focusSnapshot=false;router=null;cover=null;inner=null;events.clear();note("Fixed mapping hold started; native route waits for 98 degrees");}
    if(finished)return;
    if(!attempted&&angle>=98){
     attempted=true;requestedAt=SystemClock.elapsedRealtime();
@@ -40,6 +40,9 @@ final class NativeContinuityProbe {
      repaired=true;note(router.probeSnapshot());
      try{note(router.repairProbe());}catch(Exception e){note("One-time placement/focus repair failed: "+error(e));}
     }
+    if(repaired&&!focusSnapshot&&SystemClock.elapsedRealtime()-requestedAt>=1000){
+     focusSnapshot=true;note("After focus request: "+router.probeSnapshot());note(displayCapabilities());
+    }
     if(!placed&&!verified&&SystemClock.elapsedRealtime()-requestedAt>=2000){
      note(router.probeSnapshot());throw new IllegalStateException("Task placement not verified within 2000 ms");
     }
@@ -47,6 +50,22 @@ final class NativeContinuityProbe {
    }
   }catch(Exception e){note("Native route failed: "+error(e));if(router!=null)try{note(router.probeSnapshot());}catch(Exception ignored){}finish(interactive);}
   finally{Binder.restoreCallingIdentity(identity);}
+ }
+ private String displayCapabilities(){
+  StringBuilder out=new StringBuilder("Inner display capabilities: ");
+  try{
+   Object dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
+   Object info=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,1);
+   out.append("flags=0x").append(Integer.toHexString(info.getClass().getField("flags").getInt(info)));
+   IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"window");
+   Object wm=Class.forName("android.view.IWindowManager$Stub").getMethod("asInterface",IBinder.class).invoke(null,binder);
+   Class<?> api=Class.forName("android.view.IWindowManager");
+   for(String name:new String[]{"hasNavigationBar","shouldShowSystemDecors","getDisplayImePolicy"}){
+    try{out.append("; ").append(name).append('=').append(api.getMethod(name,int.class).invoke(wm,1));}
+    catch(Exception e){out.append("; ").append(name).append(": ").append(error(e));}
+   }
+  }catch(Exception e){out.append(error(e));}
+  return out.toString();
  }
  private void finish(boolean interactive){
   if(finished)return;
