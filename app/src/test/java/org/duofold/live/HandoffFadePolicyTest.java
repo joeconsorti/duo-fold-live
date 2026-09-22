@@ -12,28 +12,44 @@ public class HandoffFadePolicyTest {
   assertTrue(p.opacity(0,false,96,true,true,-1,false)>.8f);
   assertEquals(0,p.opacity(20,false,87,true,true,-1,false),0);
  }
- @Test public void switchWaitsForDestinationDrawThenRevealsWithoutRedimming(){
-  HandoffFadePolicy p=new HandoffFadePolicy();p.opacity(0,false,97,true,true,-1,false);
-  assertEquals(1,p.opacity(10,true,98,true,false,-1,false),0);
-  assertEquals(1,p.opacity(80,true,98,true,true,5,true),0);
-  assertEquals(1,p.opacity(90,true,98,true,true,85,false),0);
-  assertEquals(1,p.opacity(100,true,98,true,true,95,true),0);
-  assertEquals(.5f,p.opacity(190,true,98,true,true,180,true),.001);
-  assertEquals(0,p.opacity(280,true,98,true,true,270,true),0);
-  assertEquals(0,p.opacity(300,true,98,true,true,290,true),0);
-  assertTrue(p.opacity(310,true,96,true,true,300,true)>.8f);
+ @Test public void waitsForStableOnAndDrawAfterSettleInBothDirections(){
+  for(boolean destination:new boolean[]{true,false}){
+   HandoffFadePolicy p=new HandoffFadePolicy();float a=destination?98:94;
+   p.opacity(0,!destination,a,true,true,-1,!destination);
+   assertEquals(1,p.opacity(10,destination,a,true,false,-1,!destination),0);
+   assertEquals(1,p.opacity(80,destination,a,true,true,5,destination),0);
+   assertEquals(1,p.opacity(200,destination,a,true,true,199,destination),0);
+   assertEquals(1,p.opacity(210,destination,a,true,true,205,!destination),0);
+   assertEquals(1,p.opacity(220,destination,a,true,true,215,destination),0);
+   assertEquals(.5f,p.opacity(310,destination,a,true,true,300,destination),.001);
+   assertEquals(0,p.opacity(400,destination,a,true,true,390,destination),0);
+   assertEquals(0,p.opacity(410,destination,a,true,true,400,destination),0);
+  }
  }
- @Test public void returnToCoverAlsoStartsBlack(){
-  HandoffFadePolicy p=new HandoffFadePolicy();p.opacity(0,true,95,true,true,0,true);
-  assertEquals(1,p.opacity(10,false,94,true,true,0,true),0);
-  assertEquals(1,p.opacity(70,false,94,true,true,60,false),0);
-  assertEquals(0,p.opacity(250,false,94,true,true,240,false),0);
- }
- @Test public void missingDrawAndMissingSwitchCannotLeaveScreenBlack(){
+ @Test public void offInterruptsRevealAndNextOnGetsFullFade(){
   HandoffFadePolicy p=new HandoffFadePolicy();p.opacity(0,false,97,true,true,-1,false);
-  p.opacity(10,true,100,true,true,-1,false);
-  assertEquals(1,p.opacity(910,true,100,true,true,-1,false),0);
-  assertEquals(0,p.opacity(1090,true,100,true,true,-1,false),0); // timeout starts on first sampled deadline
+  p.opacity(10,true,98,true,true,10,true);
+  p.opacity(130,true,98,true,true,130,true);
+  assertEquals(.5f,p.opacity(220,true,98,true,true,210,true),.001);
+  assertEquals(1,p.opacity(230,true,98,true,false,220,true),0);
+  assertEquals(1,p.opacity(2000,true,98,true,false,220,true),0);
+  assertEquals(1,p.opacity(2010,true,98,true,true,220,true),0);
+  assertEquals(1,p.opacity(2130,true,98,true,true,2129,true),0);
+  assertEquals(1,p.opacity(2140,true,98,true,true,2140,true),0);
+  assertEquals(.5f,p.opacity(2230,true,98,true,true,2220,true),.001);
+ }
+ @Test public void drawTimeoutStartsFromOnNotMappingChange(){
+  HandoffFadePolicy p=new HandoffFadePolicy();p.opacity(0,false,97,true,true,-1,false);
+  p.opacity(10,true,100,true,false,-1,false);
+  assertEquals(1,p.opacity(2000,true,100,true,false,-1,false),0);
+  assertEquals(1,p.opacity(2010,true,100,true,true,-1,false),0);
+  assertEquals(1,p.opacity(2910,true,100,true,true,-1,false),0);
+  assertEquals(0,p.opacity(3090,true,100,true,true,-1,false),0);
+ }
+ @Test public void physicalMappingChangeWorksBeforeGeometryCatchesUp(){
+  HandoffFadePolicy p=new HandoffFadePolicy();p.mapping("cover");p.opacity(0,false,98,true,true,-1,false);
+  p.mapping("inner");assertEquals(1,p.opacity(10,false,98,true,false,-1,false),0);
+  assertTrue(p.transitioning());
  }
  @Test public void noSwitchTimesOutAndInvalidInputClears(){
   HandoffFadePolicy p=new HandoffFadePolicy();p.opacity(0,false,100,true,true,-1,false);
