@@ -23,7 +23,7 @@ internal object FoldAwakeDefault {
   }
   // A fresh hinge sample is not required to repair the fold setting.
   pending=true;nextAttempt=SystemClock.elapsedRealtime()+15000
-  GlassFrames.foldSetting(if(wanted)"always" else "restore",original){result->
+  FoldSettingsClient.request(context,if(wanted)"always" else "restore",original){result->
    pending=false
    if(result.getBoolean("ok")){
     if(wanted){

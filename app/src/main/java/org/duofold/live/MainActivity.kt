@@ -106,7 +106,7 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Connection & setup","Shizuku and accessibility keep the effect running in the background."){
        TextButton(onClick={setup=!setup}){Text(if(setup)"Hide setup" else "Show setup")}
        if(setup){
-        Button(onClick={val result=ShizukuAccess.request(this@MainActivity,42); if(result.startsWith("Permission requested"))android.widget.Toast.makeText(this@MainActivity,result,1).show() else ShizukuAccess.show(this@MainActivity,result)}){Text("Authorize Shizuku")}
+        Button(onClick={val result=ShizukuAccess.request(this@MainActivity,42); if(result.startsWith("Permission requested"))android.widget.Toast.makeText(this@MainActivity,result,android.widget.Toast.LENGTH_LONG).show() else ShizukuAccess.show(this@MainActivity,result)}){Text("Authorize Shizuku")}
         OutlinedButton(onClick={ShizukuAccess.show(this@MainActivity,ShizukuAccess.report(this@MainActivity))}){Text("Connection report")}
         OutlinedButton(onClick={startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))}){Text("Allow overlays")}
         OutlinedButton(onClick={startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))}){Text("Enable accessibility")}
@@ -118,6 +118,12 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Advanced","Display thresholds, fold behavior, and diagnostics."){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
+        Text("Screen continuity test",style=MaterialTheme.typography.titleMedium)
+        Text("Arm, fully close, then unfold within 30 seconds. Holds one display mapping for up to 20 seconds. Watch for blackout during ACTIVE; exit may flash. Inner Home, touch and navigation are not moved by this test.",style=MaterialTheme.typography.bodySmall)
+        OutlinedButton(enabled=enabled&&liveMirror&&!dual,onClick={LiveAngles.startContinuityProbe()}){Text("Arm 20-second continuity test")}
+        TextButton(onClick={LiveAngles.cancelContinuityProbe()}){Text("Stop continuity test")}
+        Text(LiveAngles.continuityStatus,style=MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
         Text("Fully-open threshold · ${threshold.roundToInt()}°",style=MaterialTheme.typography.titleMedium)
         Slider(value=threshold,onValueChange={threshold=it.roundToInt().toFloat()},valueRange=165f..179f,steps=13,onValueChangeFinished={prefs.edit().putFloat("open_threshold",threshold).apply();restart()})
         Text("At this angle the inner effect is completely clear. Closing starts below this threshold. Default: 172°.",style=MaterialTheme.typography.bodySmall)
@@ -137,15 +143,15 @@ class MainActivity:ComponentActivity(){
         Text("On by default. Applied through Shizuku while the animation runs. Turn this off while connected to restore your previous fold setting. The system setting persists when the animation is stopped.",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={startActivity(Intent(Settings.ACTION_DISPLAY_SETTINGS))}){Text("Samsung display settings")}
         Text("Display → Continue apps on cover screen → Always. Home may be handled separately.",style=MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick={GlassFrames.foldSetting("always",null){r->if(r.getBoolean("ok")){if(!prefs.contains("previous_fold_lock"))prefs.edit().putString("previous_fold_lock",r.getString("previous","null")).apply();foldStatus="Keep-awake setting applied"}else foldStatus="Could not apply: ${r.getString("error")}"}}){Text("Apply keep-awake setting")}
-        TextButton(onClick={keepAwake=false;prefs.edit().putBoolean("auto_keep_cover_awake",false).apply();val original=prefs.getString("previous_fold_lock",null);if(original==null)foldStatus="No saved setting" else GlassFrames.foldSetting("restore",original){r->if(r.getBoolean("ok")){prefs.edit().remove("previous_fold_lock").apply();foldStatus="Previous setting restored"}else foldStatus="Restore failed: ${r.getString("error")}"}}){Text("Restore previous setting")}
+        OutlinedButton(onClick={FoldSettingsClient.request(this@MainActivity,"always",null){r->if(r.getBoolean("ok")){if(!prefs.contains("previous_fold_lock"))prefs.edit().putString("previous_fold_lock",r.getString("previous","null")).apply();foldStatus="Keep-awake setting applied"}else foldStatus="Could not apply: ${r.getString("error")}"}}){Text("Apply keep-awake setting")}
+        TextButton(onClick={keepAwake=false;prefs.edit().putBoolean("auto_keep_cover_awake",false).apply();val original=prefs.getString("previous_fold_lock",null);if(original==null)foldStatus="No saved setting" else FoldSettingsClient.request(this@MainActivity,"restore",original){r->if(r.getBoolean("ok")){prefs.edit().remove("previous_fold_lock").apply();foldStatus="Previous setting restored"}else foldStatus="Restore failed: ${r.getString("error")}"}}){Text("Restore previous setting")}
         if(foldStatus.isNotEmpty())Text(foldStatus,style=MaterialTheme.typography.bodySmall)
         Text(FoldAwakeDefault.status,style=MaterialTheme.typography.bodySmall)
         Text(GlassFrames.status,style=MaterialTheme.typography.bodySmall)
         Text(HandoffFrames.status,style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={startActivity(Intent(this@MainActivity,FoldProbeActivity::class.java))}){Text("Sensor & display diagnostics")}
        }
-       OutlinedButton(onClick={val report=StandaloneService.instance?.report()?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report copied",0).show()}){Text("Copy status report")}
+       OutlinedButton(onClick={val report=StandaloneService.instance?.report()?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report copied",android.widget.Toast.LENGTH_SHORT).show()}){Text("Copy status report")}
       }
       Text("Duo Fold Live ${BuildConfig.VERSION_NAME} · Glass reference: chuspeeism/iphone-duo (MIT). Duo-derived diagnostics. Screen frames stay in memory.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      }

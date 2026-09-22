@@ -49,15 +49,15 @@ public class LayerHost extends Binder {
  void activateNative(){
   NativePhotoLayer candidate=null;
   try{candidate=new NativePhotoLayer(context,main,s->journal.phase(s),e->fallbackNative(e));candidate.start(bitmap);nativePhoto=candidate;nativeStatus="Native compositor surface (below apps)";removePanels();}
-  catch(Throwable e){if(candidate!=null)candidate.close();nativeStatus="Legacy fallback: "+reason(e);journal.phase(nativeStatus);}
+  catch(Throwable e){if(candidate!=null)candidate.close();recordFailure(e);nativeStatus="Legacy fallback: "+reason(e);journal.phase(nativeStatus);}
  }
- void fallbackNative(Throwable error){if(nativePhoto!=null){nativePhoto.close();nativePhoto=null;}nativeStatus="Legacy fallback: "+reason(error);journal.phase(nativeStatus);displayChanged();}
+ void fallbackNative(Throwable error){recordFailure(error);if(nativePhoto!=null){nativePhoto.close();nativePhoto=null;}nativeStatus="Legacy fallback: "+reason(error);journal.phase(nativeStatus);displayChanged();}
  void updatePhoto(Bitmap photo){bitmap=photo;if(nativePhoto!=null){try{nativePhoto.setPhoto(photo);}catch(Throwable e){fallbackNative(e);}}for(Panel panel:panels.values())panel.view.invalidate();}
  void recordFailure(Throwable e){
   journal.fail(operation+": "+reason(e));
   StringWriter w=new StringWriter();e.printStackTrace(new PrintWriter(w));failureTrace=w.toString();
  }
- static String reason(Throwable e){if(e instanceof InvocationTargetException&&e.getCause()!=null)e=e.getCause();return e.getClass().getSimpleName()+": "+e.getMessage();}
+ static String reason(Throwable e){StringBuilder b=new StringBuilder();for(int i=0;e!=null&&i<8;i++,e=e.getCause()){if(i>0)b.append(" <- ");b.append(e.getClass().getSimpleName()).append(": ").append(e.getMessage());}return b.toString();}
  final Runnable tick=new Runnable(){int step;public void run(){if(!running)return;try{
   // Keep the wallpaper-depth windows attached through keyguard and screen-off.
   // They do not receive input, dismiss keyguard, or request display power.
@@ -65,7 +65,7 @@ public class LayerHost extends Binder {
   if(command!=null && (nativePhoto!=null||!panels.isEmpty()) && step%2==0){for(int which:new int[]{5,17}){try{command.invoke(wallpaper,which,action,new Bundle());requests++;}catch(Exception e){details="Wallpaper commands: "+reason(e);command=null;break;}}}
   step++;main.postDelayed(this,100);
  }catch(Throwable e){recordFailure(e);stop("Stopped after error: "+reason(e));}}};
- void refresh(){if(nativePhoto!=null)return;operation="Enumerate displays";DisplayManager dm=(DisplayManager)context.getSystemService(Context.DISPLAY_SERVICE);Set<Integer> keep=new HashSet<>();for(Display d:dm.getDisplays()){
+ void refresh(){if(nativePhoto!=null){nativePhoto.refreshDisplays();return;}operation="Enumerate displays";DisplayManager dm=(DisplayManager)context.getSystemService(Context.DISPLAY_SERVICE);Set<Integer> keep=new HashSet<>();for(Display d:dm.getDisplays()){
   if(d.getDisplayId()!=0&&d.getDisplayId()!=1)continue;
   if(!d.isValid())continue;
   Display.Mode mode=d.getMode();int lo=Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight()),hi=Math.max(mode.getPhysicalWidth(),mode.getPhysicalHeight());
