@@ -103,6 +103,65 @@ final class TaskDisplayRouter {
         api.getMethod("startActivityFromRecents",int.class,Bundle.class).invoke(manager,id,options);
         lastDestination=destination;movedTasks.add(id);result.putBoolean("ok",true);result.putBoolean("moved",true);result.putInt("taskId",id);return result;
     }
+    // One task owned by the bounded continuity experiment. Never sweep other tasks.
+    private int probeTask=-1,probeHomeRoot=-1,probeCoverRoot=-1;
+    synchronized String beginProbe() throws Exception {
+        List<?> visible=tasks(0);
+        if(visible.isEmpty())throw new IllegalStateException("No visible cover task");
+        Object task=visible.get(0);int type=activityType(task);
+        if(type!=1&&type!=2)throw new UnsupportedOperationException("System screen cannot be routed");
+        probeTask=number(task,"taskId");
+        if(type==2){
+            Object source=home(0),destination=home(1);
+            if(source==null)throw new IllegalStateException("Cover Home root missing");
+            probeCoverRoot=number(source,"taskId");
+            if(destination!=null){
+                Object a=task.getClass().getField("topActivity").get(task);
+                Object b=destination.getClass().getField("topActivity").get(destination);
+                if(!Objects.equals(a,b))throw new UnsupportedOperationException("Inner Home differs from cover Home");
+                probeTask=number(destination,"taskId");
+                api.getMethod("setFocusedRootTask",int.class).invoke(manager,probeTask);
+            }else{
+                // Try the real launcher root; Android/Samsung may reject secondary Home.
+                probeHomeRoot=probeCoverRoot;
+                api.getMethod("moveRootTaskToDisplayOnTopOrBottom",int.class,int.class,boolean.class).invoke(manager,probeHomeRoot,1,true);
+                api.getMethod("setFocusedRootTask",int.class).invoke(manager,probeHomeRoot);
+            }
+        }else{
+            int result=(int)api.getMethod("startActivityFromRecents",int.class,Bundle.class).invoke(manager,probeTask,ActivityOptions.makeBasic().setLaunchDisplayId(1).toBundle());
+            if(result<0)throw new IllegalStateException("Task launch rejected: "+result);
+        }
+        return "Requested native "+(type==2?"Home":"app")+" task "+probeTask+" on inner display";
+    }
+    synchronized boolean probeVerified() throws Exception {
+        if(probeTask<0)return false;
+        boolean found=false;
+        List<?> list=(List<?>)api.getMethod("getTasks",int.class,boolean.class,boolean.class,int.class).invoke(manager,64,false,false,1);
+        for(Object task:list)if(number(task,"taskId")==probeTask&&number(task,"displayId")==1)found=true;
+        // Home root IDs can differ from their child task IDs.
+        for(Object root:roots(1))if(number(root,"taskId")==probeTask&&number(root,"displayId")==1)found=true;
+        Object focused=api.getMethod("getFocusedRootTaskInfo").invoke(manager);
+        if(!found||focused==null||number(focused,"displayId")!=1)return false;
+        if(number(focused,"taskId")==probeTask)return true;
+        for(int child:(int[])focused.getClass().getField("childTaskIds").get(focused))if(child==probeTask)return true;
+        return false;
+    }
+    synchronized void endProbe(boolean interactive) throws Exception {
+        try{
+            if(probeHomeRoot>=0){
+                api.getMethod("moveRootTaskToDisplayOnTopOrBottom",int.class,int.class,boolean.class).invoke(manager,probeHomeRoot,0,interactive);
+            }else if(probeCoverRoot<0&&probeTask>=0){
+                // Only restore this exact app if it actually reached display 1.
+                List<?> list=(List<?>)api.getMethod("getTasks",int.class,boolean.class,boolean.class,int.class).invoke(manager,64,false,false,1);
+                for(Object task:list)if(number(task,"taskId")==probeTask){
+                    if(!interactive)throw new IllegalStateException("App return skipped while locked; normal mapping will resume");
+                    int result=(int)api.getMethod("startActivityFromRecents",int.class,Bundle.class).invoke(manager,probeTask,ActivityOptions.makeBasic().setLaunchDisplayId(0).toBundle());
+                    if(result<0)throw new IllegalStateException("App return rejected: "+result);
+                }
+            }
+            if(interactive&&probeCoverRoot>=0)api.getMethod("setFocusedRootTask",int.class).invoke(manager,probeCoverRoot);
+        }finally{probeTask=-1;probeHomeRoot=-1;probeCoverRoot=-1;}
+    }
     private boolean matchesLaunch(Object task, ComponentName component) throws Exception {
         Intent base = (Intent) task.getClass().getField("baseIntent").get(task);
         if (base != null && component.equals(base.getComponent())) return true;

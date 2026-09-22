@@ -11,4 +11,12 @@ public class ContinuityProbePolicyTest {
  @Test public void staleTokenCannotArmAfterHelperRestart(){ContinuityProbePolicy p=new ContinuityProbePolicy();p.update(40000,1000,0,true,true,false);assertEquals(0,p.update(40100,1000,20,true,true,true));}
  @Test public void armedTimeoutAndAbort(){ContinuityProbePolicy p=new ContinuityProbePolicy();p.update(1000,1000,0,true,true,false);assertEquals(0,p.update(31000,1000,20,true,true,true));p.update(32000,32000,0,true,true,false);p.abort();assertEquals(0,p.update(32100,32000,20,true,true,true));}
  @Test public void cannotBeginAboveEightyDegrees(){ContinuityProbePolicy p=new ContinuityProbePolicy();p.update(1000,1000,0,true,true,false);assertEquals(0,p.update(1100,1000,90,true,true,true));}
+ @Test public void recordsDistinctExitReasons(){
+  ContinuityProbePolicy p=active();p.update(1200,0,90,true,true,true);assertTrue(p.status.contains("Stop requested"));
+  p=active();p.update(1200,1000,90,false,true,true);assertTrue(p.status.contains("angle stale"));
+  p=active();p.update(1200,1000,90,true,true,false);assertTrue(p.status.contains("request canceled/lost"));
+  p=active();p.update(1200,1000,0,true,true,true);assertTrue(p.status.contains("fully closed"));
+  p=active();p.update(21100,1000,180,true,true,true);assertTrue(p.status.contains("20-second deadline"));
+  String ended=p.status;p.abort();assertEquals(ended,p.status);
+ }
 }

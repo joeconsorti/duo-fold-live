@@ -4,13 +4,16 @@ import java.util.ArrayDeque;
 /** Read-only state samples, not proof of illuminated pixels. */
 final class ContinuityProbeDiagnostics {
  private final ArrayDeque<String> events=new ArrayDeque<>();
- private boolean wasActive;private long last,maxGap;private String previous="";
+ private boolean wasActive;private long last,maxGap,endedAt;private String previous="",previousStatus="";
  String report(){return "Display samples (software state; not optical measurements); maximum sample gap="+maxGap+" ms\n"+String.join("\n",events);}
- void sample(boolean active){
+ void sample(boolean active,String status){
   long now=SystemClock.elapsedRealtime();
   if(active&&!wasActive){events.clear();last=0;maxGap=0;previous="";}
-  if(!active){if(wasActive)add(now+" test hold ended");wasActive=false;return;}
-  wasActive=true;if(last>0&&now-last<100)return;
+  String route=status.contains("\n")?status.substring(status.indexOf('\n')+1):"";
+  if(active&&!route.equals(previousStatus))add(now+" "+route);
+  previousStatus=route;
+  if(!active&&wasActive){endedAt=now;add(now+" test hold ended: "+status);}
+  wasActive=active;if(!active&&(endedAt==0||now-endedAt>2000))return;if(last>0&&now-last<100)return;
   if(last>0)maxGap=Math.max(maxGap,now-last);last=now;
   long identity=Binder.clearCallingIdentity();
   try{

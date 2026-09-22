@@ -5,7 +5,7 @@ final class ContinuityProbePolicy {
  private long consumed,armedAt,started; private boolean armed,closedSeen,holding;
  String status="Continuity test idle";
  boolean holding(){return holding;}
- void abort(){armed=false;holding=false;closedSeen=false;status="Continuity test stopped";}
+ void abort(){if(armed||holding)status="Continuity test ended: helper stopped or mode changed";armed=false;holding=false;closedSeen=false;}
  int update(long now,long request,float angle,boolean fresh,boolean allowed,boolean coverOwned){
   if(request>consumed){
    consumed=request;
@@ -13,7 +13,8 @@ final class ContinuityProbePolicy {
   }
   if(holding){
    if(request==0||!allowed||!fresh||!Float.isFinite(angle)||!coverOwned||angle<=0||now-started>=20000){
-    holding=false;armed=false;status="Continuity test ended; normal mapping restored (exit flash possible)";return FINISH;
+    String reason=request==0?"Stop requested":!allowed?"screen locked/noninteractive or live mode disabled":!fresh?"angle stale":!Float.isFinite(angle)?"invalid angle":!coverOwned?"cover request canceled/lost":angle<=0?"fully closed":"20-second deadline";
+    holding=false;armed=false;status="Continuity test ended at "+now+": "+reason+"; angle="+angle+"; fresh="+fresh+"; coverOwned="+coverOwned+"; exit flash possible";return FINISH;
    }
    status="ACTIVE: fixed cover-primary mapping; "+(20000-(now-started))/1000+" seconds remaining";return HOLD;
   }

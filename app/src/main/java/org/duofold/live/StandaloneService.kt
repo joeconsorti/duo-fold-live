@@ -159,7 +159,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         if(!::displays.isInitialized)return
         val current=displays.getDisplay(0)
         val primaryInner=current?.mode?.let{minOf(it.physicalWidth,it.physicalHeight).toFloat()/maxOf(it.physicalWidth,it.physicalHeight)>.7f}?:false
-        PreviewTransition.update(previewMode() && settings().getBoolean("enabled",false) && !getSystemService(KeyguardManager::class.java).isKeyguardLocked(),primaryInner)
+        PreviewTransition.update(!LiveAngles.nativeInner && previewMode() && settings().getBoolean("enabled",false) && !getSystemService(KeyguardManager::class.java).isKeyguardLocked(),primaryInner)
         val preview=!settings().getBoolean("dual",false) && settings().getBoolean("cover_preview",true) && LiveAngles.coverPreview
         if(!settings().getBoolean("enabled",false)||(!preview && (!settings().getBoolean("dual",false)||!LiveAngles.dualActive))||!usable()){dismissSecondary();return}
         val target=displays.displays.firstOrNull{it.displayId==1 && (setOf(it.mode.physicalWidth,it.mode.physicalHeight)==setOf(1248,1972) || setOf(it.mode.physicalWidth,it.mode.physicalHeight)==setOf(2448,1848))}

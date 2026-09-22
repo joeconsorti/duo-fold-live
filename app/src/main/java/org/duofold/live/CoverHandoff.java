@@ -7,9 +7,11 @@ import java.util.concurrent.Executor;
 final class CoverHandoff {
  private Object manager,owned; private Method cancel,request; private Class<?> requestType,callbackType;
  private int coverId=-1,innerId=-1; private boolean innerHeld=false; private final HandoffPolicy policy=new HandoffPolicy();
+ private final NativeContinuityProbe nativeProbe=new NativeContinuityProbe();
+ synchronized boolean probeNative(){return nativeProbe.nativeVisible();}
  private final ContinuityProbePolicy probe=new ContinuityProbePolicy();
  synchronized boolean probeHolding(){return probe.holding();}
- synchronized String probeStatus(){return probe.status;}
+ synchronized String probeStatus(){return probe.status+"\n"+nativeProbe.report();}
  String status="Normal display control";
  private void init()throws Exception{
   if(manager!=null)return;
@@ -27,6 +29,7 @@ final class CoverHandoff {
  }
  synchronized void update(float angle,boolean fresh,boolean interactive,boolean direct,float openThreshold,long probeRequest){
   int test=probe.update(SystemClock.elapsedRealtime(),probeRequest,angle,fresh,interactive&&direct,owned!=null&&!innerHeld);
+  nativeProbe.update(test==ContinuityProbePolicy.HOLD,angle,interactive);
   if(test==ContinuityProbePolicy.HOLD)return;
   if(test==ContinuityProbePolicy.FINISH){releaseOwned();return;}
   if(owned!=null){
@@ -65,7 +68,7 @@ final class CoverHandoff {
   finally{Binder.restoreCallingIdentity(identity);}
  }
  synchronized boolean active(){return owned!=null && !innerHeld;}
- synchronized void release(){probe.abort();releaseOwned();}
+ synchronized void release(){probe.abort();nativeProbe.update(false,0,false);releaseOwned();}
  private void releaseOwned(){
   policy.reset();if(owned==null)return;long identity=Binder.clearCallingIdentity();
   try{cancel.invoke(manager);owned=null;innerHeld=false;status="Normal display control restored";}catch(Exception e){status="Display release pending";}finally{Binder.restoreCallingIdentity(identity);}
