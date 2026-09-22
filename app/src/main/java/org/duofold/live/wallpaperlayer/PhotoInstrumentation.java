@@ -11,6 +11,7 @@ import java.nio.file.StandardCopyOption;
 
 /** Android-managed process: window sessions have a real process record. */
 public class PhotoInstrumentation extends Instrumentation {
+ public static volatile boolean running;
  LayerHost host; UiAutomation automation; BroadcastReceiver screenEvents;
  final java.util.ArrayDeque<String> transitionHistory=new java.util.ArrayDeque<>();
  final java.util.ArrayDeque<String> windowSnapshots=new java.util.ArrayDeque<>();
@@ -34,6 +35,8 @@ public class PhotoInstrumentation extends Instrumentation {
  public void onCreate(Bundle args){super.onCreate(args);start();}
  public void onStart(){
   File stop=new File(getTargetContext().getFilesDir(),"stop-layer");
+  if(!WallpaperRestore.enabled(getTargetContext())||stop.exists()){finish(0,new Bundle());return;}
+  running=true;
   try {
    // No-restart instrumentation preserves the app process. Restrict exemptions
    // to the same framework packages used by the existing wallpaper renderer.
@@ -73,7 +76,7 @@ public class PhotoInstrumentation extends Instrumentation {
      Bitmap replacement=BitmapFactory.decodeFile(photo.getAbsolutePath());
      if(replacement!=null){runOnMainSync(()->{host.updatePhoto(replacement);host.journal.phase("Custom photo updated");});photoVersion=changed;}
     }
-    if(stop.exists()){
+    if(stop.exists()||!WallpaperRestore.enabled(getTargetContext())){
      runOnMainSync(()->host.stop("Custom wallpaper disabled; original wallpaper unchanged"));
      continue;
     }
@@ -85,7 +88,7 @@ public class PhotoInstrumentation extends Instrumentation {
    if(screenEvents!=null)try{getTargetContext().unregisterReceiver(screenEvents);}catch(Exception ignored){}
    try {if(host!=null)runOnMainSync(()->host.stop("Registered host finished; layer removed"));}catch(Throwable ignored){}
    if(automation!=null)try{automation.dropShellPermissionIdentity();}catch(Throwable ignored){}
-   stop.delete();finish(0,new Bundle());
+   running=false;finish(0,new Bundle());
   }
  }
  void publish(String report){

@@ -14,10 +14,16 @@ public final class LiveAngles {
  private static long last=0;
  public static boolean dualActive=false;
  public static boolean coverPreview=false;
+ private static volatile long continuityRequest;
+ public static String continuityStatus="Continuity test idle",continuityTrace="No continuity samples";
+ public static void startContinuityProbe(){continuityRequest=SystemClock.elapsedRealtime();handoffReady();}
+ public static void cancelContinuityProbe(){continuityRequest=0;handoffReady();}
+ public static String rotationHold="Rotation hold idle";
+ public static String handoffFade="Handoff fade idle";
  public static String bridgeTrace="No bridge";
  public static String expansionStatus="Expansion idle";
  public static String mirrorStatus="Inner live mirror idle";
- public static boolean nativeInner=false;
+ public static boolean nativeInner=false,continuityNative=false;
  private static volatile LiveAngles current;
  private static int mirrorSerial;
  public interface MirrorCallback {void ready(boolean ok,String status);}
@@ -57,12 +63,14 @@ public final class LiveAngles {
  private WindowManager wm; private View anchor;
  private WindowManager secondaryWm;private View secondaryAnchor;private String anchorKey="",secondaryKey=""; private Shizuku.UserServiceArgs args;
  private volatile long lastPoll;
+ private long secondaryRefreshAt,statusFormatAt;
+ public static volatile boolean effectAllowed=true;
  private boolean pollInFlight,urgentPoll;
  private long pollStarted;
  private static long roundTripMs;
  private static String rateSummary="Collecting polling rates";
  private long rateStarted;private int ratePolls,rateReplies,rateChanges,rateReceived;
- public static String latencyReport(){return "Angle poll minimum wait: 1 ms; last round trip: "+roundTripMs+" ms; "+rateSummary;}
+ public static String latencyReport(){return "Angle poll target period: 4 ms; last round trip: "+roundTripMs+" ms; "+rateSummary;}
  public static void handoffReady(){LiveAngles self=current;if(self==null)return;self.main.post(()->{
   if(!self.running)return;
   if(self.pollInFlight){self.urgentPoll=true;return;}
@@ -85,7 +93,7 @@ public final class LiveAngles {
    running=true;current=this;last=0;count=0;action="org.duofold.live.wallpaperprobe.READ_"+SystemClock.elapsedRealtime();
    ensureAnchors();
    thread=new HandlerThread("duofold-angle-ipc");thread.start();worker=new Handler(thread.getLooper());
-   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(152);
+   args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(BuildConfig.VERSION_CODE);
    bound=true;Shizuku.bindUserService(args,connection);status="Connecting to Shizuku…";
    main.postDelayed(()->{if(running&&reader==null){status="Connection timed out — reconnect in app";stop();}},12000);
   }catch(Exception e){status=e.getMessage();stop();}
@@ -123,7 +131,7 @@ public final class LiveAngles {
     p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("dual",false)?1:0);
     android.view.Display display=context.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
     android.view.Display.Mode mode=display.getMode();p.writeInt(Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight())/(float)Math.max(mode.getPhysicalWidth(),mode.getPhysicalHeight())>.7f?1:0);
-    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("enabled",false)?1:0);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("closed_threshold",1f));
+    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("enabled",false)?1:0);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("closed_threshold",2f));p.writeLong(continuityRequest);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING));p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS));p.writeString(context.getSharedPreferences("standalone",0).getString("animation_mode",AnimationModePolicy.DEFAULT));
    }
    if(!b.transact(code,p,r,0))throw new IllegalStateException("Unsupported reader");r.readException();return code==2?r.readBundle(getClass().getClassLoader()):null;
   }finally{p.recycle();r.recycle();}
@@ -140,10 +148,10 @@ public final class LiveAngles {
    if(!running)return;
    String nextHandoff=b.getString("handoff", "Unknown display status");
    if(!nextHandoff.equals(handoffStatus))RecoveryLog.add(nextHandoff);
-   handoffStatus=nextHandoff;
-   dualActive=b.getBoolean("dualActive");coverPreview=b.getBoolean("coverPreview");expansionStatus=b.getString("expansion","Expansion idle");bridgeTrace=b.getString("bridgeTrace","No bridge");
-   mirrorStatus=b.getString("mirror","Inner mirror status unavailable");nativeInner=b.getBoolean("nativeInner");
-   StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null)host.refreshSecondary();
+   handoffStatus=nextHandoff;continuityStatus=b.getString("continuityProbe","Continuity status unavailable");continuityTrace=b.getString("continuityTrace","");
+   rotationHold=b.getString("rotationHold","Rotation hold idle");effectAllowed=b.getBoolean("effectAllowed",true);handoffFade=b.getString("handoffFade","Handoff fade idle");dualActive=b.getBoolean("dualActive");coverPreview=b.getBoolean("coverPreview");expansionStatus=b.getString("expansion","Expansion idle");bridgeTrace=b.getString("bridgeTrace","No bridge");
+   mirrorStatus=b.getString("mirror","Inner mirror status unavailable");nativeInner=b.getBoolean("nativeInner");continuityNative=b.getBoolean("continuityNative");
+   StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null&&SystemClock.elapsedRealtime()>=secondaryRefreshAt){secondaryRefreshAt=SystemClock.elapsedRealtime()+8;host.refreshSecondary();}
    lastPoll=SystemClock.elapsedRealtime();
    long stamp=b.getLong("last");int received=b.getInt("count");
    ratePolls++;
@@ -164,7 +172,7 @@ public final class LiveAngles {
    android.view.Display.Mode currentMode=currentDisplay.getMode();
    boolean innerNow=Math.min(currentMode.getPhysicalWidth(),currentMode.getPhysicalHeight())/(float)Math.max(currentMode.getPhysicalWidth(),currentMode.getPhysicalHeight())>.7f;
    HandoffFrames.update(innerNow,dualActive,angle,fresh(),context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f),context.getSharedPreferences("standalone",0).getBoolean("enabled",false) && context.getSharedPreferences("standalone",0).getBoolean("dual",false) && context.getSystemService(PowerManager.class).isInteractive() && !context.getSystemService(android.app.KeyguardManager.class).isKeyguardLocked());
-   status=(fresh()?String.format(Locale.US,"LIVE %.0f° (closed ≤%.0f°)",b.getFloat("rawAngle"),context.getSharedPreferences("standalone",0).getFloat("closed_threshold",1f)):"Waiting for fresh wallpaper angles")+" · "+received+" replies · "+b.getInt("unique")+" distinct · UID "+b.getInt("uid");
+   if(SystemClock.elapsedRealtime()>=statusFormatAt){statusFormatAt=SystemClock.elapsedRealtime()+250;status=(fresh()?String.format(Locale.US,"LIVE %.0f° (closed ≤%.0f°)",b.getFloat("rawAngle"),context.getSharedPreferences("standalone",0).getFloat("closed_threshold",2f)):"Waiting for fresh wallpaper angles")+" · "+received+" replies · "+b.getInt("unique")+" distinct · UID "+b.getInt("uid");}
    roundTripMs=SystemClock.elapsedRealtime()-pollStarted;
    pollInFlight=false;
    long delay=PollCadence.delay(on,roundTripMs,urgentPoll);urgentPoll=false;
@@ -172,7 +180,7 @@ public final class LiveAngles {
   });}catch(Exception e){fail(e);}});
  }};
  private void fail(Exception e){main.post(()->{if(running){RecoveryLog.add("Reader error: "+e.getClass().getSimpleName());status="Reader error: "+e.getMessage();stop();}});}
- public void stop(){HandoffFrames.clear();if(current==this)current=null;nativeInner=false;coverPreview=false;running=false;pollInFlight=false;urgentPoll=false;dualActive=false;last=0;if(status.startsWith("LIVE")||status.startsWith("Waiting")||status.startsWith("Connecting"))status="Angle reader stopped";main.removeCallbacksAndMessages(null);
+ public void stop(){continuityRequest=0;HandoffFrames.clear();if(current==this)current=null;nativeInner=false;continuityNative=false;coverPreview=false;running=false;pollInFlight=false;urgentPoll=false;dualActive=false;last=0;if(status.startsWith("LIVE")||status.startsWith("Waiting")||status.startsWith("Connecting"))status="Angle reader stopped";main.removeCallbacksAndMessages(null);
   if(bound){try{Shizuku.unbindUserService(args,connection,true);}catch(Exception ignored){}bound=false;}
   reader=null;if(thread!=null){thread.quitSafely();thread=null;}
   if(secondaryAnchor!=null){try{secondaryWm.removeViewImmediate(secondaryAnchor);}catch(Exception ignored){}secondaryAnchor=null;}

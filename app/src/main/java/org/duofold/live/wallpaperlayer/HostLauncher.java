@@ -38,6 +38,7 @@ public class HostLauncher extends Binder {
   in.enforceInterface(TOKEN);
   synchronized(this){int uid=Binder.getCallingUid();if(owner<0)owner=uid;if(owner!=uid)throw new SecurityException("Wrong caller");}
   if(code==1){ParcelFileDescriptor fd=in.readTypedObject(ParcelFileDescriptor.CREATOR);try{if(fd!=null)fd.close();}catch(IOException ignored){}startTest();out.writeNoException();out.writeString("Starting registered photo host. You can return to fold settings while the photo runs.");return true;}
+  if(code==4){out.writeNoException();out.writeInt(active?1:0);return true;}
   if(code==2){out.writeNoException();out.writeString(snapshot());return true;}
   if(code==3){out.writeNoException();out.writeString("Stop requested; removing photo layer.");return true;}
   return super.onTransact(code,in,out,flags);

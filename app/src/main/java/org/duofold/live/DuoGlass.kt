@@ -184,7 +184,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
     canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR)
     canvas.scale(canvas.width.toFloat()/width,canvas.height.toFloat()/height)
     if(preview && frame!=null)canvas.drawBitmap(frame!!.bitmap,null,RectF(0f,0f,width.toFloat(),height.toFloat()),null)
-    if(amount<=.003f || (!preview && !LiveAngles.fresh()))return@runCatching
+    if(amount<=.003f || (!preview && (!LiveAngles.fresh() || !LiveAngles.effectAllowed)))return@runCatching
     val f=frame
     val size=Point()
     if(!preview && !frozen)context.getSystemService(DisplayManager::class.java).getDisplay(0)?.getRealSize(size)

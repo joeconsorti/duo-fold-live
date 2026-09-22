@@ -24,22 +24,27 @@ final class GlassCapture extends Binder {
     String action=data.readString();
     String previous=command("settings","get","system","fold_lock_behavior").trim();
     if(!java.util.Arrays.asList("null","stay_awake_on_fold_key","selective_stay_awake_key","sleep_on_fold_key").contains(previous))throw new IllegalStateException("Unrecognized existing fold setting; use Samsung Display settings");
-    if("always".equals(action))command("settings","put","system","fold_lock_behavior","stay_awake_on_fold_key");
+    String expected;
+    if("always".equals(action)){expected="stay_awake_on_fold_key";if(!expected.equals(previous))command("settings","put","system","fold_lock_behavior",expected);}
     else if("restore".equals(action)){
-     String original=data.readString();
+     String original=data.readString();expected=original;
      if("null".equals(original))command("settings","delete","system","fold_lock_behavior");
      else if(java.util.Arrays.asList("stay_awake_on_fold_key","selective_stay_awake_key","sleep_on_fold_key").contains(original))command("settings","put","system","fold_lock_behavior",original);
      else throw new IllegalArgumentException("Unknown original fold setting");
     }else throw new IllegalArgumentException("Unknown action");
-    result.putString("previous",previous);result.putString("value",command("settings","get","system","fold_lock_behavior").trim());result.putBoolean("ok",true);
+    String observed=command("settings","get","system","fold_lock_behavior").trim();
+    if(!expected.equals(observed))throw new IllegalStateException("Fold setting readback mismatch: "+observed);
+    result.putString("previous",previous);result.putString("value",observed);result.putBoolean("ok",true);
    }else if(code==1 || code==3){
     long captureStarted=SystemClock.elapsedRealtime();
     int n=data.readInt();if(n<1||n>4)throw new IllegalArgumentException("No valid overlay exclusion surfaces");
     excluded=new SurfaceControl[n];for(int i=0;i<n;i++)excluded[i]=data.readTypedObject(SurfaceControl.CREATOR);
+    int displayId=code==1&&data.dataAvail()>=4?data.readInt():0;
+    if(displayId<0||displayId>1)throw new IllegalArgumentException("Unsupported capture display");
     for(SurfaceControl sc:excluded)if(sc==null||!sc.isValid())throw new IllegalStateException("Overlay surface changed");
     Object wm=service("window","android.view.IWindowManager$Stub");Class<?> wa=Class.forName("android.view.IWindowManager");
     if((boolean)wa.getMethod("isKeyguardLocked").invoke(wm))throw new IllegalStateException("Locked — capture paused");
-    Object dm=service("display","android.hardware.display.IDisplayManager$Stub");Object info=Class.forName("android.hardware.display.IDisplayManager").getMethod("getDisplayInfo",int.class).invoke(dm,0);
+    Object dm=service("display","android.hardware.display.IDisplayManager$Stub");Object info=Class.forName("android.hardware.display.IDisplayManager").getMethod("getDisplayInfo",int.class).invoke(dm,displayId);
     int w=info.getClass().getField("logicalWidth").getInt(info),h=info.getClass().getField("logicalHeight").getInt(info);
     if(info.getClass().getField("state").getInt(info)!=2)throw new IllegalStateException("Screen off — capture paused");
     if(captureApi==null)captureApi=DisplayCaptureApi.resolve(Class::forName,wa,Rect.class,SurfaceControl[].class);
@@ -56,17 +61,17 @@ final class GlassCapture extends Binder {
        : (java.util.function.Consumer<Object>)(item->completion.accept(item,0));
      Object listener=captureApi.listenerConstructor.newInstance(callback);
      try{
-      captureApi.capture.invoke(wm,0,args,listener);
+      captureApi.capture.invoke(wm,displayId,args,listener);
       shot=completion.await(250);
      }finally{java.lang.ref.Reference.reachabilityFence(callback);java.lang.ref.Reference.reachabilityFence(listener);}
     }
-    result.putString("backend","WindowManager display 0 / "+captureApi.name);
+    result.putString("backend","WindowManager display "+displayId+" / "+captureApi.name);
     buffer=(HardwareBuffer)shot.getClass().getMethod("getHardwareBuffer").invoke(shot);
     if((boolean)shot.getClass().getMethod("containsSecureLayers").invoke(shot))throw new IllegalStateException("Protected content omitted");
     Bitmap hardware=(Bitmap)shot.getClass().getMethod("asBitmap").invoke(shot);
     if(hardware==null)throw new IllegalStateException("No readable frame");
     Bitmap bitmap=hardware.copy(Bitmap.Config.ARGB_8888,false);hardware.recycle();
-    Object after=Class.forName("android.hardware.display.IDisplayManager").getMethod("getDisplayInfo",int.class).invoke(dm,0);
+    Object after=Class.forName("android.hardware.display.IDisplayManager").getMethod("getDisplayInfo",int.class).invoke(dm,displayId);
     if(after==null || after.getClass().getField("logicalWidth").getInt(after)!=w || after.getClass().getField("logicalHeight").getInt(after)!=h ||
        !java.util.Objects.equals(info.getClass().getField("uniqueId").get(info),after.getClass().getField("uniqueId").get(after))){bitmap.recycle();throw new IllegalStateException("Panel changed during capture; retry before handoff");}
     result.putParcelable("bitmap",bitmap);result.putInt("width",w);result.putInt("height",h);result.putLong("stamp",captureStarted);result.putBoolean("ok",true);

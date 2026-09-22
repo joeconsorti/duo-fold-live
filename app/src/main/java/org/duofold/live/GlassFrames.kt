@@ -10,6 +10,7 @@ internal object GlassFrames {
  var status by mutableStateOf("Glass renderer ready");private set
  private val main=Handler(Looper.getMainLooper())
  private val executor=Executors.newSingleThreadExecutor()
+ private val settingsExecutor=Executors.newSingleThreadExecutor()
  private var suspended=false
  fun suspendCapture(){suspended=true;generation++;frame=null;main.removeCallbacks(tick)}
  fun resumeCapture(){if(suspended){suspended=false;if(clients>0)main.post(tick)}}
@@ -23,15 +24,15 @@ internal object GlassFrames {
   if(pending){main.postDelayed(this,50);return}
   val valid=surfaces.values.filter{it.isValid}.take(4)
   if(valid.isEmpty()){frame=null;main.postDelayed(this,100);return}
-  val gen=generation;pending=true
+  val gen=generation;val captureDisplay=if(LiveAngles.continuityNative)1 else 0;pending=true
   executor.execute{
    var result:Bundle?=null;var error="Glass frame unavailable"
    val p=Parcel.obtain();val r=Parcel.obtain()
-   try{val remote=LiveAngles.captureBinder();p.writeInterfaceToken(GlassCapture.TOKEN);p.writeInt(valid.size);valid.forEach{p.writeTypedObject(it,0)}
+   try{val remote=LiveAngles.captureBinder();p.writeInterfaceToken(GlassCapture.TOKEN);p.writeInt(valid.size);valid.forEach{p.writeTypedObject(it,0)};p.writeInt(captureDisplay)
     remote.transact(1,p,r,0);r.readException();result=r.readBundle(Bitmap::class.java.classLoader);error=result?.getString("error")?:error
    }catch(e:Exception){error=e.message?:error}finally{p.recycle();r.recycle()}
    val response=result;val message=error
-   main.post{pending=false;if(gen==generation && clients>0 && !suspended){
+   main.post{pending=false;if(gen==generation && clients>0 && !suspended && captureDisplay==(if(LiveAngles.continuityNative)1 else 0)){
     val bitmap=response?.getParcelable("bitmap",Bitmap::class.java)
     if(response?.getBoolean("ok")==true && bitmap!=null){frame=GlassFrame(bitmap,response.getInt("width"),response.getInt("height"),response.getLong("stamp"));status="Projected glass · live compositor frames · ${response.getString("backend") ?: "layer capture"}"}
     else{frame=null;status="Glass unavailable; debug-style fallback: $message"}
@@ -56,7 +57,7 @@ internal object GlassFrames {
    val f=captured;val message=note;main.post{done(f,message)}
   }
  }
- fun foldSetting(action:String,original:String?,done:(Bundle)->Unit){executor.execute{
+ fun foldSetting(action:String,original:String?,done:(Bundle)->Unit){settingsExecutor.execute{
   val p=Parcel.obtain();val r=Parcel.obtain();val response=try{
    p.writeInterfaceToken(GlassCapture.TOKEN);p.writeString(action);if(action=="restore")p.writeString(original)
    LiveAngles.captureBinder().transact(2,p,r,0);r.readException();r.readBundle(javaClass.classLoader)?:Bundle()

@@ -39,7 +39,7 @@ internal fun DuoLiveShade(host: StandaloneFoldHost, intensity: Float, innerPanel
         var previous=0L
         while(true){
             val fresh=LiveAngles.fresh() && angle.isFinite()
-            if(!fresh){amount=0f;visualAngle=Float.NaN;previous=0L;delay(30);continue}
+            if(!fresh || !LiveAngles.effectAllowed){amount=0f;visualAngle=Float.NaN;previous=0L;delay(30);continue}
             withFrameNanos { now ->
                 val dt=if(previous==0L)8.33f else ((now-previous)/1_000_000f).coerceIn(1f,50f)
                 previous=now
