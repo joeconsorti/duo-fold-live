@@ -2,6 +2,35 @@ package org.duofold.live;
 import org.junit.Test;
 import static org.junit.Assert.*;
 public class HandoffFadePolicyTest {
+ @Test public void gradualnessPreservesBlackThresholdsAndWidensApproach(){
+  assertEquals(180,FadeSettings.reveal(0));assertEquals(500,FadeSettings.reveal(1));
+  assertEquals(0,HandoffFadePolicy.approach(false,78,0),0);
+  assertEquals(.5f,HandoffFadePolicy.approach(false,78,1),.001);
+  assertEquals(.5f,HandoffFadePolicy.approach(true,114,1),.001);
+  assertEquals(1,HandoffFadePolicy.approach(false,98,1),0);
+  assertEquals(1,HandoffFadePolicy.approach(true,94,1),0);
+ }
+ @Test public void smoothingSoftensMovementButNeverDelaysFullBlack(){
+  HandoffFadePolicy p=new HandoffFadePolicy();p.settings(24,0);
+  p.opacity(0,false,88,true,true,-1,false);
+  float softened=p.opacity(8,false,93,true,true,-1,false);
+  assertTrue(softened>0&&softened<.5f);
+  assertEquals(1,p.opacity(16,false,98,true,true,-1,false),0);
+  assertTrue(p.opacity(24,false,88,true,true,-1,false)<1);
+ }
+ @Test public void gradualRevealStillWaitsForDestinationDraw(){
+  HandoffFadePolicy p=new HandoffFadePolicy();p.settings(24,1);
+  p.opacity(0,false,98,true,true,-1,false);
+  assertEquals(1,p.opacity(10,true,98,true,true,-1,false),0);
+  assertEquals(1,p.opacity(130,true,98,true,true,130,true),0);
+  assertEquals(.5f,p.opacity(380,true,98,true,true,380,true),.001);
+  assertEquals(0,p.opacity(630,true,98,true,true,630,true),0);
+ }
+ @Test public void invalidPreferencesUseSafeDefaults(){
+  assertEquals(24,FadeSettings.smoothing(Float.NaN),0);
+  assertEquals(.35f,FadeSettings.gradualness(Float.POSITIVE_INFINITY),0);
+  assertEquals(0,FadeSettings.gradualness(-1),0);assertEquals(120,FadeSettings.smoothing(999),0);
+ }
  @Test public void approachIsReversibleInBothDirections(){
   assertEquals(0,HandoffFadePolicy.approach(false,88),0);
   assertEquals(1,HandoffFadePolicy.approach(false,98),0);

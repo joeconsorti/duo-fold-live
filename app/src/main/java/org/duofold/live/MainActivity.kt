@@ -53,6 +53,8 @@ class MainActivity:ComponentActivity(){
     var advanced by remember{mutableStateOf(false)}
     var setup by remember{mutableStateOf(!enabled)}
     var smoothing by remember{mutableFloatStateOf(FrameSmoothing.sanitize(prefs.getFloat("smoothing_ms",12f)))}
+    var fadeSmoothing by remember{mutableFloatStateOf(FadeSettings.smoothing(prefs.getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING)))}
+    var fadeGradualness by remember{mutableFloatStateOf(FadeSettings.gradualness(prefs.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS)))}
     var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
     var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",1f))}
     var closedThreshold by remember{mutableFloatStateOf(FoldThreshold.sanitizeClosed(prefs.getFloat("closed_threshold",1f)))}
@@ -91,6 +93,13 @@ class MainActivity:ComponentActivity(){
        Slider(value=smoothing,onValueChange={smoothing=it},valueRange=12f..120f,onValueChangeFinished={prefs.edit().putFloat("smoothing_ms",smoothing).apply();restart()})
        Text("12 ms is the current default. Higher values soften motion with more delay; they do not increase rendering FPS.",style=MaterialTheme.typography.bodySmall)
        TextButton(onClick={smoothing=12f;prefs.edit().putFloat("smoothing_ms",12f).apply();restart()}){Text("Reset smoothness")}
+       Text("Black fade smoothing · ${fadeSmoothing.roundToInt()} ms")
+       Slider(value=fadeSmoothing,onValueChange={fadeSmoothing=it},valueRange=0f..120f,onValueChangeFinished={prefs.edit().putFloat("fade_smoothing_ms",fadeSmoothing).apply()})
+       Text("Softens changes in the fade as you move the hinge. Higher values add more smoothing.",style=MaterialTheme.typography.bodySmall)
+       Text("Black fade gradualness · ${(fadeGradualness*100).roundToInt()}%")
+       Slider(value=fadeGradualness,onValueChange={fadeGradualness=it},valueRange=0f..1f,onValueChangeFinished={prefs.edit().putFloat("fade_gradualness",fadeGradualness).apply()})
+       Text("0% is the original sharp fade. Higher values begin fading earlier and reveal the new screen more slowly.",style=MaterialTheme.typography.bodySmall)
+       TextButton(onClick={fadeSmoothing=FadeSettings.DEFAULT_SMOOTHING;fadeGradualness=FadeSettings.DEFAULT_GRADUALNESS;prefs.edit().putFloat("fade_smoothing_ms",fadeSmoothing).putFloat("fade_gradualness",fadeGradualness).apply()}){Text("Reset black fade")}
        Toggle("Full-resolution glass · higher GPU cost",fullResolution){fullResolution=it;booleanSetting("full_resolution_glass",it)}
        Text("Off renders the effect at half resolution in each direction to reduce GPU work. Screen content and handoff angles stay the same.",style=MaterialTheme.typography.bodySmall)
        Text("Glass strength · ${(intensity*100).roundToInt()}%")
