@@ -26,6 +26,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
         run: |
