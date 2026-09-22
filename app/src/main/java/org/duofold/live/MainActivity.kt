@@ -39,6 +39,7 @@ class MainActivity:ComponentActivity(){
  }
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
+  if(intent.action=="org.duofold.live.SUPPORT"){intent.action=null;SupportPrompts.open(this)}
   rikka.shizuku.Shizuku.addRequestPermissionResultListener(shizukuPermission)
   if(FirstRun.required(this)){startActivity(Intent(this,SetupActivity::class.java));finish();return}
   setContent{
@@ -49,7 +50,7 @@ class MainActivity:ComponentActivity(){
     var mode by remember{mutableStateOf(AnimationModePolicy.sanitize(prefs.getString("animation_mode",AnimationModePolicy.DEFAULT)))}
     var legacy by remember{mutableStateOf(false)}
     var supportBanner by remember{mutableStateOf(false)}
-    var supportReminders by remember{mutableStateOf(SupportPrompts.enabled(this))}
+    var developer by remember{mutableStateOf(false)}
     var animationStyle by remember{mutableStateOf(prefs.getString("animation_style","duo") ?: "duo")}
     var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
@@ -61,7 +62,7 @@ class MainActivity:ComponentActivity(){
     var fadeGradualness by remember{mutableFloatStateOf(FadeSettings.gradualness(prefs.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS)))}
     var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
     var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",1f))}
-    var closedThreshold by remember{mutableFloatStateOf(FoldThreshold.sanitizeClosed(prefs.getFloat("closed_threshold",1f)))}
+    var closedThreshold by remember{mutableFloatStateOf(FoldThreshold.sanitizeClosed(prefs.getFloat("closed_threshold",2f)))}
     var threshold by remember{mutableFloatStateOf(FoldThreshold.sanitize(prefs.getFloat("open_threshold",172f)))}
     var preview by remember{mutableFloatStateOf(.45f)}
     var status by remember{mutableStateOf("Connecting…")}
@@ -82,13 +83,14 @@ class MainActivity:ComponentActivity(){
        Text("Duo Fold Live",style=MaterialTheme.typography.headlineLarge)
        Text("Make every fold feel fluid.",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
        Toggle("Enable animation",enabled){enabled=it;booleanSetting("enabled",it)}
-       Text(if(enabled)status else "Off · your phone uses its normal display behavior",style=MaterialTheme.typography.bodySmall)
+       Text(if(enabled){if(LiveAngles.fresh()) "Connected · ready to fold" else "Waiting for the Shizuku connection"} else "Off · your phone uses its normal display behavior",style=MaterialTheme.typography.bodySmall)
       }
-      if(supportBanner && supportReminders){
+      if(supportBanner){
        SettingsCard("Enjoying Duo Fold Live?","Your support helps fund more updates. Always optional."){
         Button(onClick={SupportPrompts.open(this@MainActivity);supportBanner=false}){Text("Yes, support on Ko-fi")}
         TextButton(onClick={supportBanner=false}){Text("Not today")}
-        TextButton(onClick={supportReminders=false;supportBanner=false;SupportPrompts.enabled(this@MainActivity,false)}){Text("Don’t ask again")}
+        TextButton(onClick={SupportPrompts.snooze(this@MainActivity);supportBanner=false}){Text("Snooze for 3 weeks")}
+        TextButton(onClick={supportBanner=false;SupportPrompts.stop(this@MainActivity)}){Text("Don’t ask again")}
        }
       }
       SettingsCard("Folding animation styles","Choose how your Fold moves between screens."){
@@ -126,7 +128,7 @@ class MainActivity:ComponentActivity(){
       }
       SettingsCard("Custom wallpaper","Your photo on Home, with live hinge support in the background."){
        Button(onClick={startActivity(Intent(this@MainActivity,org.duofold.live.wallpaperlayer.WallpaperActivity::class.java))}){Text("Choose & manage custom wallpaper")}
-       Text("Disable the separate Duo Wallpaper Layer app before enabling the built-in wallpaper. Your saved photo and enabled choice carry across compatible app updates. A brief wallpaper flash can still occur during unlock.",style=MaterialTheme.typography.bodySmall)
+       Text("Choose one photo for both screens and preview each crop. Your photo and enabled choice stay saved across updates.",style=MaterialTheme.typography.bodySmall)
       }
       SettingsCard("Connection & setup","Shizuku and accessibility keep the effect running in the background."){
        TextButton(onClick={setup=!setup}){Text(if(setup)"Hide setup" else "Show setup")}
@@ -143,6 +145,21 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Advanced","Display thresholds, fold behavior, and diagnostics."){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
+        Text("Fully-open threshold · ${threshold.roundToInt()}°",style=MaterialTheme.typography.titleMedium)
+        Slider(value=threshold,onValueChange={threshold=it.roundToInt().toFloat()},valueRange=165f..179f,steps=13,onValueChangeFinished={prefs.edit().putFloat("open_threshold",threshold).apply();restart()})
+        Text("At this angle the inner effect is completely clear. Closing starts below this threshold. Default: 172°.",style=MaterialTheme.typography.bodySmall)
+        TextButton(onClick={threshold=172f;prefs.edit().putFloat("open_threshold",172f).apply();restart()}){Text("Reset to 172°")}
+        Text("Fully-closed threshold · ${closedThreshold.roundToInt()}°",style=MaterialTheme.typography.titleMedium)
+        Slider(value=closedThreshold,onValueChange={closedThreshold=it.roundToInt().toFloat()},valueRange=1f..10f,steps=8,onValueChangeFinished={prefs.edit().putFloat("closed_threshold",closedThreshold).apply();restart()})
+        Text("At or below this angle, treat the phone as fully closed and clear the cover effect. Default: 2°.",style=MaterialTheme.typography.bodySmall)
+        TextButton(onClick={closedThreshold=2f;prefs.edit().putFloat("closed_threshold",2f).apply();restart()}){Text("Reset to 2°")}
+        HorizontalDivider()
+        Text("Keep cover awake on close",style=MaterialTheme.typography.titleMedium)
+        Text("Always ON. Saved across updates and checked in the background, including when the animation is off. Reconnects automatically when authorized Shizuku becomes available.",style=MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick={FoldAwakeDefault.reconnect();FoldAwakeDefault.tick(this@MainActivity);startBackground()}){Text("Recheck keep-awake now")}
+        TextButton(onClick={developer=!developer}){Text("☰  Developer settings")}
+        if(developer){
+         SettingsCard("Developer settings","Diagnostics and experimental controls. Normal use does not require these."){
         TextButton(onClick={legacy=!legacy}){Text(if(legacy)"Hide legacy & experimental visuals" else "Legacy & experimental visuals")}
         if(legacy){
          Text("Older visuals · optional",style=MaterialTheme.typography.titleSmall)
@@ -156,36 +173,30 @@ class MainActivity:ComponentActivity(){
         TextButton(onClick={LiveAngles.cancelContinuityProbe()}){Text("Stop continuity test")}
         Text(LiveAngles.continuityStatus,style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
-        Text("Fully-open threshold · ${threshold.roundToInt()}°",style=MaterialTheme.typography.titleMedium)
-        Slider(value=threshold,onValueChange={threshold=it.roundToInt().toFloat()},valueRange=165f..179f,steps=13,onValueChangeFinished={prefs.edit().putFloat("open_threshold",threshold).apply();restart()})
-        Text("At this angle the inner effect is completely clear. Closing starts below this threshold. Default: 172°.",style=MaterialTheme.typography.bodySmall)
-        TextButton(onClick={threshold=172f;prefs.edit().putFloat("open_threshold",172f).apply();restart()}){Text("Reset to 172°")}
-        Text("Fully-closed threshold · ${closedThreshold.roundToInt()}°",style=MaterialTheme.typography.titleMedium)
-        Slider(value=closedThreshold,onValueChange={closedThreshold=it.roundToInt().toFloat()},valueRange=1f..10f,steps=8,onValueChangeFinished={prefs.edit().putFloat("closed_threshold",closedThreshold).apply();restart()})
-        Text("At or below this angle, treat the phone as fully closed and clear the cover effect. Default: 1°.",style=MaterialTheme.typography.bodySmall)
-        TextButton(onClick={closedThreshold=1f;prefs.edit().putFloat("closed_threshold",1f).apply();restart()}){Text("Reset to 1°")}
         Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
         Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
         Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
-        HorizontalDivider()
-        Text("Keep cover awake on close",style=MaterialTheme.typography.titleMedium)
-        Text("Always ON. Saved across updates and checked in the background, including when the animation is off. Reconnects automatically when authorized Shizuku becomes available.",style=MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick={FoldAwakeDefault.reconnect();FoldAwakeDefault.tick(this@MainActivity);startBackground()}){Text("Recheck keep-awake now")}
-        Text(FoldAwakeDefault.status,style=MaterialTheme.typography.bodySmall)
         Text(GlassFrames.status,style=MaterialTheme.typography.bodySmall)
         Text(HandoffFrames.status,style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={startActivity(Intent(this@MainActivity,FoldProbeActivity::class.java))}){Text("Sensor & display diagnostics")}
+          Text(FoldAwakeDefault.status,style=MaterialTheme.typography.bodySmall)
+          Text(status,style=MaterialTheme.typography.bodySmall)
+          Text(LiveAngles.rotationHold,style=MaterialTheme.typography.bodySmall)
+          OutlinedButton(onClick={startActivity(Intent(this@MainActivity,org.duofold.live.wallpaperlayer.WallpaperActivity::class.java).putExtra("developer",true))}){Text("Wallpaper developer settings")}
+          OutlinedButton(onClick={val sent=SupportPrompts.notify(this@MainActivity);android.widget.Toast.makeText(this@MainActivity,if(sent)"Preview notification sent; weekly schedule unchanged" else "Allow notifications in Android app settings",android.widget.Toast.LENGTH_LONG).show()}){Text("Preview support notification")}
+         }
+        }
+
        }
        OutlinedButton(onClick={val report=StandaloneService.instance?.report()?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report copied",android.widget.Toast.LENGTH_SHORT).show()}){Text("Copy status report")}
       }
       SettingsCard("Support Duo Fold Live","Free, independent, and built with care for your Fold."){
        Text("If Duo makes your phone more enjoyable, you can help support development with a donation. Every feature stays available either way.")
        Button(onClick={SupportPrompts.open(this@MainActivity);supportBanner=false}){Text("Support on Ko-fi")}
-       Toggle("Daily support reminders",supportReminders){supportReminders=it;SupportPrompts.enabled(this@MainActivity,it);if(!it)supportBanner=false}
-       Text("After successful use, at most once every 24 hours in the app and in notifications. Notification permission is required; Android controls delivery.",style=MaterialTheme.typography.bodySmall)
+       Text("Support invitations begin after one week of successful use, then appear at most weekly for three invitations. Each includes snooze and dismiss options.",style=MaterialTheme.typography.bodySmall)
       }
-      Text("Duo Fold Live ${BuildConfig.VERSION_NAME} · Glass reference: chuspeeism/iphone-duo (MIT). Duo-derived diagnostics. Screen frames stay in memory.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+      Text("Duo Fold Live ${BuildConfig.VERSION_NAME} · Glass reference: chuspeeism/iphone-duo (MIT).",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      }
     }
    }

@@ -12,6 +12,7 @@
   <provider android:name="androidx.core.content.FileProvider" android:authorities="org.duofold.live.files" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/export_paths"/></provider>
   <meta-data android:name="moe.shizuku.client.V3_SUPPORT" android:value="true"/>
   <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="org.duofold.live.shizuku" android:exported="true" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"/>
+  <receiver android:name=".SupportReminderReceiver" android:exported="false"/>
   <receiver android:name=".RestoreReceiver" android:exported="false"><intent-filter><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/><action android:name="android.intent.action.BOOT_COMPLETED"/></intent-filter></receiver>
   <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>

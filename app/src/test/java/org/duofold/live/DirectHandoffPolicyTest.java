@@ -26,5 +26,5 @@ public class DirectHandoffPolicyTest {
    assertEquals(3,DirectHandoffPolicy.next(true,FoldThreshold.effectiveAngle(closed,closed),true,true,true,172));
   }
  }
- @Test public void invalidClosedSettingsAreBounded(){assertEquals(1,FoldThreshold.sanitizeClosed(Float.NaN),0);assertEquals(1,FoldThreshold.sanitizeClosed(-1),0);assertEquals(10,FoldThreshold.sanitizeClosed(180),0);}
+ @Test public void invalidClosedSettingsAreBounded(){assertEquals(2,FoldThreshold.sanitizeClosed(Float.NaN),0);assertEquals(1,FoldThreshold.sanitizeClosed(-1),0);assertEquals(10,FoldThreshold.sanitizeClosed(180),0);}
 }

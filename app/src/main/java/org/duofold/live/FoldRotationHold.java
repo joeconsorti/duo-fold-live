@@ -48,11 +48,13 @@ final class FoldRotationHold {
     if(info!=null){String current=String.valueOf(info.getClass().getField("uniqueId").get(info));
      // Posture changes can reload a different auto-rotate preference. Reassert only when needed.
      if(!mapping.equals(current)||now-lastApply>=100){
-      if(!mapping.equals(current)||!(boolean)backend.frozen.invoke(backend.wm,0))backend.freeze.invoke(backend.wm,0,heldRotation,"Duo temporary fold hold");
+      if(!mapping.equals(current))backend.enforce(current,heldRotation);
+      else if(!(boolean)backend.frozen.invoke(backend.wm,0)||info.getClass().getField("rotation").getInt(info)!=heldRotation)backend.freeze.invoke(backend.wm,0,heldRotation,"Duo temporary fold hold");
       mapping=current;lastApply=now;
      }
     }
-    status="Rotation held during fold/unfold ("+(heldRotation*90)+" degrees)";
+    Object actual=backend.display();boolean verified=actual!=null&&actual.getClass().getField("rotation").getInt(actual)==heldRotation&&(boolean)backend.frozen.invoke(backend.wm,0);
+    status=(verified?"Rotation hold verified":"Rotation hold requested; awaiting readback")+" · "+(heldRotation*90)+" degrees";
    } else if(active){backend.restore();active=false;restorationPending=false;status="Rotation preference restored";}
   } catch(Exception error){restorationPending=true;retryAfter=SystemClock.elapsedRealtime()+2000;status="Rotation hold: "+root(error);enabled=false;
    try{if(backend!=null)backend.restore();active=false;restorationPending=false;}catch(Exception restore){status="Rotation restoration pending: "+root(restore);}
@@ -64,7 +66,7 @@ final class FoldRotationHold {
  private static final java.util.concurrent.atomic.AtomicBoolean recovering=new java.util.concurrent.atomic.AtomicBoolean();
  static void recoverAbandoned(int user){if(!new File("/data/local/tmp/duofold-rotation-"+user+".json").exists()||!recovering.compareAndSet(false,true))return;Thread worker=new Thread(()->{try(Backend b=new Backend(user)){b.recover();}catch(Exception ignored){/* Journal retained for next retry. */}finally{recovering.set(false);}},"duo-rotation-recovery");worker.setDaemon(true);worker.start();}
  private static final class Backend implements AutoCloseable {
-  final Object wm,dm;final Method freeze,thaw,frozen,userRotation,info,postureSetting;
+  final Object wm,dm;final Method freeze,thaw,frozen,userRotation,info,postureSetting,fixed;
   final ContentResolver resolver;final int user;
   final File journal;final RandomAccessFile lease;FileLock lock;
   Backend(int user)throws Exception {
@@ -80,6 +82,7 @@ final class FoldRotationHold {
    IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"window");
    Class<?> api=Class.forName("android.view.IWindowManager");
    wm=Class.forName("android.view.IWindowManager$Stub").getMethod("asInterface",IBinder.class).invoke(null,binder);
+   fixed=api.getMethod("setFixedToUserRotation",int.class,int.class);
    freeze=api.getMethod("freezeDisplayRotation",int.class,int.class,String.class);
    thaw=api.getMethod("thawDisplayRotation",int.class,String.class);
    postureSetting=api.getMethod("setDeviceStateAutoRotateSetting",int.class,boolean.class);
@@ -102,7 +105,7 @@ final class FoldRotationHold {
    j.put("auto",nullable(get(Settings.System.class,"accelerometer_rotation")));
    j.put("userRotation",nullable(get(Settings.System.class,"user_rotation")));
    String states=get(Settings.Secure.class,"device_state_rotation_lock");
-   java.util.Map<Integer,Integer> preferences=RotationPreferences.parse(states);
+   java.util.Map<Integer,Integer> preferences=states==null||states.isEmpty()?java.util.Collections.emptyMap():RotationPreferences.parse(states);
    JSONObject routes=new JSONObject();
    Class<?> managerType=Class.forName("android.hardware.devicestate.DeviceStateManager");
    Object manager=managerType.getConstructor().newInstance();
@@ -114,7 +117,7 @@ final class FoldRotationHold {
     if(posture>=0)routes.put(Integer.toString(posture),state.getClass().getMethod("getIdentifier").invoke(state));
    }
    for(java.util.Map.Entry<Integer,Integer> pref:preferences.entrySet())if(pref.getValue()!=0&&!routes.has(pref.getKey().toString()))throw new IllegalStateException("No restoration route for posture "+pref.getKey());
-   j.put("states",states);j.put("routes",routes);
+   j.put("states",nullable(states));j.put("routes",routes);j.put("fixed",new JSONObject());
    File temp=new File(journal.getPath()+".tmp");
    try(FileOutputStream out=new FileOutputStream(temp)){out.write(j.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));out.getFD().sync();}
    android.system.Os.chmod(temp.getPath(),0600);
@@ -125,8 +128,41 @@ final class FoldRotationHold {
    JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
    freeze.invoke(wm,0,rotation,"Duo temporary fold hold");
    JSONObject routes=j.getJSONObject("routes");
-   for(java.util.Map.Entry<Integer,Integer> pref:RotationPreferences.parse(j.getString("states")).entrySet())if(pref.getValue()!=0)
+   for(java.util.Map.Entry<Integer,Integer> pref:preferences(j).entrySet())if(pref.getValue()!=0)
     postureSetting.invoke(wm,routes.getInt(pref.getKey().toString()),false);
+  }
+  static java.util.Map<Integer,Integer> preferences(JSONObject j)throws Exception {String value=value(j,"states");return value==null||value.isEmpty()?java.util.Collections.emptyMap():RotationPreferences.parse(value);}
+  void save(JSONObject j)throws Exception{
+   File temp=new File(journal.getPath()+".tmp");
+   try(FileOutputStream out=new FileOutputStream(temp)){out.write(j.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));out.getFD().sync();}
+   android.system.Os.chmod(temp.getPath(),0600);
+   java.nio.file.Files.move(temp.toPath(),journal.toPath(),java.nio.file.StandardCopyOption.ATOMIC_MOVE,java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+  }
+  int fixedMode(int id)throws Exception {
+   java.lang.Process process=new ProcessBuilder("wm","fixed-to-user-rotation","-d",Integer.toString(id)).redirectErrorStream(true).start();
+   try{if(!process.waitFor(2,TimeUnit.SECONDS))throw new IOException("Rotation policy query timed out");
+    String mode=new String(process.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8).trim();
+    if(process.exitValue()!=0)throw new IOException("Rotation policy query failed: "+mode);
+    return FixedRotationMode.parse(mode);
+   }finally{process.destroyForcibly();}
+  }
+  boolean restoreFixed(JSONObject j,String keep)throws Exception{
+   JSONObject modes=j.optJSONObject("fixed");if(modes==null)return true;
+   java.util.List<String> restored=new java.util.ArrayList<>();
+   for(java.util.Iterator<String> it=modes.keys();it.hasNext();){String physical=it.next();if(physical.equals(keep))continue;
+    for(int id:new int[]{0,1}){Object d=info.invoke(dm,id);if(d!=null&&physical.equals(String.valueOf(d.getClass().getField("uniqueId").get(d)))){
+     fixed.invoke(wm,id,modes.getInt(physical));restored.add(physical);break;
+    }}
+   }
+   for(String key:restored)modes.remove(key);save(j);return modes.length()==0||(keep!=null&&modes.length()==1&&modes.has(keep));
+  }
+  void enforce(String physical,int rotation)throws Exception{
+   JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
+   JSONObject modes=j.optJSONObject("fixed");if(modes==null){modes=new JSONObject();j.put("fixed",modes);}
+   restoreFixed(j,physical);
+   if(!modes.has(physical)){modes.put(physical,fixedMode(0));save(j);}
+   freeze.invoke(wm,0,rotation,"Duo fold orientation hold");
+   fixed.invoke(wm,0,2); // FIXED_TO_USER_ROTATION_ENABLED also blocks app/sensor overrides.
   }
   static Object nullable(String value){return value==null?JSONObject.NULL:value;}
   static String value(JSONObject j,String key)throws Exception{return j.isNull(key)?null:j.getString(key);}
@@ -134,21 +170,25 @@ final class FoldRotationHold {
    if(lock==null)return;
    if(!journal.exists()){unlock();return;}
    JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
+   if(!j.optBoolean("globalRestored",false)){
    if(j.getBoolean("locked"))freeze.invoke(wm,0,j.getInt("rotation"),"Duo restore rotation preference");
    else thaw.invoke(wm,0,"Duo restore auto-rotate");
    // Use Samsung's posture API, not writes to ACCELEROMETER_ROTATION / the secure
    // posture map: those bypass its asynchronous controller and can corrupt preferences.
-   java.util.Map<Integer,Integer> saved=RotationPreferences.parse(j.getString("states"));
+   java.util.Map<Integer,Integer> saved=preferences(j);
    JSONObject routes=j.getJSONObject("routes");
    for(java.util.Map.Entry<Integer,Integer> pref:saved.entrySet())if(pref.getValue()!=0)
     postureSetting.invoke(wm,routes.getInt(pref.getKey().toString()),pref.getValue()==2);
    boolean verified=false;
    for(int i=0;i<10;i++){
     SystemClock.sleep(50);
-    if(saved.equals(RotationPreferences.parse(get(Settings.Secure.class,"device_state_rotation_lock")))){verified=true;break;}
+    if(saved.isEmpty()?(boolean)frozen.invoke(wm,0)==j.getBoolean("locked"):saved.equals(RotationPreferences.parse(get(Settings.Secure.class,"device_state_rotation_lock")))){verified=true;break;}
    }
    if(!verified)throw new IOException("Per-posture rotation readback differs; original retained");
    put(Settings.System.class,"user_rotation",value(j,"userRotation"));
+   j.put("globalRestored",true);save(j);
+   }
+   if(!restoreFixed(j,null))throw new IOException("Rotation policy recovery waiting for physical display");
    if(!journal.delete())throw new IOException("Could not clear rotation recovery journal");
    unlock();
   }
