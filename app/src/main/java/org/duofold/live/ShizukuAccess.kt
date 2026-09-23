@@ -12,7 +12,7 @@ object ShizukuAccess {
   when {
    !Shizuku.pingBinder() -> "Duo has not received Shizuku’s connection. Check that Shizuku says Running (pairing alone is not enough). Keep both apps in the same Android profile. If it is already running, restart Shizuku, then reopen Duo."
    Shizuku.isPreV11() -> "This Shizuku version is unsupported. Update official Shizuku."
-   Shizuku.checkSelfPermission()==0 -> "Shizuku is authorized. Wallpaper setup is a separate step."
+   Shizuku.checkSelfPermission()==0 -> "Shizuku permission is granted. This does not verify the angle reader or required wallpaper."
    Shizuku.shouldShowRequestPermissionRationale() -> "Authorization was previously denied. Open Shizuku → Authorized applications and enable Duo Fold Live, then return here."
    else -> {Shizuku.requestPermission(code); "Permission requested. Select Allow in Shizuku’s dialog. If no dialog appears, open Shizuku → Authorized applications and enable Duo Fold Live."}
   }
@@ -20,6 +20,9 @@ object ShizukuAccess {
  fun report(context: Context): String = buildString {
   append("Duo Fold Live ${BuildConfig.VERSION_NAME} · connection report\n")
   append("${Build.MODEL} / Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}\n")
+  append("Firmware: ${Build.DISPLAY}\n")
+  append("Angle reader: ${LiveAngles.status}\n")
+  append("Reader diagnostics: ${LiveAngles.readerDiagnostics}\n")
   append("Package: ${context.packageName}\n")
   append("Official Shizuku installed in this profile: "+runCatching{context.packageManager.getPackageInfo("moe.shizuku.privileged.api",0);true}.getOrDefault(false)+"\n")
   val alive=runCatching{Shizuku.pingBinder()}.getOrDefault(false)
@@ -39,7 +42,8 @@ object ShizukuAccess {
    .setPositiveButton("OK",null).setNeutralButton("Copy report"){_,_->copy(context)}
    .setNegativeButton("Open Shizuku"){_,_->
     val intent=context.packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
-    if(intent!=null)runCatching{context.startActivity(intent)}
+    if(intent!=null)runCatching{context.startActivity(intent)}.onFailure{Toast.makeText(context,"Could not open Shizuku. Open your Shizuku app manually.",Toast.LENGTH_LONG).show()}
+    else Toast.makeText(context,"Shizuku app shortcut unavailable. Open Shizuku or your installed fork manually.",Toast.LENGTH_LONG).show()
    }.show()
  }
  fun copy(context: Context){

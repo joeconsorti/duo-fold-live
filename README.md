@@ -1,10 +1,10 @@
 ![DuoFold Live](docs/assets/duofold-live-logo.svg)
 
-# Duo Fold Live · 3.0.1
+# Duo Fold Live · 3.0.2
 
 An iPhone Duo-inspired folding animation for the **Samsung Galaxy Z Fold 8**, with windowed glass, live cover previews, and smooth black fades around Samsung’s display handoff. Free and open source. Runs over One UI and ordinary apps without replacing your launcher.
 
-**[Download 3.0.1](https://github.com/joeconsorti/duo-fold-live/releases/latest)** · [Full changelog since 1.7.0](docs/3.0.0-CHANGELOG.md) · [Report an issue](https://github.com/joeconsorti/duo-fold-live/issues)
+**[Download 3.0.2](https://github.com/joeconsorti/duo-fold-live/releases/latest)** · [Full changelog since 1.7.0](docs/3.0.0-CHANGELOG.md) · [Report an issue](https://github.com/joeconsorti/duo-fold-live/issues)
 
 **Only tested on the Z Fold 8 (SM-F971U).** Fold 8 Ultra, Fold 7, and other devices are unverified. Do not expect compatibility. Model recognition includes regional SM-F971, SM-F976, and SM-F966 families. Unknown models display a warning and may proceed. Android 17 and the existing Samsung wallpaper/API checks are still required. Recognition is not verified compatibility.
 
@@ -34,6 +34,12 @@ The app guides setup. Samsung’s interactive wallpaper and Shizuku running in A
 - Optional donations, with weekly support invitations starting after one week of successful use; snooze and permanent dismissal included.
 
 The approved animation is preserved. Fades soften Samsung’s primary-display blackout; they do not eliminate the underlying panel power transition. The mirrored preview is not two independent apps running on both panels.
+
+## Setup recovery in 3.0.2
+
+Installs that previously skipped onboarding without verifying wallpaper setup reopen the setup wizard after updating. Complete wallpaper setup, overlay access, and accessibility. If angles still do not arrive, the main screen offers **Repair wallpaper & check permissions** and a connection report. Shizuku authorization alone does not verify live angles.
+
+[3.0.2 fixes](docs/3.0.2-CHANGELOG.md). Regional and Ultra zero-angle failures still need affected-device verification.
 
 ## Known bugs
 

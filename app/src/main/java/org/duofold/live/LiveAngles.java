@@ -70,6 +70,7 @@ public final class LiveAngles {
  private static long roundTripMs;
  private static String rateSummary="Collecting polling rates";
  private long rateStarted;private int ratePolls,rateReplies,rateChanges,rateReceived;
+ public static volatile String readerDiagnostics="Not connected";
  public static String latencyReport(){return "Angle poll target period: 4 ms; last round trip: "+roundTripMs+" ms; "+rateSummary;}
  public static void handoffReady(){LiveAngles self=current;if(self==null)return;self.main.post(()->{
   if(!self.running)return;
@@ -153,6 +154,7 @@ public final class LiveAngles {
    mirrorStatus=b.getString("mirror","Inner mirror status unavailable");nativeInner=b.getBoolean("nativeInner");continuityNative=b.getBoolean("continuityNative");
    StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null&&SystemClock.elapsedRealtime()>=secondaryRefreshAt){secondaryRefreshAt=SystemClock.elapsedRealtime()+8;host.refreshSecondary();}
    lastPoll=SystemClock.elapsedRealtime();
+   readerDiagnostics=b.getString("readerDiagnostics",b.getString("state","Unknown"));
    long stamp=b.getLong("last");int received=b.getInt("count");
    ratePolls++;
    if(received>rateReceived){rateReplies+=received-rateReceived;if(Float.compare(angle,b.getFloat("angle"))!=0)rateChanges++;}

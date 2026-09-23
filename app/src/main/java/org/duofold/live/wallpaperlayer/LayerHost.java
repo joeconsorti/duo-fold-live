@@ -69,7 +69,7 @@ public class LayerHost extends Binder {
   if(d.getDisplayId()!=0&&d.getDisplayId()!=1)continue;
   if(!d.isValid())continue;
   Display.Mode mode=d.getMode();int lo=Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight()),hi=Math.max(mode.getPhysicalWidth(),mode.getPhysicalHeight());
-  if(!((lo==1248&&hi==1972)||(lo==1848&&hi==2448)))continue;
+  if(!org.duofold.live.BuiltInPanel.accepts(d))continue;
   int id=d.getDisplayId();keep.add(id);String key=mode.getPhysicalWidth()+"x"+mode.getPhysicalHeight()+"/"+d.getRotation();Panel old=panels.get(id);if(old!=null){
    if(!old.key.equals(key)){old.key=key;retainedChanges++;old.view.requestLayout();old.view.invalidate();trace("Retained photo window on display "+id+" ("+key+")");}
    continue;

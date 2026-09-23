@@ -19,14 +19,15 @@ public final class WallpaperSetupService extends Binder {
   if(code!=1)return super.onTransact(code,in,out,flags);
   long identity=Binder.clearCallingIdentity();
   try {
-   String result=apply();out.writeNoException();out.writeInt(1);out.writeString(result);
+   boolean repair=in.dataAvail()>=4 && in.readInt()!=0;
+   String result=apply(repair);out.writeNoException();out.writeInt(1);out.writeString(result);
   } catch(Throwable error){
    while(error instanceof InvocationTargetException && error.getCause()!=null)error=error.getCause();
    out.writeNoException();out.writeInt(0);out.writeString("Wallpaper setup incomplete: "+error.getClass().getSimpleName()+": "+error.getMessage()+". Copy this error with the connection report. Existing completed slots are retained.");
   } finally {Binder.restoreCallingIdentity(identity);}
   return true;
  }
- private static String apply()throws Exception {
+ private static String apply(boolean repair)throws Exception {
   if(android.os.Process.myUid()!=2000)throw new IllegalStateException("Start Shizuku using wireless or USB debugging (ADB mode)");
   // Regional variants share eligibility; verify Samsung components and methods before writing.
   DeviceCompatibility.requireEligible(Build.MODEL, Build.VERSION.SDK_INT);
@@ -67,7 +68,7 @@ public final class WallpaperSetupService extends Binder {
   StringBuilder result=new StringBuilder();
   for(int slot:new int[]{5,17}){
    String label=slot==5?"Inner home":"Cover home";
-   if(!matches(wm,getInfo,getExtras,slot)){
+   if(repair || !matches(wm,getInfo,getExtras,slot)){
     setter.invoke(remote,description,"com.android.shell",slot,0,new Bundle(template));
     boolean ready=false;for(int i=0;i<20;i++){SystemClock.sleep(150);if(matches(wm,getInfo,getExtras,slot)){ready=true;break;}}
     if(!ready)throw new IllegalStateException(label+" configuration was not verified");

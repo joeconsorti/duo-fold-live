@@ -166,7 +166,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         val native=LiveAngles.continuityNative && !primaryInner
         val preview=!settings().getBoolean("dual",false) && settings().getBoolean("cover_preview",true) && LiveAngles.coverPreview
         if(!LiveAngles.effectAllowed||!settings().getBoolean("enabled",false)||(!native && !preview && (!settings().getBoolean("dual",false)||!LiveAngles.dualActive))||!usable()){dismissSecondary();return}
-        val target=displays.displays.firstOrNull{it.displayId==1 && (setOf(it.mode.physicalWidth,it.mode.physicalHeight)==setOf(1248,1972) || setOf(it.mode.physicalWidth,it.mode.physicalHeight)==setOf(2448,1848))}
+        val target=displays.displays.firstOrNull{it.displayId==1 && BuiltInPanel.accepts(it)}
         if(target==null){secondaryError="Concurrent mode has not exposed the second built-in panel";dismissSecondary();return}
         if(native){
             val key=physicalKey(target)+":native-overlay"

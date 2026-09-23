@@ -82,8 +82,19 @@ class MainActivity:ComponentActivity(){
       Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xff1d3048),Color(0xff172128))),RoundedCornerShape(28.dp)).padding(24.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
        Text("Duo Fold Live",style=MaterialTheme.typography.headlineLarge)
        Text("Make every fold feel fluid.",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)
-       Toggle("Enable animation",enabled){enabled=it;booleanSetting("enabled",it)}
-       Text(if(enabled){if(LiveAngles.fresh()) "Connected · ready to fold" else "Waiting for the Shizuku connection"} else "Off · your phone uses its normal display behavior",style=MaterialTheme.typography.bodySmall)
+       Toggle("Enable animation",enabled){
+        if(it && (!Settings.canDrawOverlays(this@MainActivity) || StandaloneService.instance==null)){
+         startActivity(Intent(this@MainActivity,SetupActivity::class.java).putExtra("repair",true))
+        }else{enabled=it;booleanSetting("enabled",it)}
+       }
+       Text(if(enabled){if(LiveAngles.fresh()) "Connected · ready to fold" else LiveAngles.status} else "Off · your phone uses its normal display behavior",style=MaterialTheme.typography.bodySmall)
+      }
+      if(enabled && status.startsWith("Waiting for fresh wallpaper angles")){
+       SettingsCard("No live hinge angles yet","Shizuku is connected, but Samsung’s wallpaper has not supplied fresh angles."){
+        Text("Move the hinge with the phone unlocked. If this remains, repair the required wallpaper setup. A custom photo alone does not provide angles.")
+        Button(onClick={startActivity(Intent(this@MainActivity,SetupActivity::class.java).putExtra("repair",true))}){Text("Repair wallpaper & check permissions")}
+        OutlinedButton(onClick={ShizukuAccess.show(this@MainActivity,ShizukuAccess.report(this@MainActivity))}){Text("Connection report")}
+       }
       }
       if(!DeviceCompatibility.isRecognized(android.os.Build.MODEL)) Text(DeviceCompatibility.modelWarning(android.os.Build.MODEL),color=MaterialTheme.colorScheme.error)
       if(supportBanner){
@@ -134,6 +145,8 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Connection & setup","Shizuku and accessibility keep the effect running in the background."){
        TextButton(onClick={setup=!setup}){Text(if(setup)"Hide setup" else "Show setup")}
        if(setup){
+        ShizukuPlusDownload()
+        OutlinedButton(onClick={startActivity(Intent(this@MainActivity,SetupActivity::class.java).putExtra("repair",true))}){Text("Repair required wallpaper setup")}
         Button(onClick={val result=ShizukuAccess.request(this@MainActivity,42); if(result.startsWith("Permission requested"))android.widget.Toast.makeText(this@MainActivity,result,android.widget.Toast.LENGTH_LONG).show() else ShizukuAccess.show(this@MainActivity,result)}){Text("Authorize Shizuku")}
         OutlinedButton(onClick={ShizukuAccess.show(this@MainActivity,ShizukuAccess.report(this@MainActivity))}){Text("Connection report")}
         OutlinedButton(onClick={startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))}){Text("Allow overlays")}

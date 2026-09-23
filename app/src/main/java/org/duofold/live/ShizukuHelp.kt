@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
  SettingsCard("Trouble with Shizuku / Fold shutting off?","Keep your connection ready at home, away from Wi-Fi, and after sleep."){
   TextButton(onClick={expanded=!expanded}){Text(if(expanded)"Close troubleshooting" else "Connection & offline guide")}
   if(expanded){
+   ShizukuPlusDownload()
    Text("1 · Start with a working connection",style=MaterialTheme.typography.titleMedium)
    Text("In Shizuku or Shizuku+, start in ADB mode and authorize Duo Fold Live. Return here and check that live angles change when you move the hinge. Shizuku+ is an independent fork; available controls vary by version.")
    Text("2 · Optional local TCP for use away from Wi-Fi",style=MaterialTheme.typography.titleMedium)
@@ -39,7 +40,13 @@ import androidx.compose.ui.platform.LocalContext
    OutlinedButton(onClick={ShizukuAccess.show(c,ShizukuAccess.report(c))}){Text("Check Shizuku connection")}
    Text("For a report: include phone model, Android / One UI version, Shizuku version and startup method, what stopped working, and Copy status report below. Never share pairing codes or private keys.",style=MaterialTheme.typography.bodySmall)
    TextButton(onClick={runCatching{c.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://shizuku.rikka.app/guide/setup/")))}}){Text("Official Shizuku guide")}
-   TextButton(onClick={runCatching{c.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/thejaustin/ShizukuPlus")))}}){Text("Shizuku+ project & version-specific help")}
+   TextButton(onClick={runCatching{c.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/thejaustin/ShizukuPlus/releases")))}}){Text("Shizuku+ project & version-specific help")}
   }
  }
+}
+
+@Composable internal fun ShizukuPlusDownload(){
+ val context=LocalContext.current
+ Text("If you installed Shizuku, uninstall it first to avoid conflicts. Install Shizuku+ below, start it using wireless or USB debugging (ADB mode), then authorize Duo again.",style=MaterialTheme.typography.bodySmall)
+ OutlinedButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/thejaustin/ShizukuPlus/releases")))}.onFailure{android.widget.Toast.makeText(context,"Could not open the link. Visit github.com/thejaustin/ShizukuPlus/releases in your browser.",android.widget.Toast.LENGTH_LONG).show()}}){Text("Download Shizuku+")}
 }
