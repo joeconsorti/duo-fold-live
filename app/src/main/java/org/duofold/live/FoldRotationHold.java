@@ -213,6 +213,9 @@ final class FoldRotationHold {
    if(lock==null)return;
    if(!journal.exists()){unlock();return;}
    JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
+   // Remove our fixed-to-user override first, even if preference verification
+   // later fails. Otherwise a failed readback can leave auto-rotate suppressed.
+   boolean fixedRestored=restoreFixed(j,null);
    if(!j.optBoolean("globalRestored",false)){
    restoreSecondary(j);
    if(j.getBoolean("locked"))freeze.invoke(wm,0,j.getInt("rotation"),"Duo restore rotation preference");
@@ -232,7 +235,7 @@ final class FoldRotationHold {
    put(Settings.System.class,"user_rotation",value(j,"userRotation"));
    j.put("globalRestored",true);save(j);
    }
-   if(!restoreFixed(j,null))throw new IOException("Rotation policy recovery waiting for physical display");
+   if(!fixedRestored)throw new IOException("Rotation policy recovery waiting for physical display");
    if(!journal.delete())throw new IOException("Could not clear rotation recovery journal");
    unlock();
   }
