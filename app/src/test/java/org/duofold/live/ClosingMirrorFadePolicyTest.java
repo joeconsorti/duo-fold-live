@@ -8,10 +8,10 @@ public class ClosingMirrorFadePolicyTest {
   assertEquals(1,p.opacity(10,false,false,-1,0),0);
   assertEquals(1,p.opacity(200,false,true,-1,0),0);
   assertEquals(1,p.opacity(400,false,true,400,0),0);
-  assertEquals(1,p.opacity(519,false,true,400,0),0);
-  assertEquals(1,p.opacity(520,false,true,400,0),0);
-  assertEquals(.5f,p.opacity(610,false,true,400,0),.001);
-  assertEquals(0,p.opacity(700,false,true,400,0),0);
+  assertEquals(1,p.opacity(431,false,true,400,0),0);
+  assertEquals(1,p.opacity(432,false,true,400,0),0);
+  assertEquals(.5f,p.opacity(522,false,true,400,0),.001);
+  assertEquals(0,p.opacity(612,false,true,400,0),0);
  }
  @Test public void coverStartupAndOpeningAreUnaffected(){
   ClosingMirrorFadePolicy p=new ClosingMirrorFadePolicy();
