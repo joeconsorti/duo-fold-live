@@ -1,13 +1,10 @@
 package org.duofold.live;
 
-import android.content.ContentResolver;
-import android.content.Context;
 import android.os.*;
 import android.provider.Settings;
 import java.io.*;
 import java.lang.reflect.Method;
 import java.nio.channels.FileLock;
-import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 
@@ -62,24 +59,17 @@ final class FoldRotationHold {
   } finally {Binder.restoreCallingIdentity(identity);}
   if(!closed||active)handler.postDelayed(this,32);else {if(backend!=null)backend.close();thread.quitSafely();}
  }};
- private static String root(Throwable e){while(e.getCause()!=null)e=e.getCause();return e.getClass().getSimpleName()+": "+e.getMessage();}
+ private static String root(Throwable e){while(e instanceof java.lang.reflect.InvocationTargetException&&e.getCause()!=null)e=e.getCause();return e.getClass().getSimpleName()+": "+e.getMessage();}
  /** Called by the independent keep-awake service. A live owner prevents recovery via the file lock. */
  private static final java.util.concurrent.atomic.AtomicBoolean recovering=new java.util.concurrent.atomic.AtomicBoolean();
  static void recoverAbandoned(int user){if(!new File("/data/local/tmp/duofold-rotation-"+user+".json").exists()||!recovering.compareAndSet(false,true))return;Thread worker=new Thread(()->{try(Backend b=new Backend(user)){b.recover();}catch(Exception ignored){/* Journal retained for next retry. */}finally{recovering.set(false);}},"duo-rotation-recovery");worker.setDaemon(true);worker.start();}
  private static final class Backend implements AutoCloseable {
   final Object wm,dm;final Method freeze,thaw,frozen,userRotation,info,postureSetting,fixed;
-  final ContentResolver resolver;final int user;
+  final int user;
   final File journal;final RandomAccessFile lease;FileLock lock;
   Backend(int user)throws Exception {
    this.user=user;
    ShellFrameworkBootstrap.initialize();
-   FutureTask<Context> context=new FutureTask<>(()->{
-    Class<?> at=Class.forName("android.app.ActivityThread");Object t=at.getMethod("currentActivityThread").invoke(null);
-    if(t==null)t=at.getMethod("systemMain").invoke(null);
-    return ((Context)at.getMethod("getSystemContext").invoke(t)).createPackageContext("com.android.shell",0);
-   });
-   if(Looper.myLooper()==Looper.getMainLooper())context.run();else new Handler(Looper.getMainLooper()).post(context);
-   resolver=context.get(5,TimeUnit.SECONDS).getContentResolver();
    IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"window");
    Class<?> api=Class.forName("android.view.IWindowManager");
    wm=Class.forName("android.view.IWindowManager$Stub").getMethod("asInterface",IBinder.class).invoke(null,binder);
@@ -93,9 +83,28 @@ final class FoldRotationHold {
    lease=new RandomAccessFile(journal.getPath()+".lock","rw");
   }
   Object display()throws Exception{return info.invoke(dm,0);}
-  String get(Class<?> table,String key)throws Exception{return (String)table.getMethod("getStringForUser",ContentResolver.class,String.class,int.class).invoke(null,resolver,key,user);}
+  String get(Class<?> table,String key)throws Exception{
+   // A shell user-service is not an AMS-registered app process. Its synthetic
+   // ContentResolver can be rejected by getContentProvider even with UID 2000.
+   String text=setting(table,"get",key,null);
+   return "null".equals(text)?null:text;
+  }
   void put(Class<?> table,String key,String value)throws Exception{
-   if(!(boolean)table.getMethod("putStringForUser",ContentResolver.class,String.class,String.class,int.class).invoke(null,resolver,key,value,user))throw new IOException("Could not restore "+key);
+   setting(table,value==null?"delete":"put",key,value);
+   if(!java.util.Objects.equals(value,get(table,key)))throw new IOException("Rotation setting readback mismatch: "+key);
+  }
+  String setting(Class<?> table,String verb,String key,String value)throws Exception{
+   String namespace=table==Settings.System.class?"system":table==Settings.Secure.class?"secure":null;
+   if(namespace==null)throw new IllegalArgumentException("Unsupported settings table");
+   java.util.List<String> args=new java.util.ArrayList<>(java.util.Arrays.asList("settings","--user",Integer.toString(user),verb,namespace,key));
+   if("put".equals(verb))args.add(value);
+   java.lang.Process process=new ProcessBuilder(args).redirectErrorStream(true).start();
+   try{
+    if(!process.waitFor(2,TimeUnit.SECONDS))throw new IOException("Rotation settings command timed out: "+key);
+    String text=new String(process.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8).trim();
+    if(process.exitValue()!=0||("get".equals(verb)&&!text.matches("null|[0-9:]*")))throw new IOException("Rotation settings command failed ("+key+"): "+text);
+    return text;
+   }finally{process.destroyForcibly();}
   }
   boolean acquire()throws Exception{if(lock!=null)return true;try{lock=lease.getChannel().tryLock();}catch(java.nio.channels.OverlappingFileLockException busy){return false;}return lock!=null;}
   void recover()throws Exception{if(!journal.exists()||!acquire())return;try{if(journal.exists())restore();}finally{unlock();}}
