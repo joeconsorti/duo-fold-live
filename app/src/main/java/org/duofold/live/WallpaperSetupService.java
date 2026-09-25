@@ -20,17 +20,20 @@ public final class WallpaperSetupService extends Binder {
   long identity=Binder.clearCallingIdentity();
   try {
    boolean repair=in.dataAvail()>=4 && in.readInt()!=0;
-   String result=apply(repair);out.writeNoException();out.writeInt(1);out.writeString(result);
+   String selected=in.dataAvail()>0?in.readString():"";
+   String profile=WallpaperProfile.resolve(Build.MODEL,selected);
+   String result=apply(repair,profile);out.writeNoException();out.writeInt(1);out.writeString(result);
   } catch(Throwable error){
    while(error instanceof InvocationTargetException && error.getCause()!=null)error=error.getCause();
    out.writeNoException();out.writeInt(0);out.writeString("Wallpaper setup incomplete: "+error.getClass().getSimpleName()+": "+error.getMessage()+". Copy this error with the connection report. Existing completed slots are retained.");
   } finally {Binder.restoreCallingIdentity(identity);}
   return true;
  }
- private static String apply(boolean repair)throws Exception {
+ private static String apply(boolean repair,String profile)throws Exception {
   if(android.os.Process.myUid()!=2000)throw new IllegalStateException("Start Shizuku using wireless or USB debugging (ADB mode)");
   // Regional variants share eligibility; verify Samsung components and methods before writing.
   DeviceCompatibility.requireEligible(Build.MODEL, Build.VERSION.SDK_INT);
+  String video=WallpaperProfile.video(profile);
   ShellFrameworkBootstrap.initialize();
   FutureTask<Context> contextTask=new FutureTask<>(()->{
    Class<?> at=Class.forName("android.app.ActivityThread");
@@ -56,29 +59,29 @@ public final class WallpaperSetupService extends Binder {
    if(setter!=null)throw new IllegalStateException("Ambiguous wallpaper API; no change");setter=m;
   }
   if(setter==null)throw new NoSuchMethodException("setWallpaperComponentChecked");
-  // Prefer the installed, verified profile. Otherwise use the extracted Samsung Fold8 profile.
+  // Reuse matching installed extras; never copy Fold8 extras into a Fold7 profile.
   Bundle template=null;
-  for(int slot:new int[]{5,17})if(matches(wm,getInfo,getExtras,slot)){template=new Bundle((Bundle)getExtras.invoke(wm,slot,0));break;}
+  for(int slot:new int[]{5,17})if(matches(wm,getInfo,getExtras,slot,video)){template=new Bundle((Bundle)getExtras.invoke(wm,slot,0));break;}
   if(template==null){
-   template=new Bundle();Bundle service=new Bundle();service.putString("filename","video_001.mp4");service.putInt("thumbnail_frame_no",545);
+   template=new Bundle();Bundle service=new Bundle();service.putString("filename",video);service.putInt("thumbnail_frame_no","fold7".equals(profile)?0:545);
    template.putBundle("serviceSettings",service);template.putBoolean("isPreloaded",true);template.putBoolean("isFixedOrientation",false);
    template.putString("saContentCategory","Featured");template.putString("saContentId","Featured_Signature_Folding");
    template.putString("wallpaperId",new java.text.SimpleDateFormat("yyyyMMddHHmmss",java.util.Locale.US).format(new java.util.Date()));
   }
-  StringBuilder result=new StringBuilder();
+  StringBuilder result=new StringBuilder("Wallpaper profile: "+profile+" / "+video+"\n");
   for(int slot:new int[]{5,17}){
    String label=slot==5?"Inner home":"Cover home";
-   if(repair || !matches(wm,getInfo,getExtras,slot)){
+   if(repair || !matches(wm,getInfo,getExtras,slot,video)){
     setter.invoke(remote,description,"com.android.shell",slot,0,new Bundle(template));
-    boolean ready=false;for(int i=0;i<20;i++){SystemClock.sleep(150);if(matches(wm,getInfo,getExtras,slot)){ready=true;break;}}
+    boolean ready=false;for(int i=0;i<20;i++){SystemClock.sleep(150);if(matches(wm,getInfo,getExtras,slot,video)){ready=true;break;}}
     if(!ready)throw new IllegalStateException(label+" configuration was not verified");
    }
    result.append(label).append(": Samsung fold wallpaper verified.\n");
   }
   return result+"Both HOME bindings verified. Move the hinge after enabling animation to check live angles. Lock-screen slots were not written.";
  }
- private static boolean matches(WallpaperManager wm,Method info,Method extras,int slot)throws Exception {
+ private static boolean matches(WallpaperManager wm,Method info,Method extras,int slot,String video)throws Exception {
   WallpaperInfo i=(WallpaperInfo)info.invoke(wm,slot,0);Bundle b=(Bundle)extras.invoke(wm,slot,0);
-  return i!=null&&LIVE.equals(i.getComponent())&&b!=null&&b.getBundle("serviceSettings")!=null&&"video_001.mp4".equals(b.getBundle("serviceSettings").getString("filename"));
+  return i!=null&&LIVE.equals(i.getComponent())&&b!=null&&b.getBundle("serviceSettings")!=null&&video.equals(b.getBundle("serviceSettings").getString("filename"));
  }
 }

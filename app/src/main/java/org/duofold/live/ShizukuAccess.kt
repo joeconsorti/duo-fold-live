@@ -33,6 +33,7 @@ object ShizukuAccess {
    append("Permission: ${Shizuku.checkSelfPermission()} (0 = authorized)\n")
    append("Previously denied: ${Shizuku.shouldShowRequestPermissionRationale()}\n")
   }.onFailure{append("Connection check failed: ${it.javaClass.simpleName}: ${it.message}\n")}
+  append("Wallpaper profile: ${runCatching{WallpaperProfile.resolve(Build.MODEL,context.getSharedPreferences("first_run",0).getString("wallpaper_profile",""))}.getOrDefault("Selection required")}\n")
   append("Wallpaper setup model/OS eligible: ${DeviceCompatibility.isEligible(Build.MODEL, Build.VERSION.SDK_INT)}\n")
   append("Wallpaper setup verified: ${context.getSharedPreferences("first_run",0).getBoolean("wallpaper_verified",false)}\n")
   append("Wireless and USB start the same Shizuku ADB service. An unsupported wallpaper profile is not an authorization failure.")

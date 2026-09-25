@@ -48,6 +48,7 @@ class SetupActivity : ComponentActivity() {
      try {
       input.writeInterfaceToken(WallpaperSetupService.TOKEN)
       input.writeInt(if(intent.getBooleanExtra("repair",false)||prefs.getBoolean("repair_required",false)) 1 else 0)
+      input.writeString(prefs.getString("wallpaper_profile",""))
       check(binder.transact(1,input,output,0)){"Setup helper did not respond"}
       output.readException();success=output.readInt()==1;output.readString() ?: "No result"
      } finally { input.recycle();output.recycle() }
@@ -66,6 +67,7 @@ class SetupActivity : ComponentActivity() {
  private var applyGeneration=0
  private fun startApply(){
   if(applying)return
+  try{WallpaperProfile.resolve(Build.MODEL,prefs.getString("wallpaper_profile",""))}catch(e:IllegalArgumentException){message=e.message ?: "Choose your Fold model above";return}
   if(runCatching{Shizuku.getUid()}.getOrDefault(-1)!=2000){message="Wallpaper setup requires Shizuku started with wireless or USB debugging (ADB mode), not root mode.";return}
   val generation=++applyGeneration
   attempted=true;prefs.edit().putBoolean("wallpaper_verified",false).apply();applying=true;message="Applying the required fold wallpaper to both home screens…"
@@ -122,7 +124,7 @@ class SetupActivity : ComponentActivity() {
       Text("Make the fold yours.",style=MaterialTheme.typography.headlineLarge)
       Text("Setup ${stage+1} of 4",style=MaterialTheme.typography.labelLarge)
       LinearProgressIndicator(progress={(stage+1)/4f},modifier=Modifier.fillMaxWidth())
-      if(!DeviceCompatibility.isRecognized(Build.MODEL)) Text(DeviceCompatibility.modelWarning(Build.MODEL),color=MaterialTheme.colorScheme.error)
+      if(!applying)DeviceProfileChoice{if(stage==3)go(2);message="Wallpaper profile selected. Apply required wallpapers to use it."}
       when(stage){
        0->{
         Text("The wallpaper that powers the fold",style=MaterialTheme.typography.headlineSmall)

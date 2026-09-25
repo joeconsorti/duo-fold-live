@@ -96,7 +96,7 @@ class MainActivity:ComponentActivity(){
         OutlinedButton(onClick={ShizukuAccess.show(this@MainActivity,ShizukuAccess.report(this@MainActivity))}){Text("Connection report")}
        }
       }
-      if(!DeviceCompatibility.isRecognized(android.os.Build.MODEL)) Text(DeviceCompatibility.modelWarning(android.os.Build.MODEL),color=MaterialTheme.colorScheme.error)
+      DeviceProfileChoice{startActivity(Intent(this@MainActivity,SetupActivity::class.java).putExtra("repair",true))}
       if(supportBanner){
        SettingsCard("Enjoying Duo Fold Live?","Your support helps fund more updates. Always optional."){
         Button(onClick={SupportPrompts.open(this@MainActivity);supportBanner=false}){Text("Yes, support on Ko-fi")}
