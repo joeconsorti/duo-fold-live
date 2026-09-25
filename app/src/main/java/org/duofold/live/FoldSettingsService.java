@@ -18,7 +18,8 @@ public class FoldSettingsService extends Binder {
   Bundle out=new Bundle();long identity=Binder.clearCallingIdentity();
   try{
    if("always".equals(action))FoldRotationHold.recoverAbandoned(user);
-   if(action.startsWith("decor_")){out=decor(action,original);}else{
+   if("rotation_repair".equals(action)){out.putString("value",FoldRotationHold.repairAutoRotate(user));out.putBoolean("ok",true);}
+   else if(action.startsWith("decor_")){out=decor(action,original);}else{
    String before=command(user,"get",null),expected;
    if(!known(before))throw new IllegalStateException("Unrecognized fold setting: "+before);
    if("always".equals(action))expected="stay_awake_on_fold_key";

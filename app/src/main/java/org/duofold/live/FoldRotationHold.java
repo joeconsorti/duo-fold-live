@@ -53,16 +53,45 @@ final class FoldRotationHold {
     }
     Object actual=backend.display();boolean verified=actual!=null&&actual.getClass().getField("rotation").getInt(actual)==heldRotation&&(boolean)backend.frozen.invoke(backend.wm,0);
     status=(verified?"Rotation hold verified":"Rotation hold requested; awaiting readback")+" · "+(heldRotation*90)+" degrees";
-   } else if(active){backend.restore();active=false;restorationPending=false;status="Rotation preference restored";}
+   } else if(active){backend.restore();active=false;restorationPending=false;status="Rotation release verified on both saved panels";}
   } catch(Exception error){restorationPending=true;retryAfter=SystemClock.elapsedRealtime()+2000;status="Rotation hold: "+root(error);enabled=false;
    try{if(backend!=null)backend.restore();active=false;restorationPending=false;}catch(Exception restore){status="Rotation restoration pending: "+root(restore);}
   } finally {Binder.restoreCallingIdentity(identity);}
-  if(!closed||active)handler.postDelayed(this,32);else {if(backend!=null)backend.close();thread.quitSafely();}
+  if(!closed||active||restorationPending)handler.postDelayed(this,32);else {if(backend!=null)backend.close();thread.quitSafely();}
  }};
  private static String root(Throwable e){while(e instanceof java.lang.reflect.InvocationTargetException&&e.getCause()!=null)e=e.getCause();return e.getClass().getSimpleName()+": "+e.getMessage();}
  /** Called by the independent keep-awake service. A live owner prevents recovery via the file lock. */
  private static final java.util.concurrent.atomic.AtomicBoolean recovering=new java.util.concurrent.atomic.AtomicBoolean();
  static void recoverAbandoned(int user){if(!new File("/data/local/tmp/duofold-rotation-"+user+".json").exists()||!recovering.compareAndSet(false,true))return;Thread worker=new Thread(()->{try(Backend b=new Backend(user)){b.recover();}catch(Exception ignored){/* Journal retained for next retry. */}finally{recovering.set(false);}},"duo-rotation-recovery");worker.setDaemon(true);worker.start();}
+ static String repairAutoRotate(int user)throws Exception{
+  try(Backend b=new Backend(user)){
+   if(!b.acquire())throw new IOException("Rotation hold is still releasing. Keep animation disabled and retry.");
+   if(!b.journal.exists())b.begin();
+   JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(b.journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
+   j.put("locked",false);j.put("auto","1");
+   JSONObject secondary=j.optJSONObject("secondary");if(secondary!=null)secondary.put("locked",false);
+   java.util.Map<Integer,Integer> preferences=preferencesForRepair(j);
+   StringBuilder states=new StringBuilder();
+   for(java.util.Map.Entry<Integer,Integer> pref:preferences.entrySet()){
+    if(states.length()>0)states.append(':');states.append(pref.getKey()).append(':').append(pref.getValue()==0?0:2);
+   }
+   if(states.length()>0)j.put("states",states.toString());
+   JSONObject modes=j.getJSONObject("fixed");
+   for(java.util.Iterator<String> it=modes.keys();it.hasNext();)modes.put(it.next(),0);
+   for(int id:new int[]{0,1}){
+    Object d=b.info.invoke(b.dm,id);if(d==null)continue;
+    String physical=String.valueOf(d.getClass().getField("uniqueId").get(d));
+    if(!physical.startsWith("local:"))continue;
+    modes.put(physical,0);
+    if(id==0)j.put("primaryPhysical",physical);
+    else{JSONObject target=new JSONObject();target.put("physical",physical);target.put("locked",false);target.put("rotation",b.userRotation.invoke(b.wm,id));j.put("secondary",target);}
+   }
+   // Explicit user repair: restore stock fixed-rotation policy, enable auto-rotate.
+   // Save the repair target before writes so interrupted repair is recoverable.
+   b.save(j);b.restore();return "Auto-rotate repair verified. Animation remains off; test rotation before re-enabling.";
+  }
+ }
+ private static java.util.Map<Integer,Integer> preferencesForRepair(JSONObject j)throws Exception{return Backend.preferences(j);}
  private static final class Backend implements AutoCloseable {
   final Object wm,dm;final Method freeze,thaw,frozen,userRotation,info,postureSetting,fixed;
   final int user;
@@ -128,6 +157,10 @@ final class FoldRotationHold {
    }
    for(java.util.Map.Entry<Integer,Integer> pref:preferences.entrySet())if(pref.getValue()!=0&&!routes.has(pref.getKey().toString()))throw new IllegalStateException("No restoration route for posture "+pref.getKey());
    j.put("states",nullable(states));j.put("routes",routes);j.put("fixed",new JSONObject());
+   Object primary=display();
+   if(primary==null)throw new IOException("Primary display unavailable before hold");
+   j.put("primaryPhysical",String.valueOf(primary.getClass().getField("uniqueId").get(primary)));
+   j.getJSONObject("fixed").put(j.getString("primaryPhysical"),fixedMode(0));
    // Capture the secondary panel before freezing the primary can change shared settings.
    Object secondary=info.invoke(dm,1);
    if(secondary!=null){
@@ -136,6 +169,7 @@ final class FoldRotationHold {
     saved.put("locked",frozen.invoke(wm,1));saved.put("rotation",userRotation.invoke(wm,1));
     saved.put("holdRotation",secondary.getClass().getField("rotation").getInt(secondary));
     j.put("secondary",saved);
+    j.getJSONObject("fixed").put(saved.getString("physical"),fixedMode(1));
    }
    File temp=new File(journal.getPath()+".tmp");
    try(FileOutputStream out=new FileOutputStream(temp)){out.write(j.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));out.getFD().sync();}
@@ -167,13 +201,67 @@ final class FoldRotationHold {
   }
   boolean restoreFixed(JSONObject j,String keep)throws Exception{
    JSONObject modes=j.optJSONObject("fixed");if(modes==null)return true;
-   java.util.List<String> restored=new java.util.ArrayList<>();
-   for(java.util.Iterator<String> it=modes.keys();it.hasNext();){String physical=it.next();if(physical.equals(keep))continue;
-    for(int id:new int[]{0,1}){Object d=info.invoke(dm,id);if(d!=null&&physical.equals(String.valueOf(d.getClass().getField("uniqueId").get(d)))){
-     fixed.invoke(wm,id,modes.getInt(physical));restored.add(physical);break;
-    }}
+   java.util.List<RotationRelease.Step> steps=new java.util.ArrayList<>();
+   for(java.util.Iterator<String> it=modes.keys();it.hasNext();){
+    String physical=it.next();if(physical.equals(keep))continue;
+    steps.add(()->{
+     int id=findPanel(physical);
+     if(id<0)throw new IOException("Rotation policy recovery waiting for physical display "+physical);
+     int expected=modes.getInt(physical);
+     fixed.invoke(wm,id,expected);
+     if(findPanel(physical)!=id||fixedMode(id)!=expected)throw new IOException("Fixed rotation readback mismatch on "+physical);
+    });
    }
-   for(String key:restored)modes.remove(key);save(j);return modes.length()==0||(keep!=null&&modes.length()==1&&modes.has(keep));
+   RotationRelease.all(steps);return true;
+  }
+  int findPanel(String physical)throws Exception{
+   for(int id:new int[]{0,1}){Object d=info.invoke(dm,id);if(d!=null&&physical.equals(String.valueOf(d.getClass().getField("uniqueId").get(d))))return id;}
+   return -1;
+  }
+  JSONObject panelSaved(JSONObject j,Object d)throws Exception{
+   String physical=String.valueOf(d.getClass().getField("uniqueId").get(d));
+   JSONObject secondary=j.optJSONObject("secondary");
+   if(secondary!=null&&physical.equals(secondary.getString("physical")))return secondary;
+   // Legacy journals did not name the original primary. On these two built-in
+   // displays it is the panel other than the saved secondary; never infer external displays.
+   if(j.has("primaryPhysical")?physical.equals(j.getString("primaryPhysical")):
+      physical.startsWith("local:")&&secondary!=null&&!physical.equals(secondary.getString("physical")))return j;
+   return null;
+  }
+  boolean expectedPrimaryLock(JSONObject j,Object d)throws Exception{
+   int w=d.getClass().getField("logicalWidth").getInt(d),h=d.getClass().getField("logicalHeight").getInt(d);
+   int posture=Math.min(w,h)/(float)Math.max(w,h)>.7f?2:0;
+   return RotationRelease.locked(preferences(j).get(posture),j.getBoolean("locked"));
+  }
+  void restorePanelLocks(JSONObject j)throws Exception{
+   java.util.List<RotationRelease.Step> steps=new java.util.ArrayList<>();
+   // Secondary first; primary last, then restore the asynchronous posture preferences.
+   for(int id:new int[]{1,0})steps.add(()->{
+    Object d=info.invoke(dm,id);if(d==null){if(id==0)throw new IOException("Primary missing during rotation release");return;}
+    JSONObject saved=panelSaved(j,d);
+    if(saved==null){if(id==0)saved=j;else return;}
+    String physical=String.valueOf(d.getClass().getField("uniqueId").get(d));
+    boolean locked=id==0?expectedPrimaryLock(j,d):saved.getBoolean("locked");
+    if(locked)freeze.invoke(wm,id,saved.getInt("rotation"),"Duo restore saved rotation");
+    else thaw.invoke(wm,id,"Duo release fold rotation");
+    if(findPanel(physical)!=id)throw new IOException("Panel remapped during rotation release; retrying");
+   });
+   RotationRelease.all(steps);
+  }
+  void verifyRelease(JSONObject j)throws Exception{
+   for(int id:new int[]{0,1}){
+    Object d=info.invoke(dm,id);if(d==null){if(id==0)throw new IOException("Primary missing during release verification");continue;}
+    JSONObject saved=panelSaved(j,d);
+    if(saved==null){if(id==0)saved=j;else continue;}
+    String physical=String.valueOf(d.getClass().getField("uniqueId").get(d));
+    boolean expected=id==0?expectedPrimaryLock(j,d):saved.getBoolean("locked");
+    if((boolean)frozen.invoke(wm,id)!=expected)throw new IOException("Rotation lock readback mismatch on display "+id);
+    JSONObject modes=j.optJSONObject("fixed");
+    if(modes!=null&&modes.has(physical)&&fixedMode(id)!=modes.getInt(physical))throw new IOException("Fixed override remains on display "+id);
+    if(findPanel(physical)!=id)throw new IOException("Panel remapped during release verification");
+   }
+   java.util.Map<Integer,Integer> saved=preferences(j);
+   if(!saved.isEmpty()&&!saved.equals(RotationPreferences.parse(get(Settings.Secure.class,"device_state_rotation_lock"))))throw new IOException("Posture preferences still restoring");
   }
   void enforce(String physical,int rotation)throws Exception{
    JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
@@ -198,44 +286,33 @@ final class FoldRotationHold {
     freeze.invoke(wm,1,rotation,"Duo secondary fold hold");
    fixed.invoke(wm,1,2);
   }
-  void restoreSecondary(JSONObject j)throws Exception{
-   JSONObject saved=j.optJSONObject("secondary");if(saved==null)return;
-   Object d=info.invoke(dm,1);
-   if(d!=null&&saved.getString("physical").equals(String.valueOf(d.getClass().getField("uniqueId").get(d)))){
-    if(saved.getBoolean("locked"))freeze.invoke(wm,1,saved.getInt("rotation"),"Duo restore secondary rotation");
-    else thaw.invoke(wm,1,"Duo restore secondary auto-rotate");
-   }
-   // If that panel became primary, the global/per-posture restoration below owns it.
-  }
   static Object nullable(String value){return value==null?JSONObject.NULL:value;}
   static String value(JSONObject j,String key)throws Exception{return j.isNull(key)?null:j.getString(key);}
   void restore()throws Exception{
    if(lock==null)return;
    if(!journal.exists()){unlock();return;}
    JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
-   // Remove our fixed-to-user override first, even if preference verification
-   // later fails. Otherwise a failed readback can leave auto-rotate suppressed.
-   boolean fixedRestored=restoreFixed(j,null);
-   if(!j.optBoolean("globalRestored",false)){
-   restoreSecondary(j);
-   if(j.getBoolean("locked"))freeze.invoke(wm,0,j.getInt("rotation"),"Duo restore rotation preference");
-   else thaw.invoke(wm,0,"Duo restore auto-rotate");
-   // Use Samsung's posture API, not writes to ACCELEROMETER_ROTATION / the secure
-   // posture map: those bypass its asynchronous controller and can corrupt preferences.
-   java.util.Map<Integer,Integer> saved=preferences(j);
-   JSONObject routes=j.getJSONObject("routes");
-   for(java.util.Map.Entry<Integer,Integer> pref:saved.entrySet())if(pref.getValue()!=0)
-    postureSetting.invoke(wm,routes.getInt(pref.getKey().toString()),pref.getValue()==2);
-   boolean verified=false;
-   for(int i=0;i<10;i++){
-    SystemClock.sleep(50);
-    if(saved.isEmpty()?(boolean)frozen.invoke(wm,0)==j.getBoolean("locked"):saved.equals(RotationPreferences.parse(get(Settings.Secure.class,"device_state_rotation_lock")))){verified=true;break;}
+   // Every release phase is attempted even if a different setting fails. Never
+   // skip thaw on a retry, and never discard the original fixed-policy snapshots.
+   java.util.List<RotationRelease.Step> steps=new java.util.ArrayList<>();
+   steps.add(()->restoreFixed(j,null));
+   steps.add(()->restorePanelLocks(j));
+   steps.add(()->{
+    JSONObject routes=j.getJSONObject("routes");
+    java.util.List<RotationRelease.Step> postures=new java.util.ArrayList<>();
+    for(java.util.Map.Entry<Integer,Integer> pref:preferences(j).entrySet())if(pref.getValue()!=0)
+     postures.add(()->postureSetting.invoke(wm,routes.getInt(pref.getKey().toString()),pref.getValue()==2));
+    RotationRelease.all(postures);
+   });
+   steps.add(()->put(Settings.System.class,"user_rotation",value(j,"userRotation")));
+   RotationRelease.all(steps);
+   // Require consecutive readbacks after Samsung's asynchronous setting callbacks.
+   int consecutive=0;Exception last=null;
+   for(int i=0;i<10&&consecutive<2;i++){
+    SystemClock.sleep(100);
+    try{verifyRelease(j);consecutive++;}catch(Exception e){consecutive=0;last=e;}
    }
-   if(!verified)throw new IOException("Per-posture rotation readback differs; original retained");
-   put(Settings.System.class,"user_rotation",value(j,"userRotation"));
-   j.put("globalRestored",true);save(j);
-   }
-   if(!fixedRestored)throw new IOException("Rotation policy recovery waiting for physical display");
+   if(consecutive<2)throw new IOException("Rotation release not verified; original settings retained: "+(last==null?"unknown":root(last)),last);
    if(!journal.delete())throw new IOException("Could not clear rotation recovery journal");
    unlock();
   }

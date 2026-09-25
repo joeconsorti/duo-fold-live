@@ -68,6 +68,8 @@ class MainActivity:ComponentActivity(){
     var status by remember{mutableStateOf("Connecting…")}
     var photo by remember{mutableStateOf(BitmapFactory.decodeFile(WallpaperFiles.photoFile(this).absolutePath))}
     var photoStatus by remember{mutableStateOf("")}
+    var rotationRepair by remember{mutableStateOf("")}
+    var repairingRotation by remember{mutableStateOf(false)}
     var exporting by remember{mutableStateOf(false)}
     LaunchedEffect(Unit){while(true){enabled=prefs.getBoolean("enabled",false);status=LiveAngles.status+"\n"+LiveAngles.handoffStatus;if(!supportBanner && SupportPrompts.inAppDue(this@MainActivity)){supportBanner=true;SupportPrompts.seenInApp(this@MainActivity)};delay(600)}}
     fun restart(){startBackground();StandaloneService.instance?.restart()}
@@ -167,6 +169,18 @@ class MainActivity:ComponentActivity(){
         Slider(value=closedThreshold,onValueChange={closedThreshold=it.roundToInt().toFloat()},valueRange=1f..10f,steps=8,onValueChangeFinished={prefs.edit().putFloat("closed_threshold",closedThreshold).apply();restart()})
         Text("At or below this angle, treat the phone as fully closed and clear the cover effect. Default: 2°.",style=MaterialTheme.typography.bodySmall)
         TextButton(onClick={closedThreshold=2f;prefs.edit().putFloat("closed_threshold",2f).apply();restart()}){Text("Reset to 2°")}
+        HorizontalDivider()
+        Text("Auto-rotate recovery",style=MaterialTheme.typography.titleMedium)
+        Text("For stuck rotation: turn fold animation off, then repair. This enables auto-rotate for both postures and restores the default rotation policy. Requires connected Shizuku.",style=MaterialTheme.typography.bodySmall)
+        OutlinedButton(enabled=!enabled && !repairingRotation,onClick={
+         repairingRotation=true;rotationRepair="Releasing rotation overrides…"
+         FoldSettingsClient.request(this@MainActivity,"rotation_repair",null){result->
+          repairingRotation=false
+          rotationRepair=if(result.getBoolean("ok"))result.getString("value") ?: "Auto-rotate repaired" else result.getString("error") ?: "Repair not verified; retry with animation off"
+          RecoveryLog.add(rotationRepair)
+         }
+        }){Text("Repair auto-rotate")}
+        if(rotationRepair.isNotEmpty())Text(rotationRepair,style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         Text("Keep cover awake on close",style=MaterialTheme.typography.titleMedium)
         Text("Always ON. Saved across updates and checked in the background, including when the animation is off. Reconnects automatically when authorized Shizuku becomes available.",style=MaterialTheme.typography.bodySmall)
