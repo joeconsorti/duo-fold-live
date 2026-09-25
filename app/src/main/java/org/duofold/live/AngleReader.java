@@ -36,7 +36,7 @@ public class AngleReader extends Binder {
    finally{if(sc!=null)sc.release();Binder.restoreCallingIdentity(identity);}
    return true;
   }
-  if(code==9){boolean inner=data.readInt()!=0;long when=data.readLong();if(fade!=null)fade.drawn(inner,when);reply.writeNoException();return true;}
+  if(code==9){boolean inner=data.readInt()!=0;long when=data.readLong();int kind=data.dataAvail()>=4?data.readInt():0;long captured=data.dataAvail()>=8?data.readLong():-1;if(fade!=null)fade.drawn(inner,when,kind,captured);reply.writeNoException();return true;}
   if(code==8){if(expansion==null)expansion=new PreviewExpansion(caller);reply.writeNoException();reply.writeStrongBinder(expansion);return true;}
   if(code==6){if(capture==null)capture=new GlassCapture(caller);reply.writeNoException();reply.writeStrongBinder(capture);return true;}
   if(code==4){int id=data.readInt();android.view.SurfaceControl parent=data.readTypedObject(android.view.SurfaceControl.CREATOR);int w=data.readInt(),h=data.readInt();Bundle result=mirror.attach(id,parent,w,h,previewAllowed);if(result.getBoolean("ok")&&fade!=null)fade.mirrorSubmitted();reply.writeNoException();reply.writeBundle(result);return true;}
@@ -46,13 +46,14 @@ public class AngleReader extends Binder {
    float fadeSmoothing=data.dataAvail()>=4?data.readFloat():FadeSettings.DEFAULT_SMOOTHING;
    float fadeGradualness=data.dataAvail()>=4?data.readFloat():FadeSettings.DEFAULT_GRADUALNESS;
    String mode=data.dataAvail()>0?AnimationModePolicy.sanitize(data.readString()):AnimationModePolicy.DEFAULT;
+   boolean debug=data.dataAvail()>=4&&data.readInt()!=0;
    boolean effectAllowed=animationMode.update(mode,effectiveAngle,last>0&&heartbeat-last<750);
    boolean mirrorMode=AnimationModePolicy.mirrors(mode);
    appEnabled=appEnabled&&effectAllowed;
    if(rotation==null)rotation=new FoldRotationHold(caller/100000);
    rotation.update(appEnabled&&unlocked,last>0&&heartbeat-last<750,effectiveAngle,openThreshold);
    if(fade==null)fade=new HandoffFade();
-   fade.settings(fadeSmoothing,fadeGradualness);
+   fade.settings(fadeSmoothing,fadeGradualness,mirrorMode&&!debug,openThreshold);
    fade.update(live&&!dual&&appEnabled&&!handoff.probeHolding(),effectiveAngle,last>0&&heartbeat-last<750);
    if(expansion!=null)expansion.enabled(mirrorMode&&live&&!dual&&appEnabled&&!handoff.probeHolding());
    if(mirrorMode && live && !dual && unlocked && appEnabled && handoff.active() && !handoff.probeHolding() && angle>=98f && last>0 && heartbeat-last<750 && expansion!=null)expansion.holdBeforeRelease();

@@ -93,7 +93,12 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         val lifecycle=OverlayOwner();owner=lifecycle
         lifecycle.registry.currentState=Lifecycle.State.CREATED
         val compose=ComposeView(context);view=compose;compose.alpha=0f
-        compose.viewTreeObserver.addOnDrawListener{if(compose.alpha>0f)HandoffFadeFrames.drawn(minOf(screenWidth,screenHeight).toFloat()/maxOf(screenWidth,screenHeight)>.7f)}
+        compose.viewTreeObserver.addOnDrawListener{
+            val inner=minOf(screenWidth,screenHeight).toFloat()/maxOf(screenWidth,screenHeight)>.7f
+            // The glass SurfaceView supplies its own frame-bound completion.
+            val glass=AnimationModePolicy.mirrors(settings().getString("animation_mode",AnimationModePolicy.DEFAULT)) && !settings().getBoolean("debug_mode",false)
+            if(compose.alpha>0f && (!inner || !glass))HandoffFadeFrames.drawn(inner)
+        }
         compose.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         compose.setViewTreeLifecycleOwner(lifecycle);compose.setViewTreeSavedStateRegistryOwner(lifecycle)
         val intensity=settings().getFloat("intensity",1f)

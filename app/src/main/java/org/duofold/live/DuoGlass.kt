@@ -129,6 +129,32 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
  private var program:RuntimeShader?=null
  private var bitmap:Bitmap?=null
  private var classic=false
+ private var readinessGeneration=0
+ private var readinessPending=false
+ private var lastReadyCapture=-1L
+ private var lastReadyEndpoint=-1L
+ /** Tie readiness to this SurfaceView's next buffer, not its parent UI draw. */
+ private fun trackReadyFrame(rendered:GlassFrame?,endpoint:Boolean){
+  if(preview || frozen || !inner || readinessPending)return
+  val now=SystemClock.elapsedRealtime()
+  if(endpoint){if(now-lastReadyEndpoint<50)return}
+  else if(rendered==null || rendered.stamp==lastReadyCapture)return
+  val gen=readinessGeneration
+  readinessPending=true
+  try{
+   SurfaceControl.Transaction().use { transaction ->
+    transaction.addTransactionCommittedListener(context.mainExecutor){
+     if(gen==readinessGeneration && holder.surface.isValid){
+      readinessPending=false
+      if(endpoint)lastReadyEndpoint=SystemClock.elapsedRealtime() else lastReadyCapture=rendered!!.stamp
+      HandoffFadeFrames.committed(true,rendered?.stamp ?: -1,endpoint)
+      if(rendered!=null)PreviewTransition.innerFrameSubmitted(rendered) else if(endpoint)PreviewTransition.innerEndpointCommitted()
+     }
+    }
+    applyTransactionToFrame(transaction)
+   }
+  }catch(e:Exception){readinessPending=false;RecoveryLog.add("Glass frame readiness unavailable: ${e.javaClass.simpleName}")}
+ }
  private var frameQueued=false
  private var dirty=true
  private var appliedRate=0f
@@ -174,17 +200,22 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
   updateBufferSize();preferFastRefresh();requestDraw()
  }
  override fun surfaceChanged(h:SurfaceHolder,format:Int,w:Int,height:Int){if(!preview)GlassFrames.surface(this,surfaceControl);preferFastRefresh();requestDraw()}
- override fun surfaceDestroyed(h:SurfaceHolder){if(angleListening){LiveAngles.remove(angleListener);angleListening=false};targetAngle=Float.NaN;renderedAngle=Float.NaN;lastFrameNanos=0L;choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview)GlassFrames.surface(this,null);bitmap=null;frame=null;paint.shader=null}
+ override fun surfaceDestroyed(h:SurfaceHolder){readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(angleListening){LiveAngles.remove(angleListener);angleListening=false};targetAngle=Float.NaN;renderedAngle=Float.NaN;lastFrameNanos=0L;choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview)GlassFrames.surface(this,null);bitmap=null;frame=null;paint.shader=null}
  private fun drawFrame(){
   if(!holder.surface.isValid || width<=0 || height<=0)return
   runCatching{
    val started=SystemClock.elapsedRealtimeNanos()
    val canvas=holder.lockHardwareCanvas()
+   var rendered:GlassFrame?=null
+   var endpoint=false
    try{
     canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR)
     canvas.scale(canvas.width.toFloat()/width,canvas.height.toFloat()/height)
     if(preview && frame!=null)canvas.drawBitmap(frame!!.bitmap,null,RectF(0f,0f,width.toFloat(),height.toFloat()),null)
-    if(amount<=.003f || (!preview && (!LiveAngles.fresh() || !LiveAngles.effectAllowed)))return@runCatching
+    if(amount<=.003f || (!preview && (!LiveAngles.fresh() || !LiveAngles.effectAllowed))){
+     endpoint=!preview && inner && LiveAngles.fresh() && LiveAngles.effectAllowed && targetAngle.isFinite() && targetAngle>=FoldThreshold.sanitize(openThreshold)
+     return@runCatching
+    }
     val f=frame
     val size=Point()
     if(!preview && !frozen)context.getSystemService(DisplayManager::class.java).getDisplay(0)?.getRealSize(size)
@@ -222,6 +253,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
      shader.setFloatUniform("horizontal",if(rotation==Surface.ROTATION_90||rotation==Surface.ROTATION_270)1f else 0f)
      shader.setFloatUniform("reverse",if(rotation==Surface.ROTATION_90||rotation==Surface.ROTATION_180)1f else 0f)
      paint.shader=shader;canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint)
+     if(!preview && !frozen && f.width==size.x && f.height==size.y)rendered=f
     }else{
      // Honest, live black-fade fallback; never leave stale captured content visible.
      val horizontal=rotation==Surface.ROTATION_90||rotation==Surface.ROTATION_270
@@ -230,8 +262,13 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
      paint.shader=LinearGradient(0f,0f,if(horizontal)0f else width.toFloat(),if(horizontal)height.toFloat() else 0f,colors,null,Shader.TileMode.CLAMP)
      canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint)
     }
-   }finally{holder.unlockCanvasAndPost(canvas);if(!preview && inner)PreviewTransition.innerFrameSubmitted(frame);if(!preview)FrameTelemetry.record(inner,SystemClock.elapsedRealtimeNanos(),SystemClock.elapsedRealtimeNanos()-started,appliedRate)}
-  }.onFailure{RecoveryLog.add("Glass draw error: ${it.javaClass.simpleName}")}
+   }finally{
+    // Only successful glass rendering or a deliberate fully-open clear qualifies.
+    // Attach before posting this buffer. A fallback draw never sends readiness.
+    try{if(rendered!=null || endpoint)trackReadyFrame(rendered,endpoint)}finally{holder.unlockCanvasAndPost(canvas)}
+    if(!preview)FrameTelemetry.record(inner,SystemClock.elapsedRealtimeNanos(),SystemClock.elapsedRealtimeNanos()-started,appliedRate)
+   }
+  }.onFailure{readinessGeneration++;readinessPending=false;RecoveryLog.add("Glass draw error: ${it.javaClass.simpleName}")}
  }
 }
 

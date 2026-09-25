@@ -53,7 +53,7 @@ final class PreviewExpansion extends Binder {
    Bitmap bitmap=data.readTypedObject(Bitmap.CREATOR);Bitmap clean=data.readTypedObject(Bitmap.CREATOR);long captured=data.readLong();
    if(bitmap==null || clean==null)throw new IllegalArgumentException("No prepared frame");
    handler.post(()->{try{prepare(bitmap,clean,captured);}catch(Exception e){clear("Expansion prepare failed: "+root(e));}finally{bitmap.recycle();clean.recycle();}});
-  }else if(code==2){handler.post(()->{if(layer!=null){pendingReady=true;event("Fresh inner render submitted");if(start>0 && ready<0){ready=SystemClock.elapsedRealtime()-start;status="Inner content received; expansion fading";}}});}
+  }else if(code==2){boolean endpoint=data.dataAvail()>=4&&data.readInt()!=0;handler.post(()->{if(layer!=null){pendingReady=true;event(endpoint?"Fully-open clear frame committed":"Fresh inner glass frame committed");if(start>0 && ready<0){ready=SystemClock.elapsedRealtime()-start;status=endpoint?"Fully open; expansion fading":"Inner glass committed; expansion fading";}}});}
   else if(code==3){handler.post(()->{completed=false;clear("Expansion reset");});}
   else throw new IllegalArgumentException("Unknown bridge operation");
   reply.writeNoException();reply.writeString(status);return true;

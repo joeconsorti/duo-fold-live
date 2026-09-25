@@ -40,10 +40,11 @@ internal object PreviewTransition {
   val p=Parcel.obtain();val r=Parcel.obtain()
   try{p.writeInterfaceToken(AngleReader.DESCRIPTOR);LiveAngles.previewCommand(8,p,r);r.readException();return r.readStrongBinder()!!.also{remote=it}}finally{p.recycle();r.recycle()}
  }
- private fun send(code:Int,frame:GlassFrame?=null):String{
+ private fun send(code:Int,frame:GlassFrame?=null,endpoint:Boolean=false):String{
   val p=Parcel.obtain();val r=Parcel.obtain();var blurred:Bitmap?=null
   try{
    p.writeInterfaceToken(PreviewExpansion.TOKEN)
+   if(code==2)p.writeInt(if(endpoint)1 else 0)
    if(frame!=null){blurred=frost(frame.bitmap);p.writeTypedObject(blurred,0);p.writeTypedObject(frame.bitmap,0);p.writeLong(frame.stamp)}
    binder().transact(code,p,r,0);r.readException();return r.readString()?:"Expansion ready"
   }catch(e:Exception){remote=null;throw e}finally{blurred?.recycle();p.recycle();r.recycle()}
@@ -70,6 +71,11 @@ internal object PreviewTransition {
      !PreviewExpansionPolicy.fresh(frame.stamp,SystemClock.elapsedRealtime()))return
   readySent=true
   executor.execute{runCatching{send(2)}.onSuccess{note->main.post{status=note}}.onFailure{main.post{readySent=false}}}
+ }
+ fun innerEndpointCommitted(){
+  if(!active || wasCover || readySent)return
+  readySent=true
+  executor.execute{runCatching{send(2,endpoint=true)}.onSuccess{note->main.post{status=note}}.onFailure{main.post{readySent=false}}}
  }
  // Small separable box blur, prepared off the render and angle-reader threads.
  private fun frost(source:Bitmap):Bitmap{

@@ -72,7 +72,7 @@ final class GlassCapture extends Binder {
     if(hardware==null)throw new IllegalStateException("No readable frame");
     Bitmap bitmap=hardware.copy(Bitmap.Config.ARGB_8888,false);hardware.recycle();
     Object after=Class.forName("android.hardware.display.IDisplayManager").getMethod("getDisplayInfo",int.class).invoke(dm,displayId);
-    if(after==null || after.getClass().getField("logicalWidth").getInt(after)!=w || after.getClass().getField("logicalHeight").getInt(after)!=h ||
+    if(after==null || after.getClass().getField("state").getInt(after)!=2 || after.getClass().getField("logicalWidth").getInt(after)!=w || after.getClass().getField("logicalHeight").getInt(after)!=h ||
        !java.util.Objects.equals(info.getClass().getField("uniqueId").get(info),after.getClass().getField("uniqueId").get(after))){bitmap.recycle();throw new IllegalStateException("Panel changed during capture; retry before handoff");}
     result.putParcelable("bitmap",bitmap);result.putInt("width",w);result.putInt("height",h);result.putLong("stamp",captureStarted);result.putBoolean("ok",true);
    }else throw new IllegalArgumentException("Unknown operation");

@@ -15,7 +15,13 @@ final class HandoffFade {
  private volatile long mirrorSubmitted=-1;
  void mirrorSubmitted(){mirrorSubmitted=SystemClock.elapsedRealtime();}
  private final SurfaceControl[] layers=new SurfaceControl[2];
- private volatile boolean enabled,closed,drawnInner;
+ private volatile boolean enabled,closed,requireInnerGlass;
+ private volatile float openThreshold=172;
+ private static final class Draw {
+  final boolean inner;final long when,captured;final int kind;
+  Draw(boolean inner,long when,int kind,long captured){this.inner=inner;this.when=when;this.kind=kind;this.captured=captured;}
+ }
+ private volatile Draw lastDraw=new Draw(false,-1,0,-1);
  private volatile float angle,smoothing=FadeSettings.DEFAULT_SMOOTHING,gradualness=FadeSettings.DEFAULT_GRADUALNESS;
  private Choreographer frames;
  private final AtomicBoolean wakePending=new AtomicBoolean();
@@ -24,7 +30,7 @@ final class HandoffFade {
  private final int[] stacks={-1,-1},extents={-1,-1};
  private long statusAt;
  private final Choreographer.FrameCallback frame=when->this.tick.run();
- void settings(float smoothing,float gradualness){this.smoothing=smoothing;this.gradualness=gradualness;}
+ void settings(float smoothing,float gradualness,boolean requireGlass,float open){this.smoothing=smoothing;this.gradualness=gradualness;requireInnerGlass=requireGlass;openThreshold=open;}
  private void schedule(){
   if(frames==null)frames=Choreographer.getInstance();
   frames.postFrameCallback(frame);
@@ -32,7 +38,7 @@ final class HandoffFade {
   // lock checks alive without running a competing high-frequency timer.
   handler.postDelayed(tick,80);
  }
- private volatile long lease,lastFresh,drawn=-1;
+ private volatile long lease,lastFresh;
  private long lastPrimary;
  private Object dm,wm;private Method info,keyguard,stack,color,crop,colorLayer;
  private volatile boolean ticking;
@@ -43,7 +49,7 @@ final class HandoffFade {
   this.enabled=enabled;lease=now;if((!ticking||!enabled)&&wakePending.compareAndSet(false,true))handler.post(start);
  }
  private final Runnable start=()->{wakePending.set(false);if(!enabled){clear();return;}if(!ticking&&!closed){ticking=true;this.tick.run();}};
- void drawn(boolean inner,long when){drawnInner=inner;drawn=when;}
+ void drawn(boolean inner,long when,int kind,long captured){lastDraw=new Draw(inner,when,kind,captured);}
  private Field field(Object o,String name)throws Exception{Field f=fields.get(name);if(f==null){f=o.getClass().getField(name);fields.put(name,f);}return f;}
  private int value(Object o,String f)throws Exception{return field(o,f).getInt(o);}
  private void init()throws Exception{
@@ -78,7 +84,9 @@ final class HandoffFade {
    policy.mapping((String)field(p,"uniqueId").get(p));
    boolean inner=Math.min(value(p,"logicalWidth"),value(p,"logicalHeight"))/(float)Math.max(value(p,"logicalWidth"),value(p,"logicalHeight"))>.7f;
    policy.settings(smoothing,gradualness);
-   float alpha=policy.opacity(now,inner,angle,true,value(p,"state")==2,drawn,drawnInner);
+   policy.renderer(requireInnerGlass,openThreshold);
+   Draw evidence=lastDraw;
+   float alpha=policy.opacity(now,inner,angle,true,value(p,"state")==2,evidence.when,evidence.inner,evidence.kind,evidence.captured);
    Object secondary=info.invoke(dm,1);
    boolean secondaryInner=secondary!=null&&Math.min(value(secondary,"logicalWidth"),value(secondary,"logicalHeight"))/(float)Math.max(value(secondary,"logicalWidth"),value(secondary,"logicalHeight"))>.7f;
    float mirrorAlpha=closingMirror.opacity(now,inner,secondaryInner&&value(secondary,"state")==2,mirrorSubmitted,gradualness);
@@ -102,7 +110,7 @@ final class HandoffFade {
     }
     if(changed)t.apply();
    }
-   if(now>=statusAt){statusAt=now+250;status="Handoff fade: "+Math.round(alpha*100)+"%; primary="+(inner?"inner":"cover")+"; "+(policy.transitioning()?"destination black/reveal":"angle fade")+"; ON settle 32 ms; reveal "+FadeSettings.reveal(gradualness)+" ms";}
+   if(now>=statusAt){statusAt=now+250;status="Handoff fade: "+Math.round(alpha*100)+"%; primary="+(inner?"inner":"cover")+"; "+(policy.transitioning()?"destination black/reveal":"angle fade")+"; "+policy.readiness+"; glass commit settle 2 ms; legacy ON settle 32 ms; reveal "+FadeSettings.reveal(gradualness)+" ms";}
    schedule();
   }catch(Exception e){clear();status="Handoff fade unavailable: "+e.getClass().getSimpleName()+": "+e.getMessage();}
  }};
