@@ -42,6 +42,8 @@ jobs:
           import os, re
           from pathlib import Path
           p = Path('app/build.gradle.kts')
+          if not re.search(r'versionName\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+"', p.read_text()):
+              raise SystemExit('Alpha-only release policy: retain -alpha.N until the owner approves stable releases')
           current = int(re.search(r'\bversionCode\s*=\s*(\d+)', p.read_text()).group(1))
           code = max(current, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
           text, count = re.subn(r'\bversionCode\s*=\s*\d+', f'versionCode = {code}', p.read_text())
@@ -95,10 +97,7 @@ jobs:
             cat "docs/$version-CHANGELOG.md" >> "$RUNNER_TEMP/release-notes.txt"
           fi
           release_flags=(--prerelease --latest=false)
-          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            tag="v$version"
-            release_flags=(--latest=true)
-          fi
+          # Alpha release policy: main also publishes pre-releases until user approval.
           gh release create "$tag" dist/*.apk dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Duo Fold Live $version" "${release_flags[@]}" \

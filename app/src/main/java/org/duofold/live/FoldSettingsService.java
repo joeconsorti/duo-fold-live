@@ -18,7 +18,8 @@ public class FoldSettingsService extends Binder {
   Bundle out=new Bundle();long identity=Binder.clearCallingIdentity();
   try{
    if("always".equals(action))FoldRotationHold.recoverAbandoned(user);
-   if("rotation_repair".equals(action)){out.putString("value",FoldRotationHold.repairAutoRotate(user));out.putBoolean("ok",true);}
+   if("rotation_migrate".equals(action)){out.putString("value",migrateRotation(user,original));out.putBoolean("ok",true);}
+   else if("rotation_repair".equals(action)){out.putString("value",FoldRotationHold.repairAutoRotate(user));out.putBoolean("ok",true);}
    else if(action.startsWith("decor_")){out=decor(action,original);}else{
    String before=command(user,"get",null),expected;
    if(!known(before))throw new IllegalStateException("Unrecognized fold setting: "+before);
@@ -30,6 +31,17 @@ public class FoldSettingsService extends Binder {
    }
   }catch(Exception e){out.putString("error",e.toString());}finally{Binder.restoreCallingIdentity(identity);}
   reply.writeNoException();reply.writeBundle(out);return true;
+ }
+ private static String migrateRotation(int user,String installation)throws Exception{
+  if(installation==null||!installation.matches("[0-9]{1,19}"))throw new IllegalArgumentException("Invalid installation identity");
+  File marker=new File("/data/local/tmp/duofold-rotation-repair-v1-"+user+"-"+installation+".done");
+  if(marker.exists())return "Rotation migration already verified; no settings changed";
+  String result=FoldRotationHold.repairAutoRotate(user);
+  File temp=new File(marker.getPath()+".tmp");
+  try(FileOutputStream out=new FileOutputStream(temp)){out.write("verified\n".getBytes(StandardCharsets.UTF_8));out.getFD().sync();}
+  android.system.Os.chmod(temp.getPath(),0600);
+  java.nio.file.Files.move(temp.toPath(),marker.toPath(),java.nio.file.StandardCopyOption.ATOMIC_MOVE,java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+  return result;
  }
  private static String displayApis(){
   StringBuilder available=new StringBuilder();

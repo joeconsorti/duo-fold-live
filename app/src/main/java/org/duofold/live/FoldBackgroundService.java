@@ -64,6 +64,14 @@ getSystemService(NotificationManager.class).createNotificationChannel(new Notifi
    main.postDelayed(this,30000);return;
   }
   if(interactive)org.duofold.live.wallpaperlayer.WallpaperRestore.tick(FoldBackgroundService.this);
+  if(RotationMigration.needed(FoldBackgroundService.this)){
+   if(angles!=null){angles.stop();angles=null;}
+   clearEffect();nextReaderAttempt=0;
+   if(interactive&&!getSystemService(KeyguardManager.class).isKeyguardLocked())RotationMigration.tick(FoldBackgroundService.this);
+   LiveAngles.status=RotationMigration.status;
+   if(!LiveAngles.status.equals(lastNotice)){lastNotice=LiveAngles.status;getSystemService(NotificationManager.class).notify(112,notification(lastNotice));}
+   main.postDelayed(this,2000);return;
+  }
   boolean foldEnabled=getSharedPreferences("standalone",0).getBoolean("enabled",false);
   try{
    if(!foldEnabled){if(angles!=null){angles.stop();angles=null;}LiveAngles.status="Fold animation disabled";}else{
