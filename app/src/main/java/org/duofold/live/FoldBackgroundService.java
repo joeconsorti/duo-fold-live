@@ -9,11 +9,12 @@ public class FoldBackgroundService extends Service {
  private final Handler main=new Handler(Looper.getMainLooper());
  private boolean wanted(){FoldAwakeDefault.persist(this);return true;}
  private LiveAngles angles;
+ private long asleepSince=-1,nextReaderAttempt;
  private String lastNotice="";
  private boolean lastReachable=false;
  private final rikka.shizuku.Shizuku.OnBinderReceivedListener binderReady=()->main.post(()->{RecoveryLog.add("Shizuku Binder received");FoldAwakeDefault.reconnect();kick();});
  private final rikka.shizuku.Shizuku.OnBinderDeadListener binderDead=()->main.post(()->{RecoveryLog.add("Shizuku Binder death notification");clearEffect();FoldAwakeDefault.reconnect();kick();});
- private final BroadcastReceiver screen=new BroadcastReceiver(){public void onReceive(Context c,Intent i){RecoveryLog.add("Background received "+i.getAction());if(Intent.ACTION_SCREEN_OFF.equals(i.getAction()))clearEffect();FoldAwakeDefault.reconnect();kick();}};
+ private final BroadcastReceiver screen=new BroadcastReceiver(){public void onReceive(Context c,Intent i){RecoveryLog.add("Background received "+i.getAction());if(Intent.ACTION_SCREEN_OFF.equals(i.getAction()))clearEffect();else nextReaderAttempt=0;FoldAwakeDefault.reconnect();kick();}};
  private final android.database.ContentObserver foldSettingObserver=new android.database.ContentObserver(main){
   @Override public void onChange(boolean selfChange){FoldAwakeDefault.reconnect();kick();}
  };
@@ -52,7 +53,17 @@ getSystemService(NotificationManager.class).createNotificationChannel(new Notifi
  private final Runnable supervise=new Runnable(){public void run(){
   if(!running)return;
   if(!wanted()){stopSelf();return;}
-  org.duofold.live.wallpaperlayer.WallpaperRestore.tick(FoldBackgroundService.this);
+  boolean interactive=getSystemService(PowerManager.class).isInteractive();
+  long now=SystemClock.elapsedRealtime();
+  if(interactive)asleepSince=-1;else if(asleepSince<0)asleepSince=now;
+  HealthTrace.sample(FoldBackgroundService.this);
+  // Ignore transient screen-off during a panel handoff; suspend sustained sleep.
+  if(!interactive&&now-asleepSince>=3000){
+   if(angles!=null){angles.stop();angles=null;RecoveryLog.add("Reader suspended for screen-off");}
+   LiveAngles.status="Screen asleep — reader suspended";
+   main.postDelayed(this,30000);return;
+  }
+  if(interactive)org.duofold.live.wallpaperlayer.WallpaperRestore.tick(FoldBackgroundService.this);
   boolean foldEnabled=getSharedPreferences("standalone",0).getBoolean("enabled",false);
   try{
    if(!foldEnabled){if(angles!=null){angles.stop();angles=null;}LiveAngles.status="Fold animation disabled";}else{
@@ -65,7 +76,8 @@ getSystemService(NotificationManager.class).createNotificationChannel(new Notifi
    }else if(Shizuku.checkSelfPermission()!=0){
     if(angles!=null){angles.stop();angles=null;}
     LiveAngles.status="Shizuku authorization needed — authorize Duo once";
-   }else if(angles==null||!angles.isRunning()||angles.stalled()){
+   }else if(now>=nextReaderAttempt&&(angles==null||!angles.isRunning()||angles.stalled())){
+    nextReaderAttempt=now+30000;
     if(angles!=null)angles.stop();
     angles=new LiveAngles(FoldBackgroundService.this);angles.start();
    }

@@ -47,7 +47,7 @@ public class HandoffFadePolicyTest {
    p.opacity(0,!destination,a,true,true,-1,!destination);
    assertEquals(1,p.opacity(10,destination,a,true,false,-1,!destination),0);
    assertEquals(1,p.opacity(80,destination,a,true,true,5,destination),0);
-   assertEquals(1,p.opacity(200,destination,a,true,true,199,destination),0);
+   assertEquals(1,p.opacity(200,destination,a,true,true,111,destination),0);
    assertEquals(1,p.opacity(210,destination,a,true,true,205,!destination),0);
    assertEquals(1,p.opacity(220,destination,a,true,true,215,destination),0);
    assertEquals(.5f,p.opacity(310,destination,a,true,true,300,destination),.001);
@@ -63,7 +63,7 @@ public class HandoffFadePolicyTest {
   assertEquals(1,p.opacity(230,true,98,true,false,220,true),0);
   assertEquals(1,p.opacity(2000,true,98,true,false,220,true),0);
   assertEquals(1,p.opacity(2010,true,98,true,true,220,true),0);
-  assertEquals(1,p.opacity(2130,true,98,true,true,2129,true),0);
+  assertEquals(1,p.opacity(2130,true,98,true,true,2041,true),0);
   assertEquals(1,p.opacity(2140,true,98,true,true,2140,true),0);
   assertEquals(.5f,p.opacity(2230,true,98,true,true,2220,true),.001);
  }
@@ -79,6 +79,16 @@ public class HandoffFadePolicyTest {
   HandoffFadePolicy p=new HandoffFadePolicy();p.mapping("cover");p.opacity(0,false,98,true,true,-1,false);
   p.mapping("inner");assertEquals(1,p.opacity(10,false,98,true,false,-1,false),0);
   assertTrue(p.transitioning());
+ }
+ @Test public void freshDestinationCanRevealBeforeOld120msDelay(){
+  for(boolean inner:new boolean[]{true,false}){
+   HandoffFadePolicy p=new HandoffFadePolicy();float angle=inner?98:94;
+   p.opacity(0,!inner,angle,true,true,-1,!inner);
+   assertEquals(1,p.opacity(10,inner,angle,true,true,-1,inner),0);
+   assertEquals(1,p.opacity(42,inner,angle,true,true,42,inner),0);
+   float alpha=p.opacity(60,inner,angle,true,true,60,inner);
+   assertTrue(alpha<1&&alpha>0);
+  }
  }
  @Test public void noSwitchTimesOutAndInvalidInputClears(){
   HandoffFadePolicy p=new HandoffFadePolicy();p.opacity(0,false,100,true,true,-1,false);

@@ -2,7 +2,7 @@
 
 Preserve existing working functionality and the approved animation. Scope each pass narrowly; do not claim device fixes from compilation alone. Keep the community tutorial near the top of future posts and READMEs: https://www.youtube.com/watch?v=8Ucm7ceBDN4 (made by an app user).
 
-1. Reliable temporary orientation hold in both directions, preserving rotation preferences.
+1. DONE: alpha.3 orientation hold confirmed by user; freeze implementation, do not modify.
 2. Reduce actual black screen/handoff delay so fast unfolds still show the animation.
 3. Fix only the first fold after unlocking unfolded showing the black debug effect.
 4. Exclude the animation from the first cover mirror after install/reboot.

@@ -144,7 +144,7 @@ public final class LiveAngles {
   try{if(on){ensureAnchors();sendAngleCommand(anchor);sendAngleCommand(secondaryAnchor);}}
   catch(Exception e){fail(e);return;}
   worker.post(()->{try{Bundle b=call(2);
-   if(ReaderRecovery.needsRestart(b.getString("state"))){call(1);main.post(()->{if(running){last=0;count=0;lastPoll=SystemClock.elapsedRealtime();pollInFlight=false;urgentPoll=false;RecoveryLog.add("Restarting expired wallpaper reader lease");status="Restarting wallpaper log reader";main.postDelayed(poll,50);}});return;}
+   if(ReaderRecovery.needsRestart(b.getString("state"))){main.post(()->{if(running){RecoveryLog.add("Expired wallpaper reader lease; paced recovery");stop();status="Reader lease expired — awaiting recovery";}});return;}
    main.post(()->{
    if(!running)return;
    String nextHandoff=b.getString("handoff", "Unknown display status");

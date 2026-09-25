@@ -1,7 +1,7 @@
 package org.duofold.live;
 /** Visual masking only. Never changes display state, thresholds or the underlying animation. */
 final class HandoffFadePolicy {
- static final long REVEAL_MS=180,READY_TIMEOUT_MS=900,ON_SETTLE_MS=120;
+ static final long REVEAL_MS=180,READY_TIMEOUT_MS=900,ON_SETTLE_MS=32;
  private float smoothing,gradualness,filtered;
  private long filterTime=-1;
  void settings(float smoothing,float gradualness){this.smoothing=FadeSettings.smoothing(smoothing);this.gradualness=FadeSettings.gradualness(gradualness);}
