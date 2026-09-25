@@ -50,6 +50,7 @@ final class FoldRotationHold {
      if(!mapping.equals(current)||now-lastApply>=100){
       if(!mapping.equals(current))backend.enforce(current,heldRotation);
       else if(!(boolean)backend.frozen.invoke(backend.wm,0)||info.getClass().getField("rotation").getInt(info)!=heldRotation)backend.freeze.invoke(backend.wm,0,heldRotation,"Duo temporary fold hold");
+      backend.holdSecondary();
       mapping=current;lastApply=now;
      }
     }
@@ -118,6 +119,15 @@ final class FoldRotationHold {
    }
    for(java.util.Map.Entry<Integer,Integer> pref:preferences.entrySet())if(pref.getValue()!=0&&!routes.has(pref.getKey().toString()))throw new IllegalStateException("No restoration route for posture "+pref.getKey());
    j.put("states",nullable(states));j.put("routes",routes);j.put("fixed",new JSONObject());
+   // Capture the secondary panel before freezing the primary can change shared settings.
+   Object secondary=info.invoke(dm,1);
+   if(secondary!=null){
+    JSONObject saved=new JSONObject();
+    saved.put("physical",String.valueOf(secondary.getClass().getField("uniqueId").get(secondary)));
+    saved.put("locked",frozen.invoke(wm,1));saved.put("rotation",userRotation.invoke(wm,1));
+    saved.put("holdRotation",secondary.getClass().getField("rotation").getInt(secondary));
+    j.put("secondary",saved);
+   }
    File temp=new File(journal.getPath()+".tmp");
    try(FileOutputStream out=new FileOutputStream(temp)){out.write(j.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));out.getFD().sync();}
    android.system.Os.chmod(temp.getPath(),0600);
@@ -159,10 +169,34 @@ final class FoldRotationHold {
   void enforce(String physical,int rotation)throws Exception{
    JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
    JSONObject modes=j.optJSONObject("fixed");if(modes==null){modes=new JSONObject();j.put("fixed",modes);}
-   restoreFixed(j,physical);
+   // Retain both panels' policies until the transition finishes.
    if(!modes.has(physical)){modes.put(physical,fixedMode(0));save(j);}
    freeze.invoke(wm,0,rotation,"Duo fold orientation hold");
    fixed.invoke(wm,0,2); // FIXED_TO_USER_ROTATION_ENABLED also blocks app/sensor overrides.
+  }
+  void holdSecondary()throws Exception{
+   Object d=info.invoke(dm,1);if(d==null)return;
+   JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
+   JSONObject saved=j.optJSONObject("secondary");
+   String physical=String.valueOf(d.getClass().getField("uniqueId").get(d));
+   // Only touch the secondary panel captured at hold start. After primary remapping,
+   // display 0 is already protected by enforce(); do not guess the old panel's policy.
+   if(saved==null||!physical.equals(saved.getString("physical")))return;
+   int rotation=saved.getInt("holdRotation");
+   JSONObject modes=j.getJSONObject("fixed");
+   if(!modes.has(physical)){modes.put(physical,fixedMode(1));save(j);}
+   if(!(boolean)frozen.invoke(wm,1)||d.getClass().getField("rotation").getInt(d)!=rotation)
+    freeze.invoke(wm,1,rotation,"Duo secondary fold hold");
+   fixed.invoke(wm,1,2);
+  }
+  void restoreSecondary(JSONObject j)throws Exception{
+   JSONObject saved=j.optJSONObject("secondary");if(saved==null)return;
+   Object d=info.invoke(dm,1);
+   if(d!=null&&saved.getString("physical").equals(String.valueOf(d.getClass().getField("uniqueId").get(d)))){
+    if(saved.getBoolean("locked"))freeze.invoke(wm,1,saved.getInt("rotation"),"Duo restore secondary rotation");
+    else thaw.invoke(wm,1,"Duo restore secondary auto-rotate");
+   }
+   // If that panel became primary, the global/per-posture restoration below owns it.
   }
   static Object nullable(String value){return value==null?JSONObject.NULL:value;}
   static String value(JSONObject j,String key)throws Exception{return j.isNull(key)?null:j.getString(key);}
@@ -171,6 +205,7 @@ final class FoldRotationHold {
    if(!journal.exists()){unlock();return;}
    JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
    if(!j.optBoolean("globalRestored",false)){
+   restoreSecondary(j);
    if(j.getBoolean("locked"))freeze.invoke(wm,0,j.getInt("rotation"),"Duo restore rotation preference");
    else thaw.invoke(wm,0,"Duo restore auto-rotate");
    // Use Samsung's posture API, not writes to ACCELEROMETER_ROTATION / the secure
