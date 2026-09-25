@@ -2,6 +2,11 @@
 
 # Duo Fold Live · 3.0.2
 
+## 📺 Step-by-step installation tutorial
+**New here? [Watch the full setup walkthrough on YouTube](https://www.youtube.com/watch?v=8Ucm7ceBDN4).**
+
+Created by a Duo Fold Live user—not by me. Huge thanks for putting this together!
+
 An iPhone Duo-inspired folding animation for the **Samsung Galaxy Z Fold 8**, with windowed glass, live cover previews, and smooth black fades around Samsung’s display handoff. Free and open source. Runs over One UI and ordinary apps without replacing your launcher.
 
 **[Download 3.0.2](https://github.com/joeconsorti/duo-fold-live/releases/latest)** · [Full changelog since 1.7.0](docs/3.0.0-CHANGELOG.md) · [Report an issue](https://github.com/joeconsorti/duo-fold-live/issues)
