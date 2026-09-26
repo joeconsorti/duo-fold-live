@@ -171,7 +171,7 @@ class MainActivity:ComponentActivity(){
        if(advanced){
         Text("Live content frame rate",style=MaterialTheme.typography.titleMedium)
         for(rate in listOf(12,60,120))TextButton(onClick={contentFps=rate;prefs.edit().putInt("content_fps",rate).apply();restart()}){Text((if(contentFps==rate)"✓ " else "")+when(rate){12->"Legacy · approximately 12 FPS";120->"120 FPS · experimental";else->"60 FPS · lower GPU cost"})}
-        Text("Automatically capped to the active display refresh rate, including 60 Hz mode. Actual FPS depends on device speed and temperature. Status reports show measured captures per second. Screenshot mode intentionally holds a still image.",style=MaterialTheme.typography.bodySmall)
+        Text("Uses your selected capture target without automatic refresh-rate switching. Actual FPS depends on device speed and temperature. Status reports show measured captures per second. Screenshot mode intentionally holds a still image.",style=MaterialTheme.typography.bodySmall)
         Text("Center-edge blur offset · ${(seamOffset*100).roundToInt()}%")
         Slider(value=seamOffset,onValueChange={seamOffset=it},valueRange=0f..0.15f,onValueChangeFinished={prefs.edit().putFloat("seam_offset",seamOffset).apply();restart()})
         Text("Moves the soft transition into the right side, measured as a percentage of the full inner display width beyond the fold. Default: 7%; 0 ends at the fold.",style=MaterialTheme.typography.bodySmall)
