@@ -61,13 +61,14 @@ class MainActivity:ComponentActivity(){
     var fadeSmoothing by remember{mutableFloatStateOf(FadeSettings.smoothing(prefs.getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING)))}
     var fadeGradualness by remember{mutableFloatStateOf(FadeSettings.gradualness(prefs.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS)))}
     var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
+    var antialias by remember{mutableStateOf(prefs.getBoolean("antialias_enabled",true))}
+    var antialiasStrength by remember{mutableFloatStateOf(RenderQuality.antialias(prefs.getFloat("antialias_strength",.35f)))}
     var contentFps by remember{mutableIntStateOf(RenderQuality.fps(prefs.getInt("content_fps",120)))}
     var blurStrength by remember{mutableFloatStateOf(RenderQuality.blur(prefs.getFloat("blur_strength",.3f)))}
     var seamOffset by remember{mutableFloatStateOf(RenderQuality.seam(prefs.getFloat("seam_offset",.07f)))}
     var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",.5f))}
     var closedThreshold by remember{mutableFloatStateOf(FoldThreshold.sanitizeClosed(prefs.getFloat("closed_threshold",2f)))}
     var threshold by remember{mutableFloatStateOf(FoldThreshold.sanitize(prefs.getFloat("open_threshold",172f)))}
-    var preview by remember{mutableFloatStateOf(.45f)}
     var status by remember{mutableStateOf("Connecting…")}
     var photo by remember{mutableStateOf(BitmapFactory.decodeFile(WallpaperFiles.photoFile(this).absolutePath))}
     var photoStatus by remember{mutableStateOf("")}
@@ -123,9 +124,6 @@ class MainActivity:ComponentActivity(){
       ShizukuHelp()
       SettingsCard("Fine-tune your animation","Your saved glass and fade settings apply to each style."){
 
-       key(animationStyle,mode){Box(Modifier.fillMaxWidth().height(150.dp)){GlassPreview(preview,intensity)}}
-       Slider(value=preview,onValueChange={preview=it})
-       Text("Glass appearance preview · direction and handoff are shown on your device",style=MaterialTheme.typography.labelMedium)
        Text("Motion smoothness · ${smoothing.roundToInt()} ms")
        Slider(value=smoothing,onValueChange={smoothing=it},valueRange=12f..120f,onValueChangeFinished={prefs.edit().putFloat("smoothing_ms",smoothing).apply();restart()})
        Text("30 ms is the current default. Higher values soften motion with more delay; they do not increase rendering FPS.",style=MaterialTheme.typography.bodySmall)
@@ -169,6 +167,13 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Advanced","Display thresholds, fold behavior, and diagnostics."){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
+        Toggle("Texture anti-aliasing",antialias){antialias=it;booleanSetting("antialias_enabled",it)}
+        if(antialias){
+         Text("Anti-aliasing strength · ${(antialiasStrength*100).roundToInt()}%")
+         Slider(value=antialiasStrength,onValueChange={antialiasStrength=it},valueRange=.2f..0.5f,onValueChangeFinished={prefs.edit().putFloat("antialias_strength",antialiasStrength).apply();restart()})
+         TextButton(onClick={antialiasStrength=.35f;prefs.edit().putFloat("antialias_strength",.35f).apply();restart()}){Text("Reset anti-aliasing")}
+        }
+        Text("Lightweight texture filtering for every glass style, independent of blur and glass strength. Reduces jagged detail and shimmer; cannot restore missing capture detail.",style=MaterialTheme.typography.bodySmall)
         Text("Live content frame rate",style=MaterialTheme.typography.titleMedium)
         for(rate in listOf(12,60,120))TextButton(onClick={contentFps=rate;prefs.edit().putInt("content_fps",rate).apply();restart()}){Text((if(contentFps==rate)"✓ " else "")+when(rate){12->"Legacy · approximately 12 FPS";120->"120 FPS · experimental";else->"60 FPS · lower GPU cost"})}
         Text("Uses your selected capture target without automatic refresh-rate switching. Actual FPS depends on device speed and temperature. Status reports show measured captures per second. Screenshot mode intentionally holds a still image.",style=MaterialTheme.typography.bodySmall)

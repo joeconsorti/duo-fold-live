@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 android {
  namespace = "org.duofold.live"
  compileSdk = 36
- defaultConfig { applicationId = "org.duofold.live"; minSdk = 34; targetSdk = 36; versionCode = 1044; versionName = "3.0.4-alpha.21" }
+ defaultConfig { applicationId = "org.duofold.live"; minSdk = 34; targetSdk = 36; versionCode = 1045; versionName = "3.0.4-alpha.22" }
  val releaseKey = System.getenv("DUO_KEYSTORE")
  signingConfigs { if (releaseKey != null) create("standalone") {
   storeFile=file(releaseKey); storePassword=System.getenv("DUO_STORE_PASSWORD")

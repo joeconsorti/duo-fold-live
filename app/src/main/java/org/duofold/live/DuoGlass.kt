@@ -15,7 +15,10 @@ internal object DuoGlassShader {
  val source="""
  uniform shader content;
  uniform shader mip1; uniform shader mip2; uniform shader mip3; uniform shader mip4; uniform shader mip5; uniform shader mip6; uniform shader mip7;
+ uniform float aaStrength;
  half3 sampleLevel(float2 p,float lod){
+  // A bounded trilinear prefilter reuses existing mip levels, including at zero blur.
+  lod=max(lod,aaStrength);
   if(lod<1.0)return mix(content.eval(p).rgb,mip1.eval(p).rgb,half(lod));
   if(lod<2.0)return mix(mip1.eval(p).rgb,mip2.eval(p).rgb,half(lod-1.0));
   if(lod<3.0)return mix(mip2.eval(p).rgb,mip3.eval(p).rgb,half(lod-2.0));
@@ -90,7 +93,7 @@ internal object DuoGlassShader {
   if(inner>0.5 && fallback<0.5)blurEdge=(edge+2.0*seamOffset)/(1.0+2.0*seamOffset);
   float radius=72.0*motion*pow(clamp(blurEdge,0.0,1.0),1.35);
   radius*=blurStrength*(inner>0.5?1.25:1.0);
-  float2 footprint=max(0.5/texSize,float2(radius)*0.75/texSize);
+  float2 footprint=max((0.5+aaStrength)/texSize,float2(radius)*0.75/texSize);
   half3 color=half3(0);
   if(radius<0.01){
    float2 coverage=smoothstep(-footprint,footprint,sourceUV)*(1.0-smoothstep(1.0-footprint,1.0+footprint,sourceUV));
@@ -263,6 +266,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
      val scale=fit?.get(0) ?: if(fallback)minOf(width.toFloat()/f.bitmap.width,height.toFloat()/f.bitmap.height) else 0f
      val ew=if(fallback || projectedCover)f.bitmap.width*scale else width.toFloat();val eh=if(fallback || projectedCover)f.bitmap.height*scale else height.toFloat()
      val quality=context.getSharedPreferences("standalone",0)
+     shader.setFloatUniform("aaStrength",if(quality.getBoolean("antialias_enabled",true))RenderQuality.antialias(quality.getFloat("antialias_strength",.35f)) else 0f)
      shader.setFloatUniform("blurStrength",RenderQuality.blur(quality.getFloat("blur_strength",.3f)))
      shader.setFloatUniform("seamOffset",RenderQuality.seam(quality.getFloat("seam_offset",.07f)))
      shader.setFloatUniform("texSize",f.bitmap.width.toFloat(),f.bitmap.height.toFloat())
@@ -295,14 +299,4 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
    }
   }.onFailure{readinessGeneration++;readinessPending=false;RecoveryLog.add("Glass draw error: ${it.javaClass.simpleName}")}
  }
-}
-
-@Composable internal fun GlassPreview(progress:Float,intensity:Float=.5f){
- val sample=remember{
-  val bitmap=Bitmap.createBitmap(900,600,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);val p=Paint(Paint.ANTI_ALIAS_FLAG)
-  p.shader=LinearGradient(0f,0f,900f,600f,intArrayOf(Color.rgb(27,73,111),Color.rgb(192,143,114)),null,Shader.TileMode.CLAMP);canvas.drawRect(0f,0f,900f,600f,p);p.shader=null
-  for(i in 0..17){p.color=intArrayOf(Color.rgb(242,181,87),Color.rgb(86,191,161),Color.WHITE)[i%3];val x=75f+(i%6)*150f;val y=95f+(i/6)*185f;canvas.drawRoundRect(x-38,y-38,x+38,y+38,18f,18f,p);p.color=Color.WHITE;p.textSize=20f;canvas.drawText("App ${i+1}",x-30,y+67,p)}
-  GlassFrame(bitmap,900,600,0)
- }
- AndroidView(factory={FrostSurface(it,true)},modifier=Modifier.fillMaxSize(),update={it.configure(sample,progress,intensity,true,Surface.ROTATION_0)})
 }
