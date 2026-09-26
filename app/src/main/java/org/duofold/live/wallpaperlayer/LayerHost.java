@@ -6,7 +6,7 @@ public class LayerHost extends Binder {
  volatile String state="Idle",details="",operation="Idle",failureTrace=""; volatile long until,last; volatile int responses,requests; volatile float angle=Float.NaN; volatile boolean running;
  final Set<Float> angles=Collections.synchronizedSet(new HashSet<>()); final String action="org.duofold.live.wallpaperlayer.READ_"+SystemClock.elapsedRealtime();
  final ProbeJournal journal=new ProbeJournal();
- NativePhotoLayer nativePhoto; String nativeStatus="Legacy window renderer"; boolean useNative;
+ volatile HomePhotoLayer homePhoto; NativePhotoLayer nativePhoto; String nativeStatus="Legacy window renderer"; boolean useNative;
  DisplayManager displayManager; boolean listening; int windowAdds,retainedChanges;
  final DisplayManager.DisplayListener displayListener=new DisplayManager.DisplayListener(){
   public void onDisplayAdded(int id){displayChanged();}
@@ -64,7 +64,7 @@ public class LayerHost extends Binder {
    panel.view.requestLayout();panel.view.postInvalidateOnAnimation();
   }
  }
- void updatePhoto(Bitmap photo){bitmap=photo;if(nativePhoto!=null){try{nativePhoto.setPhoto(photo);}catch(Throwable e){fallbackNative(e);}}for(Panel panel:panels.values())panel.view.invalidate();}
+ void updatePhoto(Bitmap photo){bitmap=photo;if(homePhoto!=null)homePhoto.setPhoto(photo);if(nativePhoto!=null){try{nativePhoto.setPhoto(photo);}catch(Throwable e){fallbackNative(e);}}for(Panel panel:panels.values())panel.view.invalidate();}
  void recordFailure(Throwable e){
   journal.fail(operation+": "+reason(e));
   StringWriter w=new StringWriter();e.printStackTrace(new PrintWriter(w));failureTrace=w.toString();
@@ -77,7 +77,7 @@ public class LayerHost extends Binder {
   if(command!=null && (nativePhoto!=null||!panels.isEmpty()) && step%2==0){for(int which:new int[]{5,17}){try{command.invoke(wallpaper,which,action,new Bundle());requests++;}catch(Exception e){details="Wallpaper commands: "+reason(e);command=null;break;}}}
   step++;main.postDelayed(this,100);
  }catch(Throwable e){recordFailure(e);stop("Stopped after error: "+reason(e));}}};
- void refresh(){if(nativePhoto!=null)nativePhoto.refreshDisplays();operation="Enumerate displays";DisplayManager dm=(DisplayManager)context.getSystemService(Context.DISPLAY_SERVICE);Set<Integer> keep=new HashSet<>();for(Display d:dm.getDisplays()){
+ void refresh(){if(homePhoto!=null)homePhoto.refreshGeometry();if(nativePhoto!=null)nativePhoto.refreshDisplays();operation="Enumerate displays";DisplayManager dm=(DisplayManager)context.getSystemService(Context.DISPLAY_SERVICE);Set<Integer> keep=new HashSet<>();for(Display d:dm.getDisplays()){
   if(d.getDisplayId()!=0&&d.getDisplayId()!=1)continue;
   if(!d.isValid())continue;
   Display.Mode mode=d.getMode();int lo=Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight()),hi=Math.max(mode.getPhysicalWidth(),mode.getPhysicalHeight());
@@ -110,8 +110,8 @@ public class LayerHost extends Binder {
   new Thread(()->{Pattern p=Pattern.compile("mCurrentAngle=([0-9]+(?:\\.[0-9]+)?)");try(BufferedReader r=new BufferedReader(new InputStreamReader(child.getInputStream()))){String line;while((line=r.readLine())!=null){if(log!=child)return;Matcher m=p.matcher(line);if(!m.find())continue;try{long event=(long)(Double.parseDouble(line.trim().split("\\s+",2)[0])*1000);long age=System.currentTimeMillis()-event;if(age< -100||age>1500)continue;float a=Float.parseFloat(m.group(1));if(a<0||a>180)continue;angle=a;last=SystemClock.elapsedRealtime()-Math.max(age,0);responses++;angles.add(a);}catch(Exception ignored){}}}catch(IOException ignored){}} ,"Samsung angle observation").start();
  }catch(IOException e){details="Angle observation unavailable: "+e;}}
  void removePanels(){for(Panel p:panels.values())p.remove();panels.clear();}
- void stop(String message){if(nativePhoto!=null){nativePhoto.close();nativePhoto=null;}journal.stopped(message);running=false;main.removeCallbacks(tick);if(listening&&displayManager!=null){displayManager.unregisterDisplayListener(displayListener);listening=false;}removePanels();java.lang.Process old=log;log=null;if(old!=null)old.destroy();bitmap=null;state=message;until=0;}
- String report(){long now=SystemClock.elapsedRealtime();return "Duo Wallpaper Layer 0.13\n"+Build.MODEL+" / Android "+Build.VERSION.RELEASE+"\n"+state+"\n"+journal.report()+"\nRenderer: "+(nativePhoto!=null?nativePhoto.rendererDescription():nativeStatus)+"\nCurrent operation: "+operation+"\n"+failureTrace+"\n"+(nativePhoto!=null?"Native surfaces active; retained wallpaper windows="+panels.keySet():details)+"\nDuration: "+(running?"Until disabled or host ends":"Stopped")+"\nWindow attaches: "+windowAdds+"; retained configuration changes: "+retainedChanges+"\nRegistered window host UID: "+android.os.Process.myUid()+"\nWallpaper commands attempted: "+requests+"\nAngle observation is supplied separately by the Shizuku launcher.\nRenderer leaves home wallpaper bindings and physical display states unchanged. Separate lock-photo action is reported by the app.";}
+ void stop(String message){if(homePhoto!=null){homePhoto.close();homePhoto=null;}if(nativePhoto!=null){nativePhoto.close();nativePhoto=null;}journal.stopped(message);running=false;main.removeCallbacks(tick);if(listening&&displayManager!=null){displayManager.unregisterDisplayListener(displayListener);listening=false;}removePanels();java.lang.Process old=log;log=null;if(old!=null)old.destroy();bitmap=null;state=message;until=0;}
+ String report(){long now=SystemClock.elapsedRealtime();return "Duo Wallpaper Layer 0.13\n"+Build.MODEL+" / Android "+Build.VERSION.RELEASE+"\n"+state+"\n"+journal.report()+"\nRenderer: "+(nativePhoto!=null?nativePhoto.rendererDescription():nativeStatus)+"\nHome transition photo: "+(homePhoto==null?"Unavailable / not started":homePhoto.status)+"\nCurrent operation: "+operation+"\n"+failureTrace+"\n"+(nativePhoto!=null?"Native surfaces active; retained wallpaper windows="+panels.keySet():details)+"\nDuration: "+(running?"Until disabled or host ends":"Stopped")+"\nWindow attaches: "+windowAdds+"; retained configuration changes: "+retainedChanges+"\nRegistered window host UID: "+android.os.Process.myUid()+"\nWallpaper commands attempted: "+requests+"\nAngle observation is supplied separately by the Shizuku launcher.\nRenderer leaves home wallpaper bindings and physical display states unchanged. Separate lock-photo action is reported by the app.";}
 
  static class Panel{final WindowManager wm;final View view;String key;Panel(WindowManager w,View v,String k){wm=w;view=v;key=k;}void remove(){try{wm.removeViewImmediate(view);}catch(Exception ignored){}}}
 }

@@ -67,6 +67,21 @@ public class PhotoInstrumentation extends Instrumentation {
      runOnMainSync(()->{host.journal.phase(check);host.activateNative();});
     }catch(Throwable e){final String problem=e.toString();runOnMainSync(()->{host.nativeStatus="Legacy fallback: native preflight failed: "+problem;host.journal.phase(host.nativeStatus);});}
    }
+   runOnMainSync(()->{
+    if(!host.running)return;
+    try{
+     android.accessibilityservice.AccessibilityServiceInfo info=automation.getServiceInfo();
+     info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+     automation.setServiceInfo(info);
+     host.homePhoto=new HomePhotoLayer(getTargetContext(),automation,host.main,host::trace,host.bitmap);
+     automation.setOnAccessibilityEventListener(event->{
+      if(event.getEventType()==android.view.accessibility.AccessibilityEvent.TYPE_WINDOWS_CHANGED||event.getEventType()==android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED){
+       host.main.post(()->{if(host.homePhoto!=null)host.homePhoto.requestRefresh();});
+      }
+     });
+     host.homePhoto.requestRefresh();
+    }catch(Throwable e){host.trace("Home transition photo unavailable; existing wallpaper retained: "+LayerHost.reason(e));}
+   });
    File photo=new File(getTargetContext().getFilesDir(),"photo.jpg");
    long photoVersion=photo.lastModified(),nextReport=0;
    while(true){
@@ -84,10 +99,12 @@ public class PhotoInstrumentation extends Instrumentation {
      runOnMainSync(()->host.stop("Custom wallpaper disabled; original wallpaper unchanged"));
      continue;
     }
+    HomePhotoLayer homeLayer=host.homePhoto;if(homeLayer!=null)homeLayer.requestRefresh();
     Thread.sleep(500);
    }
   }catch(Throwable e){StringWriter trace=new StringWriter();e.printStackTrace(new PrintWriter(trace));publish("Duo Wallpaper Layer 0.13\nRegistered host failed:\n"+trace);}
   finally{
+   if(automation!=null)try{automation.setOnAccessibilityEventListener(null);}catch(Exception ignored){}
    if(unlockTrace!=null)unlockTrace.close();
    traceWorker.shutdown();
    if(screenEvents!=null)try{getTargetContext().unregisterReceiver(screenEvents);}catch(Exception ignored){}
