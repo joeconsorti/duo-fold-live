@@ -41,6 +41,7 @@ internal object DuoGlassShader {
  uniform float intensity;
  uniform float blurStrength;
  uniform float seamOffset;
+ uniform float reflectedCover;
  half4 main(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
@@ -91,6 +92,7 @@ internal object DuoGlassShader {
   // Keep the 72 source-pixel reference radius, including the image's black margins.
   float blurEdge=edge;
   if(inner>0.5 && fallback<0.5)blurEdge=(edge+2.0*seamOffset)/(1.0+2.0*seamOffset);
+  if(reflectedCover>0.5)blurEdge=max(blurEdge,(2.0*seamOffset-axis)/(1.0+2.0*seamOffset));
   float radius=72.0*motion*pow(clamp(blurEdge,0.0,1.0),1.35);
   radius*=blurStrength*(inner>0.5?1.25:1.0);
   float2 footprint=max((0.5+aaStrength)/texSize,float2(radius)*0.75/texSize);
@@ -117,14 +119,14 @@ internal object DuoGlassShader {
  }
  """.trimIndent()
 }
-@Composable internal fun DuoGlassSurface(angle:Float,amount:Float,intensity:Float,inner:Boolean,rotation:Int,frozenFrame:GlassFrame?=null){
+@Composable internal fun DuoGlassSurface(angle:Float,amount:Float,intensity:Float,inner:Boolean,rotation:Int,frozenFrame:GlassFrame?=null,reflectedCover:Boolean=false){
  val frame=frozenFrame ?: GlassFrames.frame
  val running=frozenFrame==null && amount>.003f && LiveAngles.fresh()
  val context=androidx.compose.ui.platform.LocalContext.current
  DisposableEffect(running){GlassFrames.configure(context);if(running)GlassFrames.acquire();onDispose{if(running)GlassFrames.release()}}
- AndroidView(factory={FrostSurface(it)},modifier=Modifier.fillMaxSize(),update={it.configure(frame,amount,intensity,inner,rotation,frozenFrame!=null,angle)})
+ AndroidView(factory={FrostSurface(it,reflectedCover=reflectedCover)},modifier=Modifier.fillMaxSize(),update={it.configure(frame,amount,intensity,inner,rotation,frozenFrame!=null,angle)})
 }
-internal class FrostSurface(context:Context,private val preview:Boolean=false):SurfaceView(context),SurfaceHolder.Callback {
+internal class FrostSurface(context:Context,private val preview:Boolean=false,private val reflectedCover:Boolean=false):SurfaceView(context),SurfaceHolder.Callback {
  private var hingeAngle=Float.NaN
  private var targetAngle=Float.NaN
  private var renderedAngle=Float.NaN
@@ -144,6 +146,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
   if(value.isFinite() && value!=targetAngle){targetAngle=value;requestDraw()}
  }
  private var frozen=false;private var frame:GlassFrame?=null;private var amount=0f;private var intensity=.5f;private var inner=false;private var rotation=0
+ private val basePaint=Paint(Paint.FILTER_BITMAP_FLAG)
  private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
  private var program:RuntimeShader?=null
  private var bitmap:Bitmap?=null
@@ -231,6 +234,10 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
    try{
     canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR)
     canvas.scale(canvas.width.toFloat()/width,canvas.height.toFloat()/height)
+    if(reflectedCover){
+     canvas.translate(width.toFloat(),0f);canvas.scale(-1f,1f)
+     frame?.let{cover->if(PreviewExpansionPolicy.fresh(cover.stamp,SystemClock.elapsedRealtime()))canvas.drawBitmap(cover.bitmap,null,RectF(0f,0f,width.toFloat(),height.toFloat()),basePaint)}
+    }
     if(preview && frame!=null)canvas.drawBitmap(frame!!.bitmap,null,RectF(0f,0f,width.toFloat(),height.toFloat()),null)
     if(amount<=.003f || (!preview && (!LiveAngles.fresh() || !LiveAngles.effectAllowed))){
      endpoint=!preview && inner && LiveAngles.fresh() && LiveAngles.effectAllowed && targetAngle.isFinite() && targetAngle>=FoldThreshold.sanitize(openThreshold)
@@ -268,6 +275,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
      val quality=context.getSharedPreferences("standalone",0)
      shader.setFloatUniform("aaStrength",if(quality.getBoolean("antialias_enabled",true))RenderQuality.antialias(quality.getFloat("antialias_strength",.35f)) else 0f)
      shader.setFloatUniform("blurStrength",RenderQuality.blur(quality.getFloat("blur_strength",.3f)))
+     shader.setFloatUniform("reflectedCover",if(reflectedCover)1f else 0f)
      shader.setFloatUniform("seamOffset",RenderQuality.seam(quality.getFloat("seam_offset",.07f)))
      shader.setFloatUniform("texSize",f.bitmap.width.toFloat(),f.bitmap.height.toFloat())
      shader.setFloatUniform("origin",if(fallback)width-ew else 0f,if(fallback)(height-eh)/2f else 0f)

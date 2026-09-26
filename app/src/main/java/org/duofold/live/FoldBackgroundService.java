@@ -9,6 +9,7 @@ public class FoldBackgroundService extends Service {
  private final Handler main=new Handler(Looper.getMainLooper());
  private boolean wanted(){FoldAwakeDefault.persist(this);return true;}
  private LiveAngles angles;
+ private FoldAwakeGuard awakeGuard;
  private long asleepSince=-1,nextReaderAttempt;
  private String lastNotice="";
  private boolean lastReachable=false;
@@ -27,7 +28,7 @@ public class FoldBackgroundService extends Service {
  }
  public IBinder onBind(Intent i){return null;}
  public void onCreate(){super.onCreate();RecoveryLog.init(this);RecoveryLog.add("Background service created, PID "+android.os.Process.myPid());
-  FoldAwakeDefault.persist(this);
+  FoldAwakeDefault.persist(this);awakeGuard=new FoldAwakeGuard(this);awakeGuard.start();
   Shizuku.addBinderReceivedListenerSticky(binderReady);Shizuku.addBinderDeadListener(binderDead);Shizuku.addRequestPermissionResultListener(permissionResult);
   try{getContentResolver().registerContentObserver(android.provider.Settings.System.getUriFor("fold_lock_behavior"),false,foldSettingObserver);}catch(Exception e){RecoveryLog.add("Fold setting observer unavailable; periodic verification active");}
   IntentFilter filter=new IntentFilter();filter.addAction(Intent.ACTION_SCREEN_ON);filter.addAction(Intent.ACTION_SCREEN_OFF);filter.addAction(Intent.ACTION_USER_PRESENT);registerReceiver(screen,filter,Context.RECEIVER_NOT_EXPORTED);
@@ -99,5 +100,5 @@ getSystemService(NotificationManager.class).createNotificationChannel(new Notifi
   main.postDelayed(this,2000);
  }};
  public void onTaskRemoved(Intent intent){RecoveryLog.add("Settings task dismissed; background service remains running");super.onTaskRemoved(intent);}
- public void onDestroy(){RecoveryLog.add("Background service destroyed");Shizuku.removeBinderReceivedListener(binderReady);Shizuku.removeBinderDeadListener(binderDead);Shizuku.removeRequestPermissionResultListener(permissionResult);getContentResolver().unregisterContentObserver(foldSettingObserver);try{unregisterReceiver(screen);}catch(Exception ignored){}running=false;main.removeCallbacksAndMessages(null);if(angles!=null){angles.stop();angles=null;}stopForeground(STOP_FOREGROUND_REMOVE);super.onDestroy();}
+ public void onDestroy(){if(awakeGuard!=null)awakeGuard.close();RecoveryLog.add("Background service destroyed");Shizuku.removeBinderReceivedListener(binderReady);Shizuku.removeBinderDeadListener(binderDead);Shizuku.removeRequestPermissionResultListener(permissionResult);getContentResolver().unregisterContentObserver(foldSettingObserver);try{unregisterReceiver(screen);}catch(Exception ignored){}running=false;main.removeCallbacksAndMessages(null);if(angles!=null){angles.stop();angles=null;}stopForeground(STOP_FOREGROUND_REMOVE);super.onDestroy();}
 }

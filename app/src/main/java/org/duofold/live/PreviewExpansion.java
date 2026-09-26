@@ -97,10 +97,10 @@ final class PreviewExpansion extends Binder {
   if(primary==null || secondary==null || inner(primary) || !inner(secondary) || (boolean)keyguard.invoke(wm))return;
   if(completed)return; // Wait for the app to reset after leaving this cover session.
   innerId=id(secondary);stamp=captured;
-  Bitmap next=bitmap.copy(Bitmap.Config.HARDWARE,false);HardwareBuffer nextBuffer=next.getHardwareBuffer();
+  Bitmap scaledLeft=Bitmap.createScaledBitmap(clean,bitmap.getWidth(),bitmap.getHeight(),true);android.graphics.Matrix flip=new android.graphics.Matrix();flip.setScale(-1f,1f);Bitmap reflected=Bitmap.createBitmap(scaledLeft,0,0,scaledLeft.getWidth(),scaledLeft.getHeight(),flip,true);Bitmap next=reflected.copy(Bitmap.Config.HARDWARE,false);if(reflected!=clean)reflected.recycle();if(scaledLeft!=clean&&scaledLeft!=reflected)scaledLeft.recycle();HardwareBuffer nextBuffer=next.getHardwareBuffer();
   Bitmap nextClean=Bitmap.createScaledBitmap(clean,bitmap.getWidth(),bitmap.getHeight(),true).copy(Bitmap.Config.HARDWARE,false);HardwareBuffer nextCleanBuffer=nextClean.getHardwareBuffer();
   if(layer==null)layer=new SurfaceControl.Builder().setName("Duo clean right hold").setBufferSize(bitmap.getWidth(),bitmap.getHeight()).setOpaque(true).setHidden(true).build();
-  if(backdrop==null)backdrop=new SurfaceControl.Builder().setName("Duo prepared frosted left copy").setBufferSize(bitmap.getWidth(),bitmap.getHeight()).setOpaque(true).setHidden(true).build();
+  if(backdrop==null)backdrop=new SurfaceControl.Builder().setName("Duo reflected left handoff copy").setBufferSize(bitmap.getWidth(),bitmap.getHeight()).setOpaque(true).setHidden(true).build();
   try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){
    SurfaceControl.Transaction.class.getMethod("setSkipScreenshot",SurfaceControl.class,boolean.class).invoke(t,backdrop,true);
    t.setBuffer(backdrop,nextBuffer).setLayer(backdrop,Integer.MAX_VALUE-21).setAlpha(backdrop,1f);
@@ -112,7 +112,7 @@ final class PreviewExpansion extends Binder {
   if(cleanBuffer!=null)cleanBuffer.close();if(cleanHardware!=null)cleanHardware.recycle();
   hardware=next;buffer=nextBuffer;cleanHardware=nextClean;cleanBuffer=nextCleanBuffer;bw=bitmap.getWidth();bh=bitmap.getHeight();
   prepareSeam(bitmap,secondary,seamOffset);
-  status="Frosted left copy prepared; clean right hold and center-edge blur ready";
+  status="Reflected left hold prepared; clean right and unfold center blur ready";
   if(!polling){polling=true;handler.post(tick);}
  }
  private void prepareSeam(Bitmap blurred,Object target,float fraction)throws Exception{
@@ -159,7 +159,7 @@ final class PreviewExpansion extends Binder {
     SurfaceControl.Transaction.class.getMethod("setMatrix",SurfaceControl.class,float.class,float.class,float.class,float.class).invoke(t,backdrop,leftWidth/bw,0f,0f,h/(float)bh);
     // The left copy is visible BEFORE handoff. Never hide either layer merely because
     // Android reports a transient OFF state during the physical panel remap.
-    t.setPosition(backdrop,0,0).setAlpha(backdrop,alpha).setVisibility(backdrop,leftWidth>0);
+    t.setPosition(backdrop,0,0).setAlpha(backdrop,alpha).setVisibility(backdrop,start>0 && leftWidth>0);
     t.setPosition(layer,leftWidth,(h-bh*fit)/2f).setAlpha(layer,alpha).setVisibility(layer,start>0);
     if(seam!=null){
      SurfaceControl.Transaction.class.getMethod("setLayerStack",SurfaceControl.class,int.class).invoke(t,seam,stack);

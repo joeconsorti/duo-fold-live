@@ -8,6 +8,9 @@ import android.os.Bundle
 import android.view.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
@@ -51,6 +54,18 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
       },intensity,true)
      }else if(preview){
       AndroidView(factory={LivePanelSurface(it){ok,note->mirrorReady=ok;event(note)}.also{mirrorView=it}},modifier=Modifier.fillMaxSize())
+      BoxWithConstraints(Modifier.fillMaxSize()){
+       val cover=GlassFrames.frame
+       val left=cover?.let{maxWidth-maxHeight*(it.width.toFloat()/it.height)}
+       if(cover!=null && left!=null && left.value>0 && cover.width.toFloat()/cover.height<.7f){
+        Box(Modifier.fillMaxHeight().width(left)){
+         DuoLiveShade(object:StandaloneFoldHost{
+          override fun onMovement(){}
+          override fun onFrame(active:Boolean,strength:Float){}
+         },intensity,false,reflectedCover=true)
+        }
+       }
+      }
      }else if(frozen!=null){
       Image(frozen.bitmap.asImageBitmap(),contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Fit)
       DuoLiveShade(object:StandaloneFoldHost{

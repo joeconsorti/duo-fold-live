@@ -28,6 +28,7 @@ internal object ClassicGlassShader {
  uniform float intensity;
  uniform float blurStrength;
  uniform float seamOffset;
+ uniform float reflectedCover;
  half4 main(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
@@ -54,6 +55,7 @@ internal object ClassicGlassShader {
   sourceUV=sourceUV*sampleScale+sampleOffset;
   float blurEdge=edge;
   if(inner>0.5 && fallback<0.5)blurEdge=(edge+2.0*seamOffset)/(1.0+2.0*seamOffset);
+  if(reflectedCover>0.5)blurEdge=max(blurEdge,(2.0*seamOffset-axis)/(1.0+2.0*seamOffset));
   float radius=72.0*(texSize.x/1600.0)*motion*pow(clamp(blurEdge,0.0,1.0),1.35);
   radius*=blurStrength*(inner>0.5?1.25:1.0);
   float2 footprint=max((0.5+aaStrength)/texSize,float2(radius)*0.75/texSize);
