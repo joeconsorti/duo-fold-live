@@ -28,19 +28,48 @@ The signing key changed. **Older public installs require one uninstall/reinstall
 
 The app guides setup. Samsung’s interactive wallpaper and Shizuku running in ADB mode are required for hinge measurements. The Samsung assets are not bundled. Shizuku normally needs restarting after a phone reboot. The in-app **Trouble with Shizuku/Fold shutting off?** section covers background operation and offline troubleshooting.
 
-## What’s new since v1
+## What Duo Fold Live does
 
-- **Windowed Glass** by default: live cover preview, frosted glass, and matched fades around the display switch.
-- **Duo Classic, Fold-Only, and Unfold-Only** animation options.
-- Lower-latency hinge tracking, lighter rendering, half-resolution glass by default, and high-refresh rendering targeting up to 120 Hz. Actual frame rate depends on workload and firmware.
-- Separate controls for glass smoothing, fade smoothing, and fade gradualness.
-- Keep-awake ON by default, with background verification and recovery when the privileged connection is available.
-- A redesigned app and integrated custom wallpaper menu, with folded/unfolded crop previews and saved-photo recovery across compatible updates.
-- A 2° fully-closed default, adjustable down to 1°.
-- Advanced → Developer settings keeps experimental controls and diagnostics out of the main flow.
-- Optional donations, with support invitations starting after three days of successful use, then 7, 14 and 30 days apart, followed by monthly reminders; snooze and permanent dismissal included.
+**Your actual screen becomes part of the folding animation.** Duo follows the hinge as you move it, projecting your content through glass, reflections, blur, and a softened display handoff. The default path uses live content, so supported content can keep moving behind the effect.
 
-The approved animation is preserved. Fades soften Samsung’s primary-display blackout; they do not eliminate the underlying panel power transition. The mirrored preview is not two independent apps running on both panels.
+### Four animation styles
+
+- **Windowed Glass:** the default, iPhone Duo-inspired experience with a live cover preview, reflected left side, progressive glass, and a black fade around the screen switch.
+- **Duo Classic:** glass over the inner screen’s own content with a black reveal, without the mirrored cover preview.
+- **Fold-Only:** Windowed Glass when closing; normal behavior when opening.
+- **Unfold-Only:** Windowed Glass when opening; normal behavior when closing.
+
+### A cover-screen preview inside the inner display
+
+- **Clean right-side preview:** see the cover content without its animation layered into the mirror. The right preview is committed before the left reflection starts.
+- **Two left-side appearances:** **Frosted Reflection** is the default blurred, horizontally mirrored image. **Animated Reflection** mirrors the cover animation for a more literal glass-window effect. Select either in Advanced settings.
+- **Soft center blending:** blur feathers across the fold into the right side during folding and unfolding. Adjust its position from 0–15% of the inner display width beyond the fold; the default is 7%.
+- **Screen-size-aware alignment:** projection follows the cover’s proportions to keep its corners anchored, rather than using a fixed height for one phone.
+
+### Tune the look and motion
+
+- **Motion smoothness, blur amount, and glass strength** have separate controls and reset buttons. Defaults: 30 ms, 30%, and 50% respectively.
+- **Black fade smoothing and gradualness** let you shape the transition around Samsung’s display switch.
+- **Manual live-content targets:** 120 FPS experimental by default, or 60 FPS for lower GPU cost. No automatic switching based on the display’s reported refresh rate. These are targets, not guaranteed frame rates.
+- **Three anti-aliasing methods** in Advanced: **Lightweight Texture Filtering** (default), **Edge-Adaptive Smoothing**, and **4× Supersampling**. AA can be disabled or adjusted within a narrow strength range, independently of blur and glass strength. The two heavier methods remain experimental.
+- **Optional full-resolution glass** for users who prefer more rendering detail; half-resolution glass is the baseline to reduce GPU work.
+- **Adjustable hinge thresholds:** choose when the effect treats the phone as fully open or closed. Defaults: 172° open and 2° closed.
+
+### Your wallpaper, your launcher, your settings
+
+- **Custom photo wallpaper:** choose a photo, preview its folded and unfolded crops, and keep it saved across compatible app updates.
+- **Works over One UI and ordinary apps** without replacing your launcher.
+- **Temporary orientation locking during transitions**, followed by release, plus an Advanced **Repair auto-rotate** button for recovery.
+- **Guided setup and connection recovery:** wallpaper checks, Shizuku authorization, accessibility guidance, and reconnect controls are built in.
+- **Keep Awake support** is enabled and checked in the background, but remains unreliable on some folding transitions; see Known bugs.
+
+### Experiments and useful diagnostics
+
+- **Optional dual-screen screenshot handoff** under Advanced → Developer settings, for experimenting with a held image instead of the default live handoff. Off by default.
+- **Copyable status reports** include angle-feed latency, measured capture throughput, renderer submission rates, preview/handoff events, AA settings, and 24-hour app-process health samples. Separate wallpaper reports help investigate unlock flashes.
+- **Free and open source:** all features are available without donating. Optional support reminders can be snoozed or permanently dismissed.
+
+Actual performance depends on the device, firmware, content, and selected effects. Fades soften Samsung’s display-switch blackout; the underlying panel transition remains. The mirrored preview does not run two independent apps on the two panels.
 
 ## Setup recovery in 3.0.3
 
@@ -57,7 +86,7 @@ Installs that previously skipped onboarding without verifying wallpaper setup re
 
 ## Work in progress
 
-- A “screenshot mode” to more closely mimic iPhone Duo’s animation. Our app does a live handoff so your content always keeps playing, but iPhone Duo does not.
+- Refining the experimental screenshot handoff to more closely mimic iPhone Duo’s held-image animation, alongside the default live-content handoff.
 - Further workarounds for Samsung’s display-switch blackout and smoother fold/unfold handoffs.
 - More consistent custom wallpaper visibility during unlock and display changes.
 - Refinements to animation timing, responsiveness, and visual consistency.
