@@ -1,4 +1,5 @@
 package org.duofold.live
+import androidx.compose.runtime.*
 import android.app.Presentation
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
@@ -8,6 +9,9 @@ import android.os.Bundle
 import android.view.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
@@ -24,8 +28,11 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 internal class SecondaryShade(private val service:AccessibilityService,display:Display,private val intensity:Float,private val preview:Boolean=false,private val nativeContent:Boolean=false,private val event:(String)->Unit):Presentation(service,display,android.R.style.Theme_Material_NoActionBar){
  private val life=OverlayOwner()
  private var compose:ComposeView?=null
+ private var coverAspect=.63f
+ private val frostedReflection=service.getSharedPreferences("standalone",0).getBoolean("frosted_reflection",true)
  private var inner=false
  private var mirrorReady=false
+ private var leftStarted by mutableStateOf(false)
  private var mirrorView:LivePanelSurface?=null
  var strength=0f;private set
  var draws=0;private set
@@ -34,6 +41,7 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
  fun refresh(){compose?.invalidate()}
  override fun onCreate(saved:Bundle?){
   super.onCreate(saved);life.registry.currentState=Lifecycle.State.CREATED
+  service.getSystemService(android.hardware.display.DisplayManager::class.java).getDisplay(0)?.mode?.let{coverAspect=it.physicalWidth.toFloat()/it.physicalHeight}
   val mode=display.mode
   inner=minOf(mode.physicalWidth,mode.physicalHeight).toFloat()/maxOf(mode.physicalWidth,mode.physicalHeight)>.7f
   val view=ComposeView(context);compose=view
@@ -50,7 +58,19 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
        override fun onFrame(active:Boolean,strength:Float){this@SecondaryShade.strength=strength}
       },intensity,true)
      }else if(preview){
-      AndroidView(factory={LivePanelSurface(it){ok,note->mirrorReady=ok;event(note)}.also{mirrorView=it}},modifier=Modifier.fillMaxSize())
+      AndroidView(factory={LivePanelSurface(it){ok,note->mirrorReady=ok;PreviewTransition.previewReady(ok);if(ok && !leftStarted){leftStarted=true;event("Right preview committed; starting reflected left preview")};event(note)}.also{mirrorView=it}},modifier=Modifier.fillMaxSize())
+      BoxWithConstraints(Modifier.fillMaxSize()){
+       // Geometry must not depend on the shared frame: surface creation clears that frame.
+       val left=maxWidth-maxHeight*coverAspect
+       if(!frostedReflection && leftStarted && left.value>0 && coverAspect<.7f){
+        Box(Modifier.fillMaxHeight().width(left)){
+         DuoLiveShade(object:StandaloneFoldHost{
+          override fun onMovement(){}
+          override fun onFrame(active:Boolean,strength:Float){}
+         },intensity,false,reflectedCover=true)
+        }
+       }
+      }
      }else if(frozen!=null){
       Image(frozen.bitmap.asImageBitmap(),contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=ContentScale.Fit)
       DuoLiveShade(object:StandaloneFoldHost{
@@ -70,5 +90,5 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
  }
  override fun onStart(){super.onStart();window?.setLayout(-1,-1);life.registry.currentState=Lifecycle.State.RESUMED}
  override fun onStop(){if(life.registry.currentState!=Lifecycle.State.DESTROYED)life.registry.currentState=Lifecycle.State.CREATED;super.onStop()}
- override fun dismiss(){mirrorView?.close();mirrorView=null;mirrorReady=false;life.registry.currentState=Lifecycle.State.DESTROYED;compose?.disposeComposition();compose=null;super.dismiss()}
+ override fun dismiss(){leftStarted=false;mirrorView?.close();mirrorView=null;mirrorReady=false;life.registry.currentState=Lifecycle.State.DESTROYED;compose?.disposeComposition();compose=null;super.dismiss()}
 }

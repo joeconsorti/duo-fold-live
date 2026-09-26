@@ -5,7 +5,10 @@ internal object ClassicGlassShader {
  val source="""
  uniform shader content;
  uniform shader mip1; uniform shader mip2; uniform shader mip3; uniform shader mip4; uniform shader mip5;
+ uniform float aaStrength;
  half3 sampleLevel(float2 p,float lod){
+  // A bounded trilinear prefilter reuses existing mip levels, including at zero blur.
+  lod=max(lod,aaStrength);
   if(lod<1.0)return mix(content.eval(p).rgb,mip1.eval(p).rgb,half(lod));
   if(lod<2.0)return mix(mip1.eval(p).rgb,mip2.eval(p).rgb,half(lod-1.0));
   if(lod<3.0)return mix(mip2.eval(p).rgb,mip3.eval(p).rgb,half(lod-2.0));
@@ -23,13 +26,16 @@ internal object ClassicGlassShader {
  uniform float horizontal;
  uniform float reverse;
  uniform float intensity;
+ uniform float blurStrength;
+ uniform float seamOffset;
+ uniform float reflectedCover;
  half4 main(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
   float axis=mix(uv.x,uv.y,horizontal);
   axis=mix(axis,1.0-axis,reverse);
   float edge=inner>0.5 ? (fallback>0.5 ? 1.0-axis : 1.0-2.0*axis) : axis;
-  if(inner>0.5 && fallback<0.5 && edge<=0.0) return half4(0);
+  if(inner>0.5 && fallback<0.5 && axis>=0.5+seamOffset) return half4(0);
   float motion=smoothstep(0.0,1.0,progress);
   float a=min(progress,0.97)*1.570796327;
   // Fixed eye at z=40, intersect projected folded strip with the flat UI plane.
@@ -41,9 +47,18 @@ internal object ClassicGlassShader {
   float corrected=mix(projected,1.0-projected,reverse);
   float2 sourceUV=uv;
   if(horizontal>0.5) sourceUV.y=corrected; else sourceUV.x=corrected;
+  float seamMask=0.0;
+  if(inner>0.5 && fallback<0.5 && seamOffset>0.0){
+   seamMask=1.0-smoothstep(max(0.5,0.5+seamOffset-0.05),0.5+seamOffset,axis);
+   if(axis>=0.5)sourceUV=uv;
+  }
   sourceUV=sourceUV*sampleScale+sampleOffset;
-  float radius=72.0*(texSize.x/1600.0)*motion*pow(clamp(edge,0.0,1.0),1.35);
-  float2 footprint=max(0.5/texSize,float2(radius)*0.75/texSize);
+  float blurEdge=edge;
+  if(inner>0.5 && fallback<0.5)blurEdge=(edge+2.0*seamOffset)/(1.0+2.0*seamOffset);
+  if(reflectedCover>0.5)blurEdge=max(blurEdge,(2.0*seamOffset-axis)/(1.0+2.0*seamOffset));
+  float radius=72.0*(texSize.x/1600.0)*motion*pow(clamp(blurEdge,0.0,1.0),1.35);
+  radius*=blurStrength*(inner>0.5?1.25:1.0);
+  float2 footprint=max((0.5+aaStrength)/texSize,float2(radius)*0.75/texSize);
   half3 color=half3(0);
   if(radius<0.01){
    float2 coverage=smoothstep(-footprint,footprint,sourceUV)*(1.0-smoothstep(1.0-footprint,1.0+footprint,sourceUV));
@@ -62,6 +77,7 @@ internal object ClassicGlassShader {
   float effect=motion*pow(clamp((edge-0.2)/0.8,0.0,1.0),1.35);
   color*=half(1.0-min(1.0,effect*2.0*intensity));
   float alpha=smoothstep(0.0,0.035,progress);
+  if(inner>0.5 && fallback<0.5 && axis>=0.5)alpha*=seamMask;
   return half4(color*half(alpha),half(alpha));
  }
  """.trimIndent()

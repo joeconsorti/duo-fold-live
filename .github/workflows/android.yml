@@ -43,8 +43,8 @@ jobs:
           import os, re
           from pathlib import Path
           p = Path('app/build.gradle.kts')
-          if not re.search(r'versionName\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+"', p.read_text()):
-              raise SystemExit('Alpha-only release policy: retain -alpha.N until the owner approves stable releases')
+          if not re.search(r'versionName\s*=\s*"(?:[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+|3\.5\.0)"', p.read_text()):
+              raise SystemExit('Release policy: only alpha versions and owner-approved 3.5.0 are allowed')
           current = int(re.search(r'\bversionCode\s*=\s*(\d+)', p.read_text()).group(1))
           code = max(current, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
           text, count = re.subn(r'\bversionCode\s*=\s*\d+', f'versionCode = {code}', p.read_text())
@@ -52,6 +52,17 @@ jobs:
               raise SystemExit('Expected exactly one numeric versionCode in app/build.gradle.kts')
           p.write_text(text)
           PY
+
+      - name: Mark alpha 24 BROKEN without removing downloads
+        if: github.ref_name == 'alpha/3.0.4-alpha.25'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit ci-39-1 --repo "$GITHUB_REPOSITORY" --title "BROKEN — Duo Fold Live 3.0.4-alpha.24" --prerelease --latest=false --notes-file docs/3.0.4-alpha.24-CHANGELOG.md
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/ci-39-1" --jq '.assets[] | [.id, .name] | @tsv' > "$RUNNER_TEMP/broken-assets.tsv"
+          while IFS=$'\t' read -r asset_id asset_name; do
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" -f "label=BROKEN — $asset_name" > /dev/null
+          done < "$RUNNER_TEMP/broken-assets.tsv"
 
       - name: Test and build unsigned release
         run: ./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease
@@ -97,15 +108,11 @@ jobs:
           if [ -f "docs/$version-CHANGELOG.md" ]; then
             cat "docs/$version-CHANGELOG.md" >> "$RUNNER_TEMP/release-notes.txt"
           fi
-          # User approved this exact tested APK for main/latest on 2026-09-26.
-          # Preserve its existing binary and URL; changed source remains a prerelease.
-          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.0.4-alpha.16 ] && \
-             git diff --quiet de0c330d478f83ffecd03b020f8b9b1043276010 HEAD -- app build.gradle.kts settings.gradle.kts gradle.properties gradle; then
-            gh release edit ci-30-1 --repo "$GITHUB_REPOSITORY" --prerelease=false --latest
-            exit 0
-          fi
           release_flags=(--prerelease --latest=false)
-          # Other builds remain prereleases until separately approved by the user.
+          # Owner approved the tested alpha.29 feature set as 3.5.0 on 2026-09-26.
+          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.5.0 ]; then
+            release_flags=(--latest)
+          fi
           gh release create "$tag" dist/*.apk dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Duo Fold Live $version" "${release_flags[@]}" \

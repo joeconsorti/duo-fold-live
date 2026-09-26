@@ -1,8 +1,8 @@
 ![DuoFold Live](docs/assets/duofold-live-logo.svg)
 
-# Duo Fold Live · 3.0.4-alpha.16
+# Duo Fold Live · 3.5.0
 
-**Current official release: 3.0.4-alpha.16.** The alpha label remains; occasional unlock wallpaper flashing is still unresolved. [Rollback baseline and release history](KNOWN_WORKING_BUILD.md).
+**Current official release: 3.5.0.** Occasional unlock wallpaper flashing and Keep Awake remain known issues. [Rollback baseline and release history](KNOWN_WORKING_BUILD.md).
 
 ## 📺 Step-by-step installation tutorial
 **New here? [Watch the full setup walkthrough on YouTube](https://www.youtube.com/watch?v=8Ucm7ceBDN4).**
@@ -11,7 +11,7 @@ Created by a Duo Fold Live user—not by me. Huge thanks for putting this togeth
 
 An iPhone Duo-inspired folding animation for the **Samsung Galaxy Z Fold 8**, with windowed glass, live cover previews, and smooth black fades around Samsung’s display handoff. Free and open source. Runs over One UI and ordinary apps without replacing your launcher.
 
-**[Download 3.0.4-alpha.16](https://github.com/joeconsorti/duo-fold-live/releases/latest)** · [Full changelog since 1.7.0](docs/3.0.0-CHANGELOG.md) · [Report an issue](https://github.com/joeconsorti/duo-fold-live/issues)
+**[Download 3.5.0](https://github.com/joeconsorti/duo-fold-live/releases/latest)** · [3.5.0 release notes](docs/3.5.0-CHANGELOG.md) · [Report an issue](https://github.com/joeconsorti/duo-fold-live/issues)
 
 **Only tested on the Z Fold 8 (SM-F971U).** Fold 8 Ultra, Fold 7, and other devices are unverified. Do not expect compatibility. Model recognition includes regional SM-F971, SM-F976, and SM-F966 families. Unknown models display a warning and may proceed. Android 17 and the existing Samsung wallpaper/API checks are still required. Recognition is not verified compatibility.
 
@@ -38,7 +38,7 @@ The app guides setup. Samsung’s interactive wallpaper and Shizuku running in A
 - A redesigned app and integrated custom wallpaper menu, with folded/unfolded crop previews and saved-photo recovery across compatible updates.
 - A 2° fully-closed default, adjustable down to 1°.
 - Advanced → Developer settings keeps experimental controls and diagnostics out of the main flow.
-- Optional donations, with weekly support invitations starting after one week of successful use; snooze and permanent dismissal included.
+- Optional donations, with support invitations starting after three days of successful use, then 7, 14 and 30 days apart, followed by monthly reminders; snooze and permanent dismissal included.
 
 The approved animation is preserved. Fades soften Samsung’s primary-display blackout; they do not eliminate the underlying panel power transition. The mirrored preview is not two independent apps running on both panels.
 
@@ -52,7 +52,8 @@ Installs that previously skipped onboarding without verifying wallpaper setup re
 
 1. **Black screen when switching between folded and unfolded displays.** This is a Samsung-side hardware limitation, not an issue with the app. We’re working on workarounds; for now, Duo uses a black fade transition to smooth the handoff in both directions.
 2. Unlocking directly onto Home may briefly reveal the underlying live wallpaper before the custom photo. The latest release improves this, but occasional flashes remain.
-3. Occasionally part of the unfolding fade does not trigger correctly, so the transition may look choppy.
+3. **Keep Awake is unreliable when closing the phone, including from Home.** The setting can read as enabled even when the phone sleeps. Further investigation is deferred.
+4. Occasionally part of the unfolding fade does not trigger correctly, so the transition may look choppy.
 
 ## Work in progress
 

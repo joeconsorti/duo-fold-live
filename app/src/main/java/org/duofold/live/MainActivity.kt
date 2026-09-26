@@ -57,14 +57,20 @@ class MainActivity:ComponentActivity(){
     var dual by remember{mutableStateOf(prefs.getBoolean("dual",false))}
     var advanced by remember{mutableStateOf(false)}
     var setup by remember{mutableStateOf(!enabled)}
-    var smoothing by remember{mutableFloatStateOf(FrameSmoothing.sanitize(prefs.getFloat("smoothing_ms",12f)))}
+    var smoothing by remember{mutableFloatStateOf(FrameSmoothing.sanitize(prefs.getFloat("smoothing_ms",30f)))}
     var fadeSmoothing by remember{mutableFloatStateOf(FadeSettings.smoothing(prefs.getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING)))}
     var fadeGradualness by remember{mutableFloatStateOf(FadeSettings.gradualness(prefs.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS)))}
     var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
-    var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",1f))}
+    var antialias by remember{mutableStateOf(prefs.getBoolean("antialias_enabled",true))}
+    var antialiasMode by remember{mutableIntStateOf(RenderQuality.aaMode(prefs.getInt("antialias_method_v2",0)))}
+    var antialiasStrength by remember{mutableFloatStateOf(RenderQuality.antialias(prefs.getFloat("antialias_strength",.35f)))}
+    var contentFps by remember{mutableIntStateOf(RenderQuality.fps(prefs.getInt("content_fps",120)))}
+    var blurStrength by remember{mutableFloatStateOf(RenderQuality.blur(prefs.getFloat("blur_strength",.3f)))}
+    var frostedReflection by remember{mutableStateOf(prefs.getBoolean("frosted_reflection",true))}
+    var seamOffset by remember{mutableFloatStateOf(RenderQuality.seam(prefs.getFloat("seam_offset",.07f)))}
+    var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",.5f))}
     var closedThreshold by remember{mutableFloatStateOf(FoldThreshold.sanitizeClosed(prefs.getFloat("closed_threshold",2f)))}
     var threshold by remember{mutableFloatStateOf(FoldThreshold.sanitize(prefs.getFloat("open_threshold",172f)))}
-    var preview by remember{mutableFloatStateOf(.45f)}
     var status by remember{mutableStateOf("Connecting…")}
     var photo by remember{mutableStateOf(BitmapFactory.decodeFile(WallpaperFiles.photoFile(this).absolutePath))}
     var photoStatus by remember{mutableStateOf("")}
@@ -120,13 +126,17 @@ class MainActivity:ComponentActivity(){
       ShizukuHelp()
       SettingsCard("Fine-tune your animation","Your saved glass and fade settings apply to each style."){
 
-       key(animationStyle,mode){Box(Modifier.fillMaxWidth().height(150.dp)){GlassPreview(preview)}}
-       Slider(value=preview,onValueChange={preview=it})
-       Text("Glass appearance preview · direction and handoff are shown on your device",style=MaterialTheme.typography.labelMedium)
        Text("Motion smoothness · ${smoothing.roundToInt()} ms")
        Slider(value=smoothing,onValueChange={smoothing=it},valueRange=12f..120f,onValueChangeFinished={prefs.edit().putFloat("smoothing_ms",smoothing).apply();restart()})
-       Text("12 ms is the current default. Higher values soften motion with more delay; they do not increase rendering FPS.",style=MaterialTheme.typography.bodySmall)
-       TextButton(onClick={smoothing=12f;prefs.edit().putFloat("smoothing_ms",12f).apply();restart()}){Text("Reset smoothness")}
+       Text("30 ms is the current default. Higher values soften motion with more delay; they do not increase rendering FPS.",style=MaterialTheme.typography.bodySmall)
+       TextButton(onClick={smoothing=30f;prefs.edit().putFloat("smoothing_ms",30f).apply();restart()}){Text("Reset smoothness")}
+       Text("Blur amount · ${(blurStrength*100).roundToInt()}%")
+       Slider(value=blurStrength,onValueChange={blurStrength=it},valueRange=0f..3f,onValueChangeFinished={prefs.edit().putFloat("blur_strength",blurStrength).apply();restart()})
+       Text("Stronger frost softens pixelation, especially on the inner display. Default: 30%.",style=MaterialTheme.typography.bodySmall)
+       TextButton(onClick={blurStrength=.3f;prefs.edit().putFloat("blur_strength",.3f).apply();restart()}){Text("Reset blur amount")}
+       Text("Glass strength · ${(intensity*100).roundToInt()}%")
+       Slider(value=intensity,onValueChange={intensity=it},valueRange=.3f..1.5f,onValueChangeFinished={prefs.edit().putFloat("intensity",intensity).apply();restart()})
+       TextButton(onClick={intensity=.5f;prefs.edit().putFloat("intensity",.5f).apply();restart()}){Text("Reset glass strength")}
        Text("Black fade smoothing · ${fadeSmoothing.roundToInt()} ms")
        Slider(value=fadeSmoothing,onValueChange={fadeSmoothing=it},valueRange=0f..120f,onValueChangeFinished={prefs.edit().putFloat("fade_smoothing_ms",fadeSmoothing).apply()})
        Text("Softens changes in the fade as you move the hinge. Higher values add more smoothing.",style=MaterialTheme.typography.bodySmall)
@@ -136,8 +146,6 @@ class MainActivity:ComponentActivity(){
        TextButton(onClick={fadeSmoothing=FadeSettings.DEFAULT_SMOOTHING;fadeGradualness=FadeSettings.DEFAULT_GRADUALNESS;prefs.edit().putFloat("fade_smoothing_ms",fadeSmoothing).putFloat("fade_gradualness",fadeGradualness).apply()}){Text("Reset black fade")}
        Toggle("Full-resolution glass · higher GPU cost",fullResolution){fullResolution=it;booleanSetting("full_resolution_glass",it)}
        Text("Off renders the effect at half resolution in each direction to reduce GPU work. Screen content and handoff angles stay the same.",style=MaterialTheme.typography.bodySmall)
-       Text("Glass strength · ${(intensity*100).roundToInt()}%")
-       Slider(value=intensity,onValueChange={intensity=it},valueRange=.3f..1.5f,onValueChangeFinished={prefs.edit().putFloat("intensity",intensity).apply();restart()})
        Text("Fully open at ${threshold.roundToInt()}°. Adjust this in Advanced.",style=MaterialTheme.typography.bodySmall)
       }
       SettingsCard("Custom wallpaper","Your photo on Home, with live hinge support in the background."){
@@ -161,6 +169,24 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Advanced","Display thresholds, fold behavior, and diagnostics."){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
+        Toggle("Anti-aliasing",antialias){antialias=it;booleanSetting("antialias_enabled",it)}
+        if(antialias){
+         for((id,label) in listOf(0 to "Lightweight Texture Filtering",1 to "Edge-Adaptive Smoothing · experimental",2 to "4× Supersampling · experimental"))TextButton(onClick={antialiasMode=id;prefs.edit().putInt("antialias_method_v2",id).apply();restart()}){Text((if(antialiasMode==id)"✓ " else "")+label)}
+         Text("Lightweight is the default again. Edge-Adaptive filters the rendered image; 4× Supersampling doubles both render-buffer dimensions. Compare the experimental modes on your device.",style=MaterialTheme.typography.bodySmall)
+         Text("Anti-aliasing strength · ${(antialiasStrength*100).roundToInt()}%")
+         Slider(value=antialiasStrength,onValueChange={antialiasStrength=it},valueRange=.2f..0.5f,onValueChangeFinished={prefs.edit().putFloat("antialias_strength",antialiasStrength).apply();restart()})
+         TextButton(onClick={antialiasStrength=.35f;prefs.edit().putFloat("antialias_strength",.35f).apply();restart()}){Text("Reset anti-aliasing")}
+        }
+        Text("All three methods work across glass styles, independent of blur and glass strength. Reduces jagged detail and shimmer; cannot restore missing capture detail.",style=MaterialTheme.typography.bodySmall)
+        Text("Live content frame rate",style=MaterialTheme.typography.titleMedium)
+        for(rate in listOf(12,60,120))TextButton(onClick={contentFps=rate;prefs.edit().putInt("content_fps",rate).apply();restart()}){Text((if(contentFps==rate)"✓ " else "")+when(rate){12->"Legacy · approximately 12 FPS";120->"120 FPS · experimental";else->"60 FPS · lower GPU cost"})}
+        Text("Uses your selected capture target without automatic refresh-rate switching. Actual FPS depends on device speed and temperature. Status reports show measured captures per second. Screenshot mode intentionally holds a still image.",style=MaterialTheme.typography.bodySmall)
+        Text("Left preview appearance",style=MaterialTheme.typography.titleMedium)
+        for(frosted in listOf(true,false))TextButton(onClick={frostedReflection=frosted;booleanSetting("frosted_reflection",frosted)}){Text((if(frostedReflection==frosted)"✓ " else "")+if(frosted)"Frosted Reflection" else "Animated Reflection")}
+        Text("Animated Reflection mirrors the cover animation. Frosted Reflection uses a blurred, mirrored image with less rendering work. Both retain the clean right preview and center blend.",style=MaterialTheme.typography.bodySmall)
+        Text("Center-edge blur offset · ${(seamOffset*100).roundToInt()}%")
+        Slider(value=seamOffset,onValueChange={seamOffset=it},valueRange=0f..0.15f,onValueChangeFinished={prefs.edit().putFloat("seam_offset",seamOffset).apply();restart()})
+        Text("Moves the soft transition into the right side, measured as a percentage of the full inner display width beyond the fold. Default: 7%; 0 ends at the fold.",style=MaterialTheme.typography.bodySmall)
         Text("Fully-open threshold · ${threshold.roundToInt()}°",style=MaterialTheme.typography.titleMedium)
         Slider(value=threshold,onValueChange={threshold=it.roundToInt().toFloat()},valueRange=165f..179f,steps=13,onValueChangeFinished={prefs.edit().putFloat("open_threshold",threshold).apply();restart()})
         Text("At this angle the inner effect is completely clear. Closing starts below this threshold. Default: 172°.",style=MaterialTheme.typography.bodySmall)
@@ -212,7 +238,7 @@ class MainActivity:ComponentActivity(){
           Text(status,style=MaterialTheme.typography.bodySmall)
           Text(LiveAngles.rotationHold,style=MaterialTheme.typography.bodySmall)
           OutlinedButton(onClick={startActivity(Intent(this@MainActivity,org.duofold.live.wallpaperlayer.WallpaperActivity::class.java).putExtra("developer",true))}){Text("Wallpaper developer settings")}
-          OutlinedButton(onClick={val sent=SupportPrompts.notify(this@MainActivity);android.widget.Toast.makeText(this@MainActivity,if(sent)"Preview notification sent; weekly schedule unchanged" else "Allow notifications in Android app settings",android.widget.Toast.LENGTH_LONG).show()}){Text("Preview support notification")}
+          OutlinedButton(onClick={val sent=SupportPrompts.notify(this@MainActivity);android.widget.Toast.makeText(this@MainActivity,if(sent)"Preview notification sent; reminder schedule unchanged" else "Allow notifications in Android app settings",android.widget.Toast.LENGTH_LONG).show()}){Text("Preview support notification")}
          }
         }
 
@@ -222,7 +248,7 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Support Duo Fold Live","Free, independent, and built with care for your Fold."){
        Text("If Duo makes your phone more enjoyable, you can help support development with a donation. Every feature stays available either way.")
        Button(onClick={SupportPrompts.open(this@MainActivity);supportBanner=false}){Text("Support on Ko-fi")}
-       Text("Support invitations begin after one week of successful use, then appear at most weekly for three invitations. Each includes snooze and dismiss options.",style=MaterialTheme.typography.bodySmall)
+       Text("Support invitations begin after 3 days of successful use, then 7 days later, 14 days later, and every 30 days thereafter. Snooze and permanent dismissal remain available.",style=MaterialTheme.typography.bodySmall)
       }
       Text("Duo Fold Live ${BuildConfig.VERSION_NAME} · Glass reference: chuspeeism/iphone-duo (MIT).",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      }
