@@ -27,6 +27,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 internal class SecondaryShade(private val service:AccessibilityService,display:Display,private val intensity:Float,private val preview:Boolean=false,private val nativeContent:Boolean=false,private val event:(String)->Unit):Presentation(service,display,android.R.style.Theme_Material_NoActionBar){
  private val life=OverlayOwner()
  private var compose:ComposeView?=null
+ private var coverAspect=.63f
  private var inner=false
  private var mirrorReady=false
  private var mirrorView:LivePanelSurface?=null
@@ -37,6 +38,7 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
  fun refresh(){compose?.invalidate()}
  override fun onCreate(saved:Bundle?){
   super.onCreate(saved);life.registry.currentState=Lifecycle.State.CREATED
+  service.getSystemService(android.hardware.display.DisplayManager::class.java).getDisplay(0)?.mode?.let{coverAspect=it.physicalWidth.toFloat()/it.physicalHeight}
   val mode=display.mode
   inner=minOf(mode.physicalWidth,mode.physicalHeight).toFloat()/maxOf(mode.physicalWidth,mode.physicalHeight)>.7f
   val view=ComposeView(context);compose=view
@@ -55,9 +57,9 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
      }else if(preview){
       AndroidView(factory={LivePanelSurface(it){ok,note->mirrorReady=ok;event(note)}.also{mirrorView=it}},modifier=Modifier.fillMaxSize())
       BoxWithConstraints(Modifier.fillMaxSize()){
-       val cover=GlassFrames.frame
-       val left=cover?.let{maxWidth-maxHeight*(it.width.toFloat()/it.height)}
-       if(cover!=null && left!=null && left.value>0 && cover.width.toFloat()/cover.height<.7f){
+       // Geometry must not depend on the shared frame: surface creation clears that frame.
+       val left=maxWidth-maxHeight*coverAspect
+       if(left.value>0 && coverAspect<.7f){
         Box(Modifier.fillMaxHeight().width(left)){
          DuoLiveShade(object:StandaloneFoldHost{
           override fun onMovement(){}

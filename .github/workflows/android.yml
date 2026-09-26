@@ -53,6 +53,17 @@ jobs:
           p.write_text(text)
           PY
 
+      - name: Mark alpha 24 BROKEN without removing downloads
+        if: github.ref_name == 'alpha/3.0.4-alpha.25'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit ci-39-1 --repo "$GITHUB_REPOSITORY" --title "BROKEN — Duo Fold Live 3.0.4-alpha.24" --prerelease --latest=false --notes-file docs/3.0.4-alpha.24-CHANGELOG.md
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/ci-39-1" --jq '.assets[] | [.id, .name] | @tsv' > "$RUNNER_TEMP/broken-assets.tsv"
+          while IFS=$'\t' read -r asset_id asset_name; do
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" -f "label=BROKEN — $asset_name" > /dev/null
+          done < "$RUNNER_TEMP/broken-assets.tsv"
+
       - name: Test and build unsigned release
         run: ./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease
 
