@@ -29,7 +29,7 @@ internal object ClassicGlassShader {
  uniform float blurStrength;
  uniform float seamOffset;
  uniform float reflectedCover;
- half4 shade(float2 p) {
+ half4 main(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
   float axis=mix(uv.x,uv.y,horizontal);
@@ -80,5 +80,5 @@ internal object ClassicGlassShader {
   if(inner>0.5 && fallback<0.5 && axis>=0.5)alpha*=seamMask;
   return half4(color*half(alpha),half(alpha));
  }
- """.trimIndent()+"\n"+AntiAliasShader.source
+ """.trimIndent()
 }

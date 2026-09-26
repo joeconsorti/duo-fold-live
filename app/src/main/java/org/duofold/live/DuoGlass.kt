@@ -42,7 +42,7 @@ internal object DuoGlassShader {
  uniform float blurStrength;
  uniform float seamOffset;
  uniform float reflectedCover;
- half4 shade(float2 p) {
+ half4 main(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
   float axis=mix(uv.x,uv.y,horizontal);
@@ -117,7 +117,7 @@ internal object DuoGlassShader {
   if(inner>0.5 && fallback<0.5 && axis>=0.5)alpha*=seamMask;
   return half4(color*half(alpha),half(alpha));
  }
- """.trimIndent()+"\n"+AntiAliasShader.source
+ """.trimIndent()
 }
 @Composable internal fun DuoGlassSurface(angle:Float,amount:Float,intensity:Float,inner:Boolean,rotation:Int,frozenFrame:GlassFrame?=null,reflectedCover:Boolean=false){
  val frame=frozenFrame ?: GlassFrames.frame
@@ -137,8 +137,10 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
  private var bufferWidth=0;private var bufferHeight=0
  private fun updateBufferSize(){
   if(preview || width<=0 || height<=0)return
-  val full=context.getSharedPreferences("standalone",0).getBoolean("full_resolution_glass",false)
-  val w=if(full)width else maxOf(1,width/2);val h=if(full)height else maxOf(1,height/2)
+  val prefs=context.getSharedPreferences("standalone",0)
+  val full=prefs.getBoolean("full_resolution_glass",false)
+  val factor=if(prefs.getBoolean("antialias_enabled",true) && RenderQuality.aaMode(prefs.getInt("antialias_method_v2",0))==2)2 else 1
+  val w=(if(full)width else maxOf(1,width/2))*factor;val h=(if(full)height else maxOf(1,height/2))*factor
   if(w!=bufferWidth || h!=bufferHeight){bufferWidth=w;bufferHeight=h;holder.setFixedSize(w,h)}
  }
  override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int){super.onSizeChanged(w,h,oldw,oldh);updateBufferSize()}
@@ -149,6 +151,22 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
  private val basePaint=Paint(Paint.FILTER_BITMAP_FLAG)
  private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
  private var program:RuntimeShader?=null
+ private val aaNode=RenderNode("Duo edge AA layer")
+ private var edgeShader:RuntimeShader?=null
+ private var edgeEffectKey=""
+ private fun drawGlass(canvas:Canvas,mode:Int,strength:Float){
+  if(mode!=1){canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint);return}
+  try{
+   val filter=edgeShader ?: RuntimeShader(AntiAliasShader.source).also{edgeShader=it}
+   val px=width.toFloat()/canvas.width;val py=height.toFloat()/canvas.height
+   val key="$px:$py:$strength"
+   if(key!=edgeEffectKey){filter.setFloatUniform("aaStrength",strength);filter.setFloatUniform("aaPixelSize",px,py);aaNode.setRenderEffect(RenderEffect.createRuntimeShaderEffect(filter,"rendered"));edgeEffectKey=key}
+   aaNode.setPosition(0,0,width,height)
+   val recorded=aaNode.beginRecording(width,height)
+   try{recorded.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint)}finally{aaNode.endRecording()}
+   canvas.drawRenderNode(aaNode)
+  }catch(e:Exception){RecoveryLog.add("Edge AA fallback to lightweight: ${e.javaClass.simpleName}: ${e.message}");canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint)}
+ }
  private var bitmap:Bitmap?=null
  private var classic=false
  private var readinessGeneration=0
@@ -223,7 +241,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
   updateBufferSize();preferFastRefresh();requestDraw()
  }
  override fun surfaceChanged(h:SurfaceHolder,format:Int,w:Int,height:Int){readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(!preview){GlassFrames.surface(this,surfaceControl);if(!reflectedCover)GlassFrames.requestFreshCapture();if(!reflectedCover && context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true))PreviewTransition.markAnimation(surfaceControl)};preferFastRefresh();requestDraw()}
- override fun surfaceDestroyed(h:SurfaceHolder){readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(angleListening){LiveAngles.remove(angleListener);angleListening=false};targetAngle=Float.NaN;renderedAngle=Float.NaN;lastFrameNanos=0L;choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview){PreviewTransition.forgetAnimation(surfaceControl);GlassFrames.surface(this,null)};bitmap=null;frame=null;paint.shader=null}
+ override fun surfaceDestroyed(h:SurfaceHolder){readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(angleListening){LiveAngles.remove(angleListener);angleListening=false};targetAngle=Float.NaN;renderedAngle=Float.NaN;lastFrameNanos=0L;choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview){PreviewTransition.forgetAnimation(surfaceControl);GlassFrames.surface(this,null)};bitmap=null;frame=null;paint.shader=null;aaNode.discardDisplayList();aaNode.setRenderEffect(null);edgeEffectKey=""}
  private fun drawFrame(){
   if(!holder.surface.isValid || width<=0 || height<=0)return
   runCatching{
@@ -273,8 +291,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
      val scale=fit?.get(0) ?: if(fallback)minOf(width.toFloat()/f.bitmap.width,height.toFloat()/f.bitmap.height) else 0f
      val ew=if(fallback || projectedCover)f.bitmap.width*scale else width.toFloat();val eh=if(fallback || projectedCover)f.bitmap.height*scale else height.toFloat()
      val quality=context.getSharedPreferences("standalone",0)
-     shader.setFloatUniform("aaMode",if(quality.getBoolean("antialias_enabled",true))RenderQuality.aaMode(quality.getInt("antialias_mode",2)).toFloat() else 0f)
-     shader.setFloatUniform("aaPixelSize",width.toFloat()/canvas.width,height.toFloat()/canvas.height)
+     val aaMode=if(quality.getBoolean("antialias_enabled",true))RenderQuality.aaMode(quality.getInt("antialias_method_v2",0)) else 0
      shader.setFloatUniform("aaStrength",if(quality.getBoolean("antialias_enabled",true))RenderQuality.antialias(quality.getFloat("antialias_strength",.35f)) else 0f)
      shader.setFloatUniform("blurStrength",RenderQuality.blur(quality.getFloat("blur_strength",.3f)))
      shader.setFloatUniform("reflectedCover",if(reflectedCover)1f else 0f)
@@ -291,7 +308,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
      shader.setFloatUniform("inner",if(inner)1f else 0f);shader.setFloatUniform("fallback",if(fallback)1f else 0f)
      shader.setFloatUniform("horizontal",if(rotation==Surface.ROTATION_90||rotation==Surface.ROTATION_270)1f else 0f)
      shader.setFloatUniform("reverse",if(rotation==Surface.ROTATION_90||rotation==Surface.ROTATION_180)1f else 0f)
-     paint.shader=shader;canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint)
+     paint.shader=shader;drawGlass(canvas,aaMode,RenderQuality.antialias(quality.getFloat("antialias_strength",.35f)))
      if(!preview && !frozen && f.width==size.x && f.height==size.y)rendered=f
     }else{
      // Honest, live black-fade fallback; never leave stale captured content visible.
@@ -307,6 +324,6 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
     try{if(rendered!=null || endpoint)trackReadyFrame(rendered,endpoint)}finally{holder.unlockCanvasAndPost(canvas)}
     if(!preview)FrameTelemetry.record(inner,SystemClock.elapsedRealtimeNanos(),SystemClock.elapsedRealtimeNanos()-started,appliedRate)
    }
-  }.onFailure{readinessGeneration++;readinessPending=false;RecoveryLog.add("Glass draw error: ${it.javaClass.simpleName}")}
+  }.onFailure{readinessGeneration++;readinessPending=false;RecoveryLog.add("Glass draw error: ${it.javaClass.simpleName}: ${it.message}")}
  }
 }

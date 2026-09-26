@@ -62,7 +62,7 @@ class MainActivity:ComponentActivity(){
     var fadeGradualness by remember{mutableFloatStateOf(FadeSettings.gradualness(prefs.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS)))}
     var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
     var antialias by remember{mutableStateOf(prefs.getBoolean("antialias_enabled",true))}
-    var antialiasMode by remember{mutableIntStateOf(RenderQuality.aaMode(prefs.getInt("antialias_mode",2)))}
+    var antialiasMode by remember{mutableIntStateOf(RenderQuality.aaMode(prefs.getInt("antialias_method_v2",0)))}
     var antialiasStrength by remember{mutableFloatStateOf(RenderQuality.antialias(prefs.getFloat("antialias_strength",.35f)))}
     var contentFps by remember{mutableIntStateOf(RenderQuality.fps(prefs.getInt("content_fps",120)))}
     var blurStrength by remember{mutableFloatStateOf(RenderQuality.blur(prefs.getFloat("blur_strength",.3f)))}
@@ -171,8 +171,8 @@ class MainActivity:ComponentActivity(){
        if(advanced){
         Toggle("Anti-aliasing",antialias){antialias=it;booleanSetting("antialias_enabled",it)}
         if(antialias){
-         for((id,label) in listOf(0 to "Lightweight Texture Filtering",1 to "Edge-Adaptive Smoothing",2 to "4× Supersampling"))TextButton(onClick={antialiasMode=id;prefs.edit().putInt("antialias_mode",id).apply();restart()}){Text((if(antialiasMode==id)"✓ " else "")+label)}
-         Text("4× Supersampling is the new default. The two new spatial filters cost more GPU work; compare their appearance on your device.",style=MaterialTheme.typography.bodySmall)
+         for((id,label) in listOf(0 to "Lightweight Texture Filtering",1 to "Edge-Adaptive Smoothing · experimental",2 to "4× Supersampling · experimental"))TextButton(onClick={antialiasMode=id;prefs.edit().putInt("antialias_method_v2",id).apply();restart()}){Text((if(antialiasMode==id)"✓ " else "")+label)}
+         Text("Lightweight is the default again. Edge-Adaptive filters the rendered image; 4× Supersampling doubles both render-buffer dimensions. Compare the experimental modes on your device.",style=MaterialTheme.typography.bodySmall)
          Text("Anti-aliasing strength · ${(antialiasStrength*100).roundToInt()}%")
          Slider(value=antialiasStrength,onValueChange={antialiasStrength=it},valueRange=.2f..0.5f,onValueChangeFinished={prefs.edit().putFloat("antialias_strength",antialiasStrength).apply();restart()})
          TextButton(onClick={antialiasStrength=.35f;prefs.edit().putFloat("antialias_strength",.35f).apply();restart()}){Text("Reset anti-aliasing")}
