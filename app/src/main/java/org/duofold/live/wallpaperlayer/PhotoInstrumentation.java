@@ -73,10 +73,10 @@ public class PhotoInstrumentation extends Instrumentation {
      android.accessibilityservice.AccessibilityServiceInfo info=automation.getServiceInfo();
      info.flags|=android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
      automation.setServiceInfo(info);
-     host.homePhoto=new HomePhotoLayer(getTargetContext(),automation,host.main,host::trace,host.bitmap);
+     host.homePhoto=new HomePhotoLayer(getTargetContext(),automation,host.main,host::trace,host.bitmap,display->host.nativePhoto==null?null:host.nativePhoto.photoParent(display));
      automation.setOnAccessibilityEventListener(event->{
-      if(event.getEventType()==android.view.accessibility.AccessibilityEvent.TYPE_WINDOWS_CHANGED||event.getEventType()==android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED){
-       host.main.post(()->{if(host.homePhoto!=null)host.homePhoto.requestRefresh();});
+      if(event.getEventType()==android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED||(event.getEventType()==android.view.accessibility.AccessibilityEvent.TYPE_WINDOWS_CHANGED&&(event.getWindowChanges()&(android.view.accessibility.AccessibilityEvent.WINDOWS_CHANGE_ADDED|android.view.accessibility.AccessibilityEvent.WINDOWS_CHANGE_REMOVED))!=0)){
+       host.main.post(()->{if(host.homePhoto!=null)host.homePhoto.windowChanged();});
       }
      });
      host.homePhoto.requestRefresh();

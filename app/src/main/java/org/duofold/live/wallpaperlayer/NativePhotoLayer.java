@@ -61,6 +61,7 @@ public final class NativePhotoLayer extends DisplayAreaOrganizer {
    note.accept("Independent wake surface unavailable; native photo retained: "+error);
   }
  }
+ SurfaceControl photoParent(int display){for(Entry e:layers.values())if(e.info.displayId==display&&e.parent.isValid())return e.parent;return null;}
  String rendererDescription(){return "Native compositor surface; independent wake surfaces="+independentCount+(independent?" (submitted, not a visibility guarantee)":" (disabled)");}
  void geometry(SurfaceControl.Transaction t,Entry e){
   try{

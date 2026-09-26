@@ -57,6 +57,7 @@ public class LayerHost extends Binder {
   if(!running)return;
   KeyguardManager keyguard=context.getSystemService(KeyguardManager.class);
   trace("Screen event "+action+"; keyguardLocked="+keyguard.isKeyguardLocked()+"; photo windows="+panels.size());
+  if(homePhoto!=null)homePhoto.screenEvent(action);
   if(!Intent.ACTION_SCREEN_ON.equals(action)&&!Intent.ACTION_USER_PRESENT.equals(action))return;
   displayChanged();
   for(Panel panel:panels.values()){
