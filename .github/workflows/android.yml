@@ -21,6 +21,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: actions/setup-java@v6
         with:
@@ -96,8 +97,15 @@ jobs:
           if [ -f "docs/$version-CHANGELOG.md" ]; then
             cat "docs/$version-CHANGELOG.md" >> "$RUNNER_TEMP/release-notes.txt"
           fi
+          # User approved this exact tested APK for main/latest on 2026-09-26.
+          # Preserve its existing binary and URL; changed source remains a prerelease.
+          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.0.4-alpha.16 ] && \
+             git diff --quiet de0c330d478f83ffecd03b020f8b9b1043276010 HEAD -- app build.gradle.kts settings.gradle.kts gradle.properties gradle; then
+            gh release edit ci-30-1 --repo "$GITHUB_REPOSITORY" --prerelease=false --latest
+            exit 0
+          fi
           release_flags=(--prerelease --latest=false)
-          # Alpha release policy: main also publishes pre-releases until user approval.
+          # Other builds remain prereleases until separately approved by the user.
           gh release create "$tag" dist/*.apk dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Duo Fold Live $version" "${release_flags[@]}" \

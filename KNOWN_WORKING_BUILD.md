@@ -1,6 +1,6 @@
 # Wallpaper rollback baseline — preserve alpha.13
 
-**3.0.4-alpha.13 is the only user-confirmed partly working build for the unlock wallpaper flash, as of 2026-09-26.** Do not replace this baseline based only on automated checks. New experiments remain unverified until the user confirms them.
+**Current user-approved best version: 3.0.4-alpha.16 (`ci-30-1`), promoted to main/latest on 2026-09-26.** The user still observes occasional immediate/delayed unlock flashing. Alpha.13 remains the preserved original partly working rollback baseline; do not delete or rewrite it. Automated checks alone do not establish visual correctness.
 
 - Release/tag: [ci-27-1](https://github.com/joeconsorti/duo-fold-live/releases/tag/ci-27-1)
 - Original signed APK: [Duo-Fold-Live-ci-27-1.apk](https://github.com/joeconsorti/duo-fold-live/releases/download/ci-27-1/Duo-Fold-Live-ci-27-1.apk)
