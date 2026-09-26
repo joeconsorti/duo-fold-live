@@ -2,6 +2,8 @@
 
 # Duo Fold Live · 3.0.3
 
+**Wallpaper rollback baseline: [alpha.13 — the only user-confirmed partly working build](KNOWN_WORKING_BUILD.md).** Later wallpaper experiments are not replacements for this baseline until confirmed.
+
 ## 📺 Step-by-step installation tutorial
 **New here? [Watch the full setup walkthrough on YouTube](https://www.youtube.com/watch?v=8Ucm7ceBDN4).**
 

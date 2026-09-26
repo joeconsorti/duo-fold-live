@@ -25,14 +25,14 @@ final class HomePhotoLayer {
  final Map<Integer,Integer> attempts=new HashMap<>();
  volatile boolean closed;volatile String status="Home photo waiting for launcher";long retryAt;
  final Map<Integer,Entry> bridges=new HashMap<>();final Map<Integer,Long> homeSeen=new HashMap<>();final Set<Integer> bridgeDisplays=new HashSet<>();
- volatile long bridgeEpoch;final WakeBridgePolicy bridgePolicy=new WakeBridgePolicy();boolean bridgeTickQueued,bridgeExpiryQueued;long bridgePollUntil;
+ volatile long bridgeEpoch;final WakeBridgePolicy bridgePolicy=new WakeBridgePolicy();boolean bridgeTickQueued,bridgeExpiryQueued;
  boolean keyguardLocked(){return context.getSystemService(KeyguardManager.class).isKeyguardLocked();}
  void finishBridge(int display,String reason){
   bridgeDisplays.remove(display);Entry e=bridges.remove(display);if(e!=null){e.close();note.accept("Wake photo bridge removed: "+reason+" display="+display);}
  }
  void resetBridges(){bridgeEpoch++;main.removeCallbacks(bridgeTick);bridgeTickQueued=false;bridgeExpiryQueued=false;for(Entry e:bridges.values())e.close();bridges.clear();bridgeDisplays.clear();bridgePolicy.reset();}
  void pollBridge(){
-  if(closed||bridgeTickQueued)return;bridgePollUntil=SystemClock.elapsedRealtime()+2000;bridgeTickQueued=true;
+  if(closed||bridgeTickQueued||bridgeDisplays.isEmpty())return;bridgeTickQueued=true;
   main.post(bridgeTick);
  }
  final Runnable bridgeTick=new Runnable(){public void run(){
@@ -41,16 +41,17 @@ final class HomePhotoLayer {
   WakeBridgePolicy.State bridgeState=bridgePolicy.observe(locked,now);
   if(bridgeState==WakeBridgePolicy.State.SHOW&&!bridgeExpiryQueued){
    bridgeExpiryQueued=true;long epoch=bridgeEpoch;
-   main.postDelayed(()->{if(closed||epoch!=bridgeEpoch)return;for(int id:new ArrayList<>(bridgeDisplays))finishBridge(id,"750 ms unlock timeout");},750);
+   main.postDelayed(()->{if(closed||epoch!=bridgeEpoch)return;for(int id:new ArrayList<>(bridgeDisplays))finishBridge(id,"2 s unlock failure timeout");},WakeBridgePolicy.FAILURE_TIMEOUT_MS);
   }
-  if(bridgeState==WakeBridgePolicy.State.EXPIRED){for(int id:new ArrayList<>(bridgeDisplays))finishBridge(id,"750 ms unlock timeout");return;}
+  if(bridgeState==WakeBridgePolicy.State.EXPIRED){for(int id:new ArrayList<>(bridgeDisplays))finishBridge(id,"2 s unlock failure timeout");return;}
   for(Entry e:new ArrayList<>(bridges.values()))if(e.bridgeReady&&!e.released){
    boolean show=bridgeState==WakeBridgePolicy.State.SHOW;
    if(show!=e.bridgeShown)try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){
     geometry(tx,e);tx.setVisibility(e.photo,show).apply();e.bridgeShown=show;note.accept("Wake photo bridge "+(show?"shown":"hidden")+" display="+e.target.display);
    }catch(Throwable error){finishBridge(e.target.display,"placement failed: "+failure(error));}
   }
-  if(now<bridgePollUntil){bridgeTickQueued=true;main.postDelayed(this,8);}
+  // Continue across a long lock-screen wait; screen-off, handoff or failure expiry ends this.
+  if(!bridgeDisplays.isEmpty()){bridgeTickQueued=true;main.postDelayed(this,8);}
  }};
  void prepareBridge(Target target){
   if(closed||!bridgeDisplays.contains(target.display)||bridges.containsKey(target.display)||!keyguardLocked())return;
@@ -73,14 +74,23 @@ final class HomePhotoLayer {
   e.bridgeReady=true;note.accept("Wake photo bridge prepared hidden below SystemUI; display="+e.target.display+" window="+e.target.window);pollBridge();
  }
  void homeReady(Entry e){
-  if(keyguardLocked()||!bridgeDisplays.contains(e.target.display))return;
-  // Put the Home photo in place and hide the bridge in the same compositor transaction.
+  if(keyguardLocked()||!bridgeDisplays.contains(e.target.display)||e.handoffEpoch==bridgeEpoch)return;
+  long epoch=bridgeEpoch;e.handoffEpoch=epoch;
   Entry bridge=bridges.get(e.target.display);
   try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){
    geometry(tx,e);relative.invoke(tx,e.photo,e.anchor,1);tx.setVisibility(e.photo,true);
-   if(bridge!=null&&bridge.photo!=null)tx.setVisibility(bridge.photo,false);
-   tx.apply();finishBridge(e.target.display,"Home handoff");
-  }catch(Throwable error){note.accept("Wake photo handoff waiting: "+failure(error));}
+   // Submission/attachment acknowledgement alone is not a committed Home transaction.
+   tx.addTransactionCommittedListener(main::post,()->{
+    if(closed||epoch!=bridgeEpoch||entries.get(e.target.display)!=e||e.released)return;
+    note.accept("Home photo transaction committed; display="+e.target.display);
+    Choreographer.getInstance().postFrameCallback(frameTime->{
+     if(closed||epoch!=bridgeEpoch||entries.get(e.target.display)!=e||e.released||bridges.get(e.target.display)!=bridge)return;
+     if(keyguardLocked()){e.handoffEpoch=-1;return;}
+     finishBridge(e.target.display,"Home commit + next frame");
+    });
+   });
+   tx.apply();
+  }catch(Throwable error){e.handoffEpoch=-1;note.accept("Wake photo handoff waiting: "+failure(error));}
  }
  Bitmap hardware;HardwareBuffer buffer;
  HomePhotoLayer(Context c,UiAutomation a,Handler h,Consumer<String> n,Bitmap photo,IntFunction<SurfaceControl> parent)throws Exception{
@@ -216,5 +226,5 @@ final class HomePhotoLayer {
  }
  void close(){if(closed)return;closed=true;resetBridges();main.removeCallbacks(bridgeTick);worker.shutdown();for(Entry e:pending.values())e.close();pending.clear();for(Entry e:entries.values())e.close();entries.clear();if(buffer!=null){buffer.close();buffer=null;}hardware=null;}
  static final class Target{final int window,display;final String pkg;Target(int w,int d,String p){window=w;display=d;pkg=p;}}
- static final class Entry{final Target target;final SurfaceControl anchor;final AttachmentRequest request=new AttachmentRequest(SystemClock.elapsedRealtime());SurfaceControl photo;AttachmentRequest rebind;long nextRebind;boolean bridgeReady,bridgeShown,released;Entry(Target t,SurfaceControl a){target=t;anchor=a;}void detach(SurfaceControl.Transaction tx){if(photo!=null)tx.setVisibility(photo,false).reparent(photo,null);tx.setVisibility(anchor,false).reparent(anchor,null);}void release(){if(released)return;released=true;if(photo!=null)photo.release();anchor.release();}void close(){request.cancel();if(rebind!=null)rebind.cancel();if(released)return;try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){detach(tx);tx.apply();}catch(RuntimeException ignored){}finally{release();}}}
+ static final class Entry{final Target target;final SurfaceControl anchor;final AttachmentRequest request=new AttachmentRequest(SystemClock.elapsedRealtime());SurfaceControl photo;AttachmentRequest rebind;long nextRebind,handoffEpoch=-1;boolean bridgeReady,bridgeShown,released;Entry(Target t,SurfaceControl a){target=t;anchor=a;}void detach(SurfaceControl.Transaction tx){if(photo!=null)tx.setVisibility(photo,false).reparent(photo,null);tx.setVisibility(anchor,false).reparent(anchor,null);}void release(){if(released)return;released=true;if(photo!=null)photo.release();anchor.release();}void close(){request.cancel();if(rebind!=null)rebind.cancel();if(released)return;try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){detach(tx);tx.apply();}catch(RuntimeException ignored){}finally{release();}}}
 }
