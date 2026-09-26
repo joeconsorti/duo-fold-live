@@ -63,7 +63,11 @@ internal object DuoGlassShader {
    float hx=-0.23396, hz=-0.27463-0.275454;
    float foldedX=c*hx+sn*hz;
    float foldedZ=-sn*hx+c*hz+0.275454;
-   float anchor=foldedX*(0.24948-40.0)/(foldedZ-40.0);
+   float anchorDepth=(0.24948-40.0)/(foldedZ-40.0);
+   float anchor=foldedX*anchorDepth;
+   // Keep the cover's fixed edge flush at both corners. Perspective is relative
+   // to that edge, not to the reference model's offset screen plane.
+   projectedY/=anchorDepth;
    float frameWidth=7.73936*(40.0-0.24948)/(40.0-0.825538);
    mapped=(projectedX-anchor)/frameWidth;
    edge=mapped;
