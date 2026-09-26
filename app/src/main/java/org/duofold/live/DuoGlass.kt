@@ -148,7 +148,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
       readinessPending=false
       if(endpoint)lastReadyEndpoint=SystemClock.elapsedRealtime() else lastReadyCapture=rendered!!.stamp
       HandoffFadeFrames.committed(true,rendered?.stamp ?: -1,endpoint)
-      if(rendered!=null)PreviewTransition.innerFrameSubmitted(rendered) else if(endpoint)PreviewTransition.innerEndpointCommitted()
+      if(endpoint)PreviewTransition.innerEndpointCommitted() else if(rendered!=null)PreviewTransition.innerFrameSubmitted(rendered)
      }
     }
     applyTransactionToFrame(transaction)
@@ -192,6 +192,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
  override fun surfaceCreated(h:SurfaceHolder){
   if(!preview){
    GlassFrames.surface(this,surfaceControl)
+   GlassFrames.requestFreshCapture()
    if(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true) && !context.getSharedPreferences("standalone",0).getBoolean("dual",false))PreviewTransition.markAnimation(surfaceControl)
    smoothingMs=FrameSmoothing.sanitize(context.getSharedPreferences("standalone",0).getFloat("smoothing_ms",12f))
   openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
@@ -199,7 +200,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
   }
   updateBufferSize();preferFastRefresh();requestDraw()
  }
- override fun surfaceChanged(h:SurfaceHolder,format:Int,w:Int,height:Int){if(!preview)GlassFrames.surface(this,surfaceControl);preferFastRefresh();requestDraw()}
+ override fun surfaceChanged(h:SurfaceHolder,format:Int,w:Int,height:Int){readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(!preview){GlassFrames.surface(this,surfaceControl);GlassFrames.requestFreshCapture()};preferFastRefresh();requestDraw()}
  override fun surfaceDestroyed(h:SurfaceHolder){readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(angleListening){LiveAngles.remove(angleListener);angleListening=false};targetAngle=Float.NaN;renderedAngle=Float.NaN;lastFrameNanos=0L;choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview)GlassFrames.surface(this,null);bitmap=null;frame=null;paint.shader=null}
  private fun drawFrame(){
   if(!holder.surface.isValid || width<=0 || height<=0)return
@@ -214,6 +215,11 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
     if(preview && frame!=null)canvas.drawBitmap(frame!!.bitmap,null,RectF(0f,0f,width.toFloat(),height.toFloat()),null)
     if(amount<=.003f || (!preview && (!LiveAngles.fresh() || !LiveAngles.effectAllowed))){
      endpoint=!preview && inner && LiveAngles.fresh() && LiveAngles.effectAllowed && targetAngle.isFinite() && targetAngle>=FoldThreshold.sanitize(openThreshold)
+     if(endpoint){
+      val current=Point();context.getSystemService(DisplayManager::class.java).getDisplay(0)?.getRealSize(current)
+      val content=frame
+      if(content!=null && GlassFramePolicy.usable(content.stamp,SystemClock.elapsedRealtime(),content.width,content.height,current.x,current.y))rendered=content else endpoint=false
+     }
      return@runCatching
     }
     val f=frame

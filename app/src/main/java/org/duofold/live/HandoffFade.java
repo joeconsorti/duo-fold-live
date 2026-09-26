@@ -49,7 +49,11 @@ final class HandoffFade {
   this.enabled=enabled;lease=now;if((!ticking||!enabled)&&wakePending.compareAndSet(false,true))handler.post(start);
  }
  private final Runnable start=()->{wakePending.set(false);if(!enabled){clear();return;}if(!ticking&&!closed){ticking=true;this.tick.run();}};
- void drawn(boolean inner,long when,int kind,long captured){lastDraw=new Draw(inner,when,kind,captured);}
+ private final Runnable readinessTick=()->{if(ticking&&!closed&&enabled)this.tick.run();};
+ void drawn(boolean inner,long when,int kind,long captured){
+  lastDraw=new Draw(inner,when,kind,captured);
+  if(kind!=HandoffFadePolicy.UI_DRAW){handler.removeCallbacks(readinessTick);handler.postDelayed(readinessTick,HandoffFadePolicy.COMMIT_SETTLE_MS);}
+ }
  private Field field(Object o,String name)throws Exception{Field f=fields.get(name);if(f==null){f=o.getClass().getField(name);fields.put(name,f);}return f;}
  private int value(Object o,String f)throws Exception{return field(o,f).getInt(o);}
  private void init()throws Exception{
@@ -115,7 +119,7 @@ final class HandoffFade {
   }catch(Exception e){clear();status="Handoff fade unavailable: "+e.getClass().getSimpleName()+": "+e.getMessage();}
  }};
  private void clear(){
-  handler.removeCallbacks(tick);if(frames!=null)frames.removeFrameCallback(frame);
+  handler.removeCallbacks(readinessTick);handler.removeCallbacks(tick);if(frames!=null)frames.removeFrameCallback(frame);
   java.util.Arrays.fill(alphas,-1);java.util.Arrays.fill(stacks,-1);java.util.Arrays.fill(extents,-1);ticking=false;policy.reset();closingMirror.reset();mirrorSubmitted=-1;
   for(int i=0;i<layers.length;i++)if(layers[i]!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(layers[i],false).reparent(layers[i],null).apply();}catch(Exception ignored){}layers[i].release();layers[i]=null;}
   status="Handoff fade idle";

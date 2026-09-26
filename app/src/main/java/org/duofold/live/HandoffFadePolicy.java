@@ -50,10 +50,11 @@ final class HandoffFadePolicy {
    if(reveal<0){
     if(inner&&requireInnerGlass){
      boolean committed=drawnInner&&drawn>=onSince&&drawn<=now;
-     boolean glass=committed&&kind==GLASS_COMMITTED&&captured>=onSince&&captured<=drawn&&now-captured<=350;
-     boolean endpoint=committed&&kind==ENDPOINT_COMMITTED&&angle>=openThreshold;
+     boolean freshContent=committed&&captured>=onSince&&captured<=drawn&&now-captured<=350;
+     boolean glass=freshContent&&kind==GLASS_COMMITTED;
+     boolean endpoint=freshContent&&kind==ENDPOINT_COMMITTED&&angle>=openThreshold;
      if(readyAt<0){
-      if(glass||endpoint){readyAt=drawn;readiness=glass?"fresh content capture + glass frame committed":"fully open; clear frame committed";}
+      if(glass||endpoint){readyAt=drawn;readiness=glass?"fresh content capture + glass frame committed":"fresh content capture + fully-open clear committed";}
       else readiness="waiting for fresh content capture + glass commit";
      }
      if(readyAt>=0&&now-readyAt>=COMMIT_SETTLE_MS)reveal=now;

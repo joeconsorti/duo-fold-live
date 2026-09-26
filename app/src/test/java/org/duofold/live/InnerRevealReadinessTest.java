@@ -39,13 +39,20 @@ public class InnerRevealReadinessTest {
   assertEquals(1,glass(p,100,99,100),0);
   assertEquals(1,glass(p,500,499,22),0);
  }
- @Test public void fullyOpenRequiresItsOwnCommittedClear(){
+ @Test public void fullyOpenRequiresFreshContentAndItsOwnCommittedClear(){
   HandoffFadePolicy p=start();
   assertEquals(1,p.opacity(40,true,178,true,true,39,true),0);
   assertEquals(1,p.opacity(45,true,171,true,true,44,true,HandoffFadePolicy.ENDPOINT_COMMITTED,-1),0);
-  assertEquals(1,p.opacity(50,true,178,true,true,50,true,HandoffFadePolicy.ENDPOINT_COMMITTED,-1),0);
-  assertEquals(1,p.opacity(52,true,178,true,true,50,true,HandoffFadePolicy.ENDPOINT_COMMITTED,-1),0);
-  assertEquals(.5f,p.opacity(142,true,178,true,true,50,true,HandoffFadePolicy.ENDPOINT_COMMITTED,-1),.001);
+  assertEquals(1,p.opacity(50,true,178,true,true,50,true,HandoffFadePolicy.ENDPOINT_COMMITTED,30),0);
+  assertEquals(1,p.opacity(52,true,178,true,true,50,true,HandoffFadePolicy.ENDPOINT_COMMITTED,30),0);
+  assertEquals(.5f,p.opacity(142,true,178,true,true,50,true,HandoffFadePolicy.ENDPOINT_COMMITTED,30),.001);
+ }
+ @Test public void clearWithoutPostOnContentNeverCountsAsReadiness(){
+  HandoffFadePolicy p=start();
+  assertEquals(1,p.opacity(100,true,178,true,true,99,true,HandoffFadePolicy.ENDPOINT_COMMITTED,-1),0);
+  assertEquals(1,p.opacity(200,true,178,true,true,199,true,HandoffFadePolicy.ENDPOINT_COMMITTED,19),0);
+  assertEquals(1,p.opacity(500,true,178,true,true,499,true,HandoffFadePolicy.ENDPOINT_COMMITTED,30),0);
+  assertTrue(p.readiness.startsWith("waiting"));
  }
  @Test public void anotherOffIntervalInvalidatesEvidence(){
   HandoffFadePolicy p=start();glass(p,25,25,22);glass(p,27,25,22);

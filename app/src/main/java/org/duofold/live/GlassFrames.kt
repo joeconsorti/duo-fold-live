@@ -19,11 +19,18 @@ internal object GlassFrames {
  fun surface(key:Any,sc:SurfaceControl?){if(sc==null)surfaces.remove(key) else surfaces[key]=sc}
  fun acquire(){clients++;if(clients==1){generation++;main.post(tick)}}
  fun release(){clients=(clients-1).coerceAtLeast(0);if(clients==0){generation++;frame=null;main.removeCallbacks(tick)}}
+ private var urgentUntil=0L
+ fun requestFreshCapture(){
+  generation++;frame=null;urgentUntil=SystemClock.elapsedRealtime()+900
+  main.removeCallbacks(tick)
+  if(clients>0 && !suspended)main.post(tick)
+ }
+ private fun retryDelay(normal:Long)=if(SystemClock.elapsedRealtime()<urgentUntil)16L else normal
  private val tick=object:Runnable{override fun run(){
   if(clients==0 || suspended)return
-  if(pending){main.postDelayed(this,50);return}
+  if(pending){main.postDelayed(this,retryDelay(50));return}
   val valid=surfaces.values.filter{it.isValid}.take(4)
-  if(valid.isEmpty()){frame=null;main.postDelayed(this,100);return}
+  if(valid.isEmpty()){frame=null;main.postDelayed(this,retryDelay(100));return}
   val gen=generation;val captureDisplay=if(LiveAngles.continuityNative)1 else 0;pending=true
   executor.execute{
    var result:Bundle?=null;var error="Glass frame unavailable"
@@ -36,7 +43,7 @@ internal object GlassFrames {
     val bitmap=response?.getParcelable("bitmap",Bitmap::class.java)
     if(response?.getBoolean("ok")==true && bitmap!=null){frame=GlassFrame(bitmap,response.getInt("width"),response.getInt("height"),response.getLong("stamp"));status="Projected glass · live compositor frames · ${response.getString("backend") ?: "layer capture"}"}
     else{frame=null;status="Glass unavailable; debug-style fallback: $message"}
-    main.postDelayed(this,if(frame==null)600 else 80)
+    main.postDelayed(this,retryDelay(if(frame==null)600L else 80L))
    }else if(clients>0 && !suspended)main.post(this)}
   }
  }}
