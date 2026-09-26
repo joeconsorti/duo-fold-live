@@ -11,9 +11,9 @@ internal object PreviewTransition {
  private val executor=Executors.newSingleThreadExecutor()
  private val main=Handler(Looper.getMainLooper())
  private var remote:IBinder?=null
- @Volatile private var blurStrength=1.5f
- @Volatile private var seamWidth=.02f
- fun configure(context:android.content.Context){val p=context.getSharedPreferences("standalone",0);blurStrength=RenderQuality.blur(p.getFloat("blur_strength",1.5f));seamWidth=RenderQuality.seam(p.getFloat("seam_width",.02f))}
+ @Volatile private var blurStrength=.3f
+ @Volatile private var seamOffset=.07f
+ fun configure(context:android.content.Context){val p=context.getSharedPreferences("standalone",0);blurStrength=RenderQuality.blur(p.getFloat("blur_strength",.3f));seamOffset=RenderQuality.seam(p.getFloat("seam_offset",.07f))}
  private var pending=false
  private var lastStamp=0L
  private var wasCover=false
@@ -48,7 +48,7 @@ internal object PreviewTransition {
   try{
    p.writeInterfaceToken(PreviewExpansion.TOKEN)
    if(code==2)p.writeInt(if(endpoint)1 else 0)
-   if(frame!=null){blurred=frost(frame.bitmap);p.writeTypedObject(blurred,0);p.writeTypedObject(frame.bitmap,0);p.writeLong(frame.stamp);p.writeFloat(seamWidth)}
+   if(frame!=null){blurred=frost(frame.bitmap);p.writeTypedObject(blurred,0);p.writeTypedObject(frame.bitmap,0);p.writeLong(frame.stamp);p.writeFloat(seamOffset)}
    binder().transact(code,p,r,0);r.readException();return r.readString()?:"Expansion ready"
   }catch(e:Exception){remote=null;throw e}finally{blurred?.recycle();p.recycle();r.recycle()}
  }

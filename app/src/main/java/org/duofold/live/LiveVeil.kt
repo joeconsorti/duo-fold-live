@@ -25,7 +25,7 @@ internal fun DuoLiveShade(host: StandaloneFoldHost, intensity: Float, innerPanel
     var amount by remember { mutableFloatStateOf(0f) }
     val expanded=innerPanel ?: LocalConfiguration.current.isRegular()
     val openThreshold=LocalContext.current.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
-    val smoothingMs=FrameSmoothing.sanitize(LocalContext.current.getSharedPreferences("standalone",0).getFloat("smoothing_ms",12f))
+    val smoothingMs=FrameSmoothing.sanitize(LocalContext.current.getSharedPreferences("standalone",0).getFloat("smoothing_ms",30f))
     val rotation=LocalView.current.display?.rotation ?: Surface.ROTATION_0
     val hinge=LocalHinge.current
     val latestExpanded by rememberUpdatedState(expanded)

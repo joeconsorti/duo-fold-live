@@ -37,7 +37,7 @@ internal object DuoGlassShader {
  uniform float reverse;
  uniform float intensity;
  uniform float blurStrength;
- uniform float seamWidth;
+ uniform float seamOffset;
  half4 main(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
@@ -45,7 +45,7 @@ internal object DuoGlassShader {
   axis=mix(axis,1.0-axis,reverse);
   // Project the folded physical panel through the reference's fixed eye at z=40.
   // Work in canonical hinge coordinates, then map back to screenshot orientation.
-  if(inner>0.5 && fallback<0.5 && axis>=0.5+seamWidth) return half4(0);
+  if(inner>0.5 && fallback<0.5 && axis>=0.5+seamOffset) return half4(0);
   float across=mix(uv.y,uv.x,horizontal);
   float a=foldRadians;
   float c=cos(a), sn=sin(a);
@@ -78,17 +78,18 @@ internal object DuoGlassShader {
   float projectedAcross=1.0-(projectedY-(0.34562-5.8974))/11.1035;
   float2 sourceUV=horizontal>0.5 ? float2(projectedAcross,corrected) : float2(corrected,projectedAcross);
   float seamMask=0.0;
-  if(inner>0.5 && fallback<0.5 && seamWidth>0.0){
-   seamMask=1.0-smoothstep(0.0,seamWidth,abs(axis-0.5));
+  if(inner>0.5 && fallback<0.5 && seamOffset>0.0){
+   seamMask=1.0-smoothstep(max(0.5,0.5+seamOffset-0.05),0.5+seamOffset,axis);
    if(axis>=0.5)sourceUV=uv;
   }
   sourceUV=sourceUV*sampleScale+sampleOffset;
   float shaderProgress=inner>0.5 ? clamp(a/1.570796327,0.0,1.0) : clamp((3.141592654-a)/1.570796327,0.0,1.0);
   float motion=smoothstep(0.0,1.0,shaderProgress);
   // Keep the 72 source-pixel reference radius, including the image's black margins.
-  float radius=72.0*motion*pow(clamp(edge,0.0,1.0),1.35);
+  float blurEdge=edge;
+  if(inner>0.5 && fallback<0.5)blurEdge=(edge+2.0*seamOffset)/(1.0+2.0*seamOffset);
+  float radius=72.0*motion*pow(clamp(blurEdge,0.0,1.0),1.35);
   radius*=blurStrength*(inner>0.5?1.25:1.0);
-  radius=max(radius,6.0*blurStrength*max(texSize.x,texSize.y)/640.0*seamMask);
   float2 footprint=max(0.5/texSize,float2(radius)*0.75/texSize);
   half3 color=half3(0);
   if(radius<0.01){
@@ -127,7 +128,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
  private var lastFrameNanos=0L
  private var angleListening=false
  private var openThreshold=172f
- private var smoothingMs=12f
+ private var smoothingMs=30f
  private var bufferWidth=0;private var bufferHeight=0
  private fun updateBufferSize(){
   if(preview || width<=0 || height<=0)return
@@ -139,7 +140,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
  private val angleListener=LiveAngles.Listener { value,_ ->
   if(value.isFinite() && value!=targetAngle){targetAngle=value;requestDraw()}
  }
- private var frozen=false;private var frame:GlassFrame?=null;private var amount=0f;private var intensity=1f;private var inner=false;private var rotation=0
+ private var frozen=false;private var frame:GlassFrame?=null;private var amount=0f;private var intensity=.5f;private var inner=false;private var rotation=0
  private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
  private var program:RuntimeShader?=null
  private var bitmap:Bitmap?=null
@@ -199,7 +200,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
   try{classic=context.getSharedPreferences("standalone",0).getString("animation_style","duo")=="classic";program=RuntimeShader(if(classic)ClassicGlassShader.source else DuoGlassShader.source)}catch(e:Exception){RecoveryLog.add("Glass shader compilation failed: ${e.message}")}
  }
  fun configure(next:GlassFrame?,amount:Float,intensity:Float,inner:Boolean,rotation:Int,frozen:Boolean=false,angle:Float=Float.NaN){this.hingeAngle=angle;this.frozen=frozen;frame=next;this.amount=amount;this.intensity=intensity;this.inner=inner;this.rotation=rotation
-  smoothingMs=FrameSmoothing.sanitize(context.getSharedPreferences("standalone",0).getFloat("smoothing_ms",12f))
+  smoothingMs=FrameSmoothing.sanitize(context.getSharedPreferences("standalone",0).getFloat("smoothing_ms",30f))
   openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
   val selected=context.getSharedPreferences("standalone",0).getString("animation_style","duo")=="classic"
   if(selected!=classic){classic=selected;bitmap=null;program=runCatching{RuntimeShader(if(classic)ClassicGlassShader.source else DuoGlassShader.source)}.getOrElse{RecoveryLog.add("Glass shader compilation failed: ${it.message}");null}}
@@ -209,7 +210,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
    GlassFrames.surface(this,surfaceControl)
    GlassFrames.requestFreshCapture()
    if(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true) && !context.getSharedPreferences("standalone",0).getBoolean("dual",false))PreviewTransition.markAnimation(surfaceControl)
-   smoothingMs=FrameSmoothing.sanitize(context.getSharedPreferences("standalone",0).getFloat("smoothing_ms",12f))
+   smoothingMs=FrameSmoothing.sanitize(context.getSharedPreferences("standalone",0).getFloat("smoothing_ms",30f))
   openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
    if(!angleListening){angleListening=true;LiveAngles.add(angleListener)}
   }
@@ -262,8 +263,8 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
      val scale=fit?.get(0) ?: if(fallback)minOf(width.toFloat()/f.bitmap.width,height.toFloat()/f.bitmap.height) else 0f
      val ew=if(fallback || projectedCover)f.bitmap.width*scale else width.toFloat();val eh=if(fallback || projectedCover)f.bitmap.height*scale else height.toFloat()
      val quality=context.getSharedPreferences("standalone",0)
-     shader.setFloatUniform("blurStrength",RenderQuality.blur(quality.getFloat("blur_strength",1.5f)))
-     shader.setFloatUniform("seamWidth",RenderQuality.seam(quality.getFloat("seam_width",.02f)))
+     shader.setFloatUniform("blurStrength",RenderQuality.blur(quality.getFloat("blur_strength",.3f)))
+     shader.setFloatUniform("seamOffset",RenderQuality.seam(quality.getFloat("seam_offset",.07f)))
      shader.setFloatUniform("texSize",f.bitmap.width.toFloat(),f.bitmap.height.toFloat())
      shader.setFloatUniform("origin",if(fallback)width-ew else 0f,if(fallback)(height-eh)/2f else 0f)
      shader.setFloatUniform("sampleScale",if(projectedCover)width/ew else 1f,if(projectedCover)height/eh else 1f)
@@ -296,12 +297,12 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
  }
 }
 
-@Composable internal fun GlassPreview(progress:Float){
+@Composable internal fun GlassPreview(progress:Float,intensity:Float=.5f){
  val sample=remember{
   val bitmap=Bitmap.createBitmap(900,600,Bitmap.Config.ARGB_8888);val canvas=Canvas(bitmap);val p=Paint(Paint.ANTI_ALIAS_FLAG)
   p.shader=LinearGradient(0f,0f,900f,600f,intArrayOf(Color.rgb(27,73,111),Color.rgb(192,143,114)),null,Shader.TileMode.CLAMP);canvas.drawRect(0f,0f,900f,600f,p);p.shader=null
   for(i in 0..17){p.color=intArrayOf(Color.rgb(242,181,87),Color.rgb(86,191,161),Color.WHITE)[i%3];val x=75f+(i%6)*150f;val y=95f+(i/6)*185f;canvas.drawRoundRect(x-38,y-38,x+38,y+38,18f,18f,p);p.color=Color.WHITE;p.textSize=20f;canvas.drawText("App ${i+1}",x-30,y+67,p)}
   GlassFrame(bitmap,900,600,0)
  }
- AndroidView(factory={FrostSurface(it,true)},modifier=Modifier.fillMaxSize(),update={it.configure(sample,progress,1f,true,Surface.ROTATION_0)})
+ AndroidView(factory={FrostSurface(it,true)},modifier=Modifier.fillMaxSize(),update={it.configure(sample,progress,intensity,true,Surface.ROTATION_0)})
 }
