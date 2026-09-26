@@ -20,15 +20,13 @@ final class HomePhotoLayer {
  final Context context;final UiAutomation automation;final Handler main;final Consumer<String> note;
  final ExecutorService worker=Executors.newSingleThreadExecutor();final AtomicBoolean querying=new AtomicBoolean();
  final Map<Integer,Entry> entries=new HashMap<>();final Map<Integer,Entry> pending=new HashMap<>();
- final Object client;final int connection;final Method attach,relative,layerStack;
+ final WindowAttachment attachment;final Method relative,layerStack;
+ final Map<Integer,Integer> attempts=new HashMap<>();
  volatile boolean closed;volatile String status="Home photo waiting for launcher";long retryAt;
  Bitmap hardware;HardwareBuffer buffer;
  HomePhotoLayer(Context c,UiAutomation a,Handler h,Consumer<String> n,Bitmap photo)throws Exception{
   context=c;automation=a;main=h;note=n;
-  Class<?> api=Class.forName("android.view.accessibility.AccessibilityInteractionClient");
-  client=api.getMethod("getInstance").invoke(null);
-  connection=(Integer)UiAutomation.class.getMethod("getConnectionId").invoke(a);
-  attach=api.getMethod("attachAccessibilityOverlayToWindow",int.class,int.class,SurfaceControl.class,Executor.class,IntConsumer.class);
+  attachment=new WindowAttachment(a);
   relative=SurfaceControl.Transaction.class.getMethod("setRelativeLayer",SurfaceControl.class,SurfaceControl.class,int.class);
   layerStack=SurfaceControl.Transaction.class.getMethod("setLayerStack",SurfaceControl.class,int.class);
   setPhoto(photo);
@@ -44,7 +42,7 @@ final class HomePhotoLayer {
    android.util.SparseArray<List<AccessibilityWindowInfo>> windows=automation.getWindowsOnAllDisplays();
    for(int i=0;i<windows.size();i++)for(AccessibilityWindowInfo w:windows.valueAt(i))try{
     if(w.getType()!=AccessibilityWindowInfo.TYPE_APPLICATION||w.getDisplayId()<0||w.getDisplayId()>1)continue;
-    AccessibilityNodeInfo root=w.getRoot();if(root==null)continue;
+    AccessibilityNodeInfo root=w.getRoot(0);if(root==null)continue;
     boolean matches;try{matches=pkg.contentEquals(root.getPackageName()==null?"":root.getPackageName());}finally{root.recycle();}
     if(!matches)continue;
     Rect bounds=new Rect();w.getBoundsInScreen(bounds);
@@ -61,6 +59,7 @@ final class HomePhotoLayer {
   Entry old=entries.get(target.display);
   if(old!=null&&old.target.window==target.window){refreshGeometry();return;}
   if(pending.containsKey(target.display))return;
+  if(attempts.getOrDefault(target.window,0)>=3)return;
   Entry e=null;
   try{
    SurfaceControl anchor=new SurfaceControl.Builder().setName("Duo Home wallpaper anchor").setBufferSize(1,1).setHidden(true).build();
@@ -68,14 +67,19 @@ final class HomePhotoLayer {
    e.photo=new SurfaceControl.Builder().setName("Duo Home transition photo").setBufferSize(hardware.getWidth(),hardware.getHeight()).setOpaque(true).setHidden(true).build();
    try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){tx.setLayer(anchor,-1).setVisibility(anchor,true).apply();}
    Entry next=e;
-   attach.invoke(client,connection,target.window,anchor,(Executor)r->main.post(r),(IntConsumer)result->attached(next,result));
-   note.accept("Home photo attachment requested: "+target.pkg+" window="+target.window+" display="+target.display);
-  }catch(Throwable error){if(e!=null){pending.remove(target.display);e.close();}retryAt=SystemClock.elapsedRealtime()+5000;status="Home photo unavailable; existing wallpaper retained: "+error.getClass().getSimpleName();note.accept(status);}
+   if(attempts.size()>16)attempts.clear();
+   attempts.put(target.window,attempts.getOrDefault(target.window,0)+1);
+   status="Home photo attaching: window="+target.window+" display="+target.display;
+   main.postDelayed(()->complete(next,next.request.timeout(SystemClock.elapsedRealtime()),-1),5000);
+   String sent=attachment.request(target.window,anchor,main,result->complete(next,next.request.reply(SystemClock.elapsedRealtime(),result),result));
+   note.accept("Home photo direct attachment sent: "+target.pkg+" "+sent+" display="+target.display);
+  }catch(Throwable error){if(e!=null){pending.remove(target.display);e.close();}retryAt=SystemClock.elapsedRealtime()+5000;status="Home photo unavailable; existing wallpaper retained: "+failure(error);note.accept(status);}
  }
- void attached(Entry e,int result){
+ void complete(Entry e,AttachmentRequest.Result outcome,int result){
+  if(outcome==AttachmentRequest.Result.IGNORED)return;
   if(closed||pending.get(e.target.display)!=e){e.close();return;}
   pending.remove(e.target.display);
-  if(result!=0){e.close();retryAt=SystemClock.elapsedRealtime()+5000;status="Home photo attach rejected ("+result+"); existing wallpaper retained";note.accept(status);return;}
+  if(outcome!=AttachmentRequest.Result.SUCCESS){e.close();retryAt=SystemClock.elapsedRealtime()+5000;status="Home photo "+(outcome==AttachmentRequest.Result.TIMED_OUT?"attachment timed out after 5 seconds":"attach rejected ("+result+")")+"; attempt "+attempts.getOrDefault(e.target.window,0)+"/3; existing wallpaper retained";note.accept(status);return;}
   Entry previous=entries.get(e.target.display);
   try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){
    tx.setLayer(e.anchor,-1).setVisibility(e.anchor,true);
@@ -86,8 +90,9 @@ final class HomePhotoLayer {
    tx.apply();entries.put(e.target.display,e);if(previous!=null)previous.release();
    status="Home transition photo attached below launcher content on display "+e.target.display;
    note.accept(status+"; window="+e.target.window);
-  }catch(Throwable error){e.close();retryAt=SystemClock.elapsedRealtime()+5000;status="Home photo placement failed; existing wallpaper retained: "+error.getClass().getSimpleName();note.accept(status);}
+  }catch(Throwable error){e.close();retryAt=SystemClock.elapsedRealtime()+5000;status="Home photo placement failed; existing wallpaper retained: "+failure(error);note.accept(status);}
  }
+ static String failure(Throwable error){while(error instanceof java.lang.reflect.InvocationTargetException&&error.getCause()!=null)error=error.getCause();return error.getClass().getSimpleName()+": "+String.valueOf(error.getMessage());}
  void geometry(SurfaceControl.Transaction tx,Entry e)throws Exception{
   Display d=context.getSystemService(DisplayManager.class).getDisplay(e.target.display);
   if(d==null||!d.isValid())throw new IllegalStateException("Display unavailable");
@@ -106,5 +111,5 @@ final class HomePhotoLayer {
  }
  void close(){if(closed)return;closed=true;worker.shutdown();for(Entry e:pending.values())e.close();pending.clear();for(Entry e:entries.values())e.close();entries.clear();if(buffer!=null){buffer.close();buffer=null;}hardware=null;}
  static final class Target{final int window,display;final String pkg;Target(int w,int d,String p){window=w;display=d;pkg=p;}}
- static final class Entry{final Target target;final SurfaceControl anchor;SurfaceControl photo;boolean released;Entry(Target t,SurfaceControl a){target=t;anchor=a;}void detach(SurfaceControl.Transaction tx){if(photo!=null)tx.setVisibility(photo,false).reparent(photo,null);tx.setVisibility(anchor,false).reparent(anchor,null);}void release(){if(released)return;released=true;if(photo!=null)photo.release();anchor.release();}void close(){if(released)return;try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){detach(tx);tx.apply();}catch(RuntimeException ignored){}finally{release();}}}
+ static final class Entry{final Target target;final SurfaceControl anchor;final AttachmentRequest request=new AttachmentRequest(SystemClock.elapsedRealtime());SurfaceControl photo;boolean released;Entry(Target t,SurfaceControl a){target=t;anchor=a;}void detach(SurfaceControl.Transaction tx){if(photo!=null)tx.setVisibility(photo,false).reparent(photo,null);tx.setVisibility(anchor,false).reparent(anchor,null);}void release(){if(released)return;released=true;if(photo!=null)photo.release();anchor.release();}void close(){request.cancel();if(released)return;try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){detach(tx);tx.apply();}catch(RuntimeException ignored){}finally{release();}}}
 }

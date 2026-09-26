@@ -41,7 +41,7 @@ public class PhotoInstrumentation extends Instrumentation {
   try {
    // No-restart instrumentation preserves the app process. Restrict exemptions
    // to the same framework packages used by the existing wallpaper renderer.
-   if(!org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("Landroid/view/", "Landroid/window/", "Landroid/app/", "Landroid/os/"))
+   if(!org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("Landroid/view/", "Landroid/window/", "Landroid/app/", "Landroid/os/", "Landroid/accessibilityservice/IAccessibilityServiceConnection;"))
     throw new IllegalStateException("Wallpaper framework access unavailable; fold animation remains running");
    // Do not suspend Duo Fold Live's accessibility service during this experiment.
    automation=getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES);
