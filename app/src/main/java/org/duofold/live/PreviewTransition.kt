@@ -24,6 +24,10 @@ internal object PreviewTransition {
  // Main-thread registration; failed startup attempts remain pending until the helper is ready.
  private val exclusions=java.util.WeakHashMap<SurfaceControl,Boolean>()
  private val exclusionExecutor=Executors.newSingleThreadExecutor()
+ private val exclusionListeners=LinkedHashSet<Runnable>()
+ fun listenForExclusions(listener:Runnable){exclusionListeners.add(listener)}
+ fun stopListeningForExclusions(listener:Runnable){exclusionListeners.remove(listener)}
+ private fun exclusionsChanged(){exclusionListeners.toList().forEach{it.run()}}
  var exclusionRevision=0;private set
  fun exclusionsReady():Boolean{
   exclusions.keys.removeAll{!it.isValid}
@@ -55,7 +59,7 @@ internal object PreviewTransition {
    val error=failure
    main.post{
     if(!surface.isValid || !exclusions.containsKey(surface)){exclusions.remove(surface);return@post}
-    if(error==null){exclusions[surface]=true;exclusionRevision++;status="Animation excluded from mirror; startup retry count=$attempt";RecoveryLog.add(status)}
+    if(error==null){exclusions[surface]=true;exclusionRevision++;exclusionsChanged();status="Animation excluded from mirror; startup retry count=$attempt";RecoveryLog.add(status)}
     else{
      if(attempt==0){status="Waiting to exclude animation: $error";RecoveryLog.add(status)}
      main.postDelayed({attemptExclusion(surface,attempt+1)},500)

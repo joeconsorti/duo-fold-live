@@ -52,7 +52,8 @@ Installs that previously skipped onboarding without verifying wallpaper setup re
 
 1. **Black screen when switching between folded and unfolded displays.** This is a Samsung-side hardware limitation, not an issue with the app. We’re working on workarounds; for now, Duo uses a black fade transition to smooth the handoff in both directions.
 2. Unlocking directly onto Home may briefly reveal the underlying live wallpaper before the custom photo. The latest release improves this, but occasional flashes remain.
-3. Occasionally part of the unfolding fade does not trigger correctly, so the transition may look choppy.
+3. **Keep Awake is unreliable when closing the phone, including from Home.** The setting can read as enabled even when the phone sleeps. Further investigation is deferred.
+4. Occasionally part of the unfolding fade does not trigger correctly, so the transition may look choppy.
 
 ## Work in progress
 
