@@ -47,9 +47,11 @@ public class PhotoInstrumentation extends Instrumentation {
    if(automation==null)throw new IllegalStateException("UiAutomation unavailable");
    automation.adoptShellPermissionIdentity("android.permission.INTERNAL_SYSTEM_WINDOW","android.permission.MANAGE_ACTIVITY_TASKS","android.permission.ACCESS_SURFACE_FLINGER");
    publish("Registered photo host started; shell window permission adopted");
-   screenEvents=new BroadcastReceiver(){public void onReceive(Context c,Intent intent){transition("Screen event "+intent.getAction());}};
+   screenEvents=new BroadcastReceiver(){public void onReceive(Context c,Intent intent){if(host!=null)host.screenEvent(intent.getAction());else transition("Screen event "+intent.getAction());}};
    IntentFilter filter=new IntentFilter();filter.addAction(Intent.ACTION_SCREEN_ON);filter.addAction(Intent.ACTION_SCREEN_OFF);filter.addAction(Intent.ACTION_USER_PRESENT);
-   getTargetContext().registerReceiver(screenEvents,filter,Context.RECEIVER_NOT_EXPORTED);
+   // These three actions are protected system broadcasts. USER_PRESENT may be sent
+   // by SystemUI, which a NOT_EXPORTED receiver cannot receive on some firmware.
+   getTargetContext().registerReceiver(screenEvents,filter,Context.RECEIVER_EXPORTED);
    runOnMainSync(()->{
     host=new LayerHost(getTargetContext());host.transitionSink=this::transition;
     try {host.start(ParcelFileDescriptor.open(new File(getTargetContext().getFilesDir(),"photo.jpg"),ParcelFileDescriptor.MODE_READ_ONLY));}
