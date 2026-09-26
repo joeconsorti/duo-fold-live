@@ -1,6 +1,7 @@
 package org.duofold.live.wallpaperlayer;
 
 import android.app.UiAutomation;
+import android.app.KeyguardManager;
 import android.content.*;
 import android.content.pm.ResolveInfo;
 import android.graphics.*;
@@ -23,6 +24,64 @@ final class HomePhotoLayer {
  final IntFunction<SurfaceControl> photoParent;final WindowAttachment attachment;final Method relative,layerStack;
  final Map<Integer,Integer> attempts=new HashMap<>();
  volatile boolean closed;volatile String status="Home photo waiting for launcher";long retryAt;
+ final Map<Integer,Entry> bridges=new HashMap<>();final Map<Integer,Long> homeSeen=new HashMap<>();final Set<Integer> bridgeDisplays=new HashSet<>();
+ volatile long bridgeEpoch;final WakeBridgePolicy bridgePolicy=new WakeBridgePolicy();boolean bridgeTickQueued,bridgeExpiryQueued;long bridgePollUntil;
+ boolean keyguardLocked(){return context.getSystemService(KeyguardManager.class).isKeyguardLocked();}
+ void finishBridge(int display,String reason){
+  bridgeDisplays.remove(display);Entry e=bridges.remove(display);if(e!=null){e.close();note.accept("Wake photo bridge removed: "+reason+" display="+display);}
+ }
+ void resetBridges(){bridgeEpoch++;main.removeCallbacks(bridgeTick);bridgeTickQueued=false;bridgeExpiryQueued=false;for(Entry e:bridges.values())e.close();bridges.clear();bridgeDisplays.clear();bridgePolicy.reset();}
+ void pollBridge(){
+  if(closed||bridgeTickQueued)return;bridgePollUntil=SystemClock.elapsedRealtime()+2000;bridgeTickQueued=true;
+  main.post(bridgeTick);
+ }
+ final Runnable bridgeTick=new Runnable(){public void run(){
+  bridgeTickQueued=false;if(closed||bridgeDisplays.isEmpty()||!context.getSystemService(PowerManager.class).isInteractive())return;
+  long now=SystemClock.elapsedRealtime();boolean locked=keyguardLocked();
+  WakeBridgePolicy.State bridgeState=bridgePolicy.observe(locked,now);
+  if(bridgeState==WakeBridgePolicy.State.SHOW&&!bridgeExpiryQueued){
+   bridgeExpiryQueued=true;long epoch=bridgeEpoch;
+   main.postDelayed(()->{if(closed||epoch!=bridgeEpoch)return;for(int id:new ArrayList<>(bridgeDisplays))finishBridge(id,"750 ms unlock timeout");},750);
+  }
+  if(bridgeState==WakeBridgePolicy.State.EXPIRED){for(int id:new ArrayList<>(bridgeDisplays))finishBridge(id,"750 ms unlock timeout");return;}
+  for(Entry e:new ArrayList<>(bridges.values()))if(e.bridgeReady&&!e.released){
+   boolean show=bridgeState==WakeBridgePolicy.State.SHOW;
+   if(show!=e.bridgeShown)try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){
+    geometry(tx,e);tx.setVisibility(e.photo,show).apply();e.bridgeShown=show;note.accept("Wake photo bridge "+(show?"shown":"hidden")+" display="+e.target.display);
+   }catch(Throwable error){finishBridge(e.target.display,"placement failed: "+failure(error));}
+  }
+  if(now<bridgePollUntil){bridgeTickQueued=true;main.postDelayed(this,8);}
+ }};
+ void prepareBridge(Target target){
+  if(closed||!bridgeDisplays.contains(target.display)||bridges.containsKey(target.display)||!keyguardLocked())return;
+  Entry e=null;
+  try{
+   SurfaceControl parent=photoParent.apply(target.display);if(parent==null||!parent.isValid())return;
+   e=new Entry(target,new SurfaceControl.Builder().setName("Duo wake bridge anchor").setBufferSize(1,1).setHidden(true).build());
+   bridges.put(target.display,e);
+   e.photo=new SurfaceControl.Builder().setName("Duo wake bridge photo").setParent(parent).setBufferSize(hardware.getWidth(),hardware.getHeight()).setOpaque(true).setHidden(true).build();
+   try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){tx.setLayer(e.anchor,-1).setVisibility(e.anchor,true);relative.invoke(tx,e.photo,e.anchor,1);tx.setBuffer(e.photo,buffer);geometry(tx,e);tx.apply();}
+   Entry next=e;long epoch=bridgeEpoch;
+   main.postDelayed(()->bridgeReply(next,epoch,next.request.timeout(SystemClock.elapsedRealtime())),5000);
+   attachment.request(target.window,e.anchor,main,result->bridgeReply(next,epoch,next.request.reply(SystemClock.elapsedRealtime(),result)));
+  }catch(Throwable error){if(e!=null)e.close();bridges.remove(target.display);bridgeDisplays.remove(target.display);note.accept("Wake photo bridge unavailable: "+failure(error));}
+ }
+ void bridgeReply(Entry e,long epoch,AttachmentRequest.Result outcome){
+  if(outcome==AttachmentRequest.Result.IGNORED)return;
+  if(closed||epoch!=bridgeEpoch||bridges.get(e.target.display)!=e){e.close();return;}
+  if(outcome!=AttachmentRequest.Result.SUCCESS){finishBridge(e.target.display,"attachment "+outcome);return;}
+  e.bridgeReady=true;note.accept("Wake photo bridge prepared hidden below SystemUI; display="+e.target.display+" window="+e.target.window);pollBridge();
+ }
+ void homeReady(Entry e){
+  if(keyguardLocked()||!bridgeDisplays.contains(e.target.display))return;
+  // Put the Home photo in place and hide the bridge in the same compositor transaction.
+  Entry bridge=bridges.get(e.target.display);
+  try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){
+   geometry(tx,e);relative.invoke(tx,e.photo,e.anchor,1);tx.setVisibility(e.photo,true);
+   if(bridge!=null&&bridge.photo!=null)tx.setVisibility(bridge.photo,false);
+   tx.apply();finishBridge(e.target.display,"Home handoff");
+  }catch(Throwable error){note.accept("Wake photo handoff waiting: "+failure(error));}
+ }
  Bitmap hardware;HardwareBuffer buffer;
  HomePhotoLayer(Context c,UiAutomation a,Handler h,Consumer<String> n,Bitmap photo,IntFunction<SurfaceControl> parent)throws Exception{
   context=c;automation=a;main=h;note=n;photoParent=parent;
@@ -34,11 +93,15 @@ final class HomePhotoLayer {
  long wakeGeneration;boolean reattachQueued;
  void windowChanged(){
   if(closed||reattachQueued)return;reattachQueued=true;
-  main.postDelayed(()->{reattachQueued=false;if(closed)return;for(Entry e:entries.values())reattach(e);requestRefresh();},32);
+  main.postDelayed(()->{reattachQueued=false;if(closed)return;for(Entry e:entries.values())reattach(e);requestRefresh();pollBridge();},0);
  }
  void screenEvent(String action){
   long generation=++wakeGeneration;
-  if(Intent.ACTION_SCREEN_OFF.equals(action))return;
+  if(Intent.ACTION_SCREEN_OFF.equals(action)){
+   resetBridges();long now=SystemClock.elapsedRealtime();for(Map.Entry<Integer,Long> seen:homeSeen.entrySet())if(now-seen.getValue()<1500)bridgeDisplays.add(seen.getKey());
+   return;
+  }
+  pollBridge();requestRefresh();
   for(int delay:new int[]{0,32,100,250,500})main.postDelayed(()->{
    if(closed||generation!=wakeGeneration)return;
    for(Entry e:entries.values())reattach(e);
@@ -57,7 +120,7 @@ final class HomePhotoLayer {
   if(outcome==AttachmentRequest.Result.IGNORED||e.rebind!=request)return;
   e.rebind=null;if(closed||e.released||entries.get(e.target.display)!=e)return;
   if(outcome!=AttachmentRequest.Result.SUCCESS){status="Home photo reattachment "+outcome+" ("+result+")";note.accept(status);return;}
-  refreshGeometry();status="Home photo attachment acknowledged; display="+e.target.display+" window="+e.target.window+"; compositor visibility requires trace";note.accept(status);
+  refreshGeometry();homeReady(e);status="Home photo attachment acknowledged; display="+e.target.display+" window="+e.target.window+"; compositor visibility requires trace";note.accept(status);
  }
  void requestRefresh(){
   if(closed||!querying.compareAndSet(false,true))return;
@@ -66,20 +129,31 @@ final class HomePhotoLayer {
    ResolveInfo home=context.getPackageManager().resolveActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
    if(home==null||home.activityInfo==null){main.post(()->status="Home photo: default launcher unavailable");return;}
    String pkg=home.activityInfo.packageName;
-   ArrayList<Target> targets=new ArrayList<>();
+   ArrayList<Target> targets=new ArrayList<>(),lockTargets=new ArrayList<>();Set<Integer> activeHome=new HashSet<>(),otherActive=new HashSet<>();boolean locked=keyguardLocked();long sampled=SystemClock.elapsedRealtime(),epoch=bridgeEpoch;
    android.util.SparseArray<List<AccessibilityWindowInfo>> windows=automation.getWindowsOnAllDisplays();
    for(int i=0;i<windows.size();i++)for(AccessibilityWindowInfo w:windows.valueAt(i))try{
-    if(w.getType()!=AccessibilityWindowInfo.TYPE_APPLICATION||w.getDisplayId()<0||w.getDisplayId()>1)continue;
+    if((w.getType()!=AccessibilityWindowInfo.TYPE_APPLICATION&&w.getType()!=AccessibilityWindowInfo.TYPE_SYSTEM)||w.getDisplayId()<0||w.getDisplayId()>1)continue;
     AccessibilityNodeInfo root=w.getRoot(0);if(root==null)continue;
-    boolean matches;try{matches=pkg.contentEquals(root.getPackageName()==null?"":root.getPackageName());}finally{root.recycle();}
-    if(!matches)continue;
+    String windowPackage;try{windowPackage=String.valueOf(root.getPackageName());}finally{root.recycle();}
+    boolean matches=w.getType()==AccessibilityWindowInfo.TYPE_APPLICATION&&pkg.equals(windowPackage);
+    boolean lockWindow=locked&&w.getType()==AccessibilityWindowInfo.TYPE_SYSTEM&&"com.android.systemui".equals(windowPackage)&&w.isFocused();
+    if(!matches&&w.getType()==AccessibilityWindowInfo.TYPE_APPLICATION&&(w.isActive()||w.isFocused()))otherActive.add(w.getDisplayId());
+    if(!matches&&!lockWindow)continue;
     Rect bounds=new Rect();w.getBoundsInScreen(bounds);
     Display d=context.getSystemService(DisplayManager.class).getDisplay(w.getDisplayId());if(d==null||!d.isValid())continue;
     Point size=new Point();d.getRealSize(size);
     if(!HomePhotoPolicy.accepts(bounds.width(),bounds.height(),size.x,size.y))continue;
-    targets.add(new Target(w.getId(),w.getDisplayId(),pkg));
+    if(matches){targets.add(new Target(w.getId(),w.getDisplayId(),pkg));if(w.isActive()||w.isFocused())activeHome.add(w.getDisplayId());}
+    else lockTargets.add(new Target(w.getId(),w.getDisplayId(),windowPackage));
    }finally{w.recycle();}
-   main.post(()->{if(closed)return;for(Target t:targets)ensure(t);});
+   main.post(()->{if(closed)return;
+    if(epoch==bridgeEpoch&&!locked&&!keyguardLocked()&&context.getSystemService(PowerManager.class).isInteractive()){
+     homeSeen.clear();for(int id:activeHome)homeSeen.put(id,sampled);
+     for(int id:new ArrayList<>(bridgeDisplays))if(otherActive.contains(id)&&!activeHome.contains(id))finishBridge(id,"Another app active");
+    }
+    if(epoch==bridgeEpoch)for(Target t:lockTargets)prepareBridge(t);
+    for(Target t:targets)ensure(t);
+   });
   }catch(Throwable e){main.post(()->{if(!closed)status="Home photo lookup waiting: "+e.getClass().getSimpleName();});}finally{querying.set(false);}});}catch(RejectedExecutionException ignored){querying.set(false);}
  }
  void ensure(Target target){
@@ -118,7 +192,7 @@ final class HomePhotoLayer {
    if(previous!=null)previous.detach(tx);
    tx.apply();entries.put(e.target.display,e);if(previous!=null)previous.release();
    status="Home photo attachment acknowledged; persistent photo parent on display "+e.target.display;
-   note.accept(status+"; window="+e.target.window);
+   note.accept(status+"; window="+e.target.window);homeReady(e);
   }catch(Throwable error){e.close();retryAt=SystemClock.elapsedRealtime()+5000;status="Home photo placement failed; existing wallpaper retained: "+failure(error);note.accept(status);}
  }
  static String failure(Throwable error){while(error instanceof java.lang.reflect.InvocationTargetException&&error.getCause()!=null)error=error.getCause();return error.getClass().getSimpleName()+": "+String.valueOf(error.getMessage());}
@@ -134,13 +208,13 @@ final class HomePhotoLayer {
   src.set((hardware.getWidth()-w)/2,(hardware.getHeight()-h)/2,(hardware.getWidth()+w)/2,(hardware.getHeight()+h)/2);
   tx.setGeometry(e.photo,src,new Rect(0,0,size.x,size.y),Surface.ROTATION_0);
  }
- void refreshGeometry(){if(closed)return;try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){for(Entry e:entries.values())geometry(tx,e);tx.apply();}catch(Exception e){status="Home photo geometry waiting: "+e.getClass().getSimpleName();}}
+ void refreshGeometry(){if(closed)return;try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){for(Entry e:entries.values())geometry(tx,e);for(Entry e:bridges.values())if(e.photo!=null)geometry(tx,e);tx.apply();}catch(Exception e){status="Home photo geometry waiting: "+e.getClass().getSimpleName();}}
  void setPhoto(Bitmap photo){
   Bitmap next=photo.copy(Bitmap.Config.HARDWARE,false);if(next==null)throw new IllegalStateException("Cannot prepare Home photo");
   HardwareBuffer old=buffer;hardware=next;buffer=next.getHardwareBuffer();
-  try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){for(Entry e:entries.values()){tx.setBuffer(e.photo,buffer);geometry(tx,e);}tx.apply();}catch(Exception e){status="Home photo update failed: "+e.getClass().getSimpleName();}finally{if(old!=null)old.close();}
+  try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){for(Entry e:entries.values()){tx.setBuffer(e.photo,buffer);geometry(tx,e);}for(Entry e:bridges.values())if(e.photo!=null){tx.setBuffer(e.photo,buffer);geometry(tx,e);}tx.apply();}catch(Exception e){status="Home photo update failed: "+e.getClass().getSimpleName();}finally{if(old!=null)old.close();}
  }
- void close(){if(closed)return;closed=true;worker.shutdown();for(Entry e:pending.values())e.close();pending.clear();for(Entry e:entries.values())e.close();entries.clear();if(buffer!=null){buffer.close();buffer=null;}hardware=null;}
+ void close(){if(closed)return;closed=true;resetBridges();main.removeCallbacks(bridgeTick);worker.shutdown();for(Entry e:pending.values())e.close();pending.clear();for(Entry e:entries.values())e.close();entries.clear();if(buffer!=null){buffer.close();buffer=null;}hardware=null;}
  static final class Target{final int window,display;final String pkg;Target(int w,int d,String p){window=w;display=d;pkg=p;}}
- static final class Entry{final Target target;final SurfaceControl anchor;final AttachmentRequest request=new AttachmentRequest(SystemClock.elapsedRealtime());SurfaceControl photo;AttachmentRequest rebind;long nextRebind;boolean released;Entry(Target t,SurfaceControl a){target=t;anchor=a;}void detach(SurfaceControl.Transaction tx){if(photo!=null)tx.setVisibility(photo,false).reparent(photo,null);tx.setVisibility(anchor,false).reparent(anchor,null);}void release(){if(released)return;released=true;if(photo!=null)photo.release();anchor.release();}void close(){request.cancel();if(rebind!=null)rebind.cancel();if(released)return;try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){detach(tx);tx.apply();}catch(RuntimeException ignored){}finally{release();}}}
+ static final class Entry{final Target target;final SurfaceControl anchor;final AttachmentRequest request=new AttachmentRequest(SystemClock.elapsedRealtime());SurfaceControl photo;AttachmentRequest rebind;long nextRebind;boolean bridgeReady,bridgeShown,released;Entry(Target t,SurfaceControl a){target=t;anchor=a;}void detach(SurfaceControl.Transaction tx){if(photo!=null)tx.setVisibility(photo,false).reparent(photo,null);tx.setVisibility(anchor,false).reparent(anchor,null);}void release(){if(released)return;released=true;if(photo!=null)photo.release();anchor.release();}void close(){request.cancel();if(rebind!=null)rebind.cancel();if(released)return;try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){detach(tx);tx.apply();}catch(RuntimeException ignored){}finally{release();}}}
 }
