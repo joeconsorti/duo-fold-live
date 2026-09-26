@@ -65,6 +65,7 @@ class MainActivity:ComponentActivity(){
     var antialiasStrength by remember{mutableFloatStateOf(RenderQuality.antialias(prefs.getFloat("antialias_strength",.35f)))}
     var contentFps by remember{mutableIntStateOf(RenderQuality.fps(prefs.getInt("content_fps",120)))}
     var blurStrength by remember{mutableFloatStateOf(RenderQuality.blur(prefs.getFloat("blur_strength",.3f)))}
+    var frostedReflection by remember{mutableStateOf(prefs.getBoolean("frosted_reflection",false))}
     var seamOffset by remember{mutableFloatStateOf(RenderQuality.seam(prefs.getFloat("seam_offset",.07f)))}
     var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",.5f))}
     var closedThreshold by remember{mutableFloatStateOf(FoldThreshold.sanitizeClosed(prefs.getFloat("closed_threshold",2f)))}
@@ -177,6 +178,9 @@ class MainActivity:ComponentActivity(){
         Text("Live content frame rate",style=MaterialTheme.typography.titleMedium)
         for(rate in listOf(12,60,120))TextButton(onClick={contentFps=rate;prefs.edit().putInt("content_fps",rate).apply();restart()}){Text((if(contentFps==rate)"✓ " else "")+when(rate){12->"Legacy · approximately 12 FPS";120->"120 FPS · experimental";else->"60 FPS · lower GPU cost"})}
         Text("Uses your selected capture target without automatic refresh-rate switching. Actual FPS depends on device speed and temperature. Status reports show measured captures per second. Screenshot mode intentionally holds a still image.",style=MaterialTheme.typography.bodySmall)
+        Text("Left preview appearance",style=MaterialTheme.typography.titleMedium)
+        for(frosted in listOf(false,true))TextButton(onClick={frostedReflection=frosted;booleanSetting("frosted_reflection",frosted)}){Text((if(frostedReflection==frosted)"✓ " else "")+if(frosted)"Frosted Reflection" else "Animated Reflection")}
+        Text("Animated Reflection mirrors the cover animation. Frosted Reflection uses a blurred, mirrored image with less rendering work. Both retain the clean right preview and center blend.",style=MaterialTheme.typography.bodySmall)
         Text("Center-edge blur offset · ${(seamOffset*100).roundToInt()}%")
         Slider(value=seamOffset,onValueChange={seamOffset=it},valueRange=0f..0.15f,onValueChangeFinished={prefs.edit().putFloat("seam_offset",seamOffset).apply();restart()})
         Text("Moves the soft transition into the right side, measured as a percentage of the full inner display width beyond the fold. Default: 7%; 0 ends at the fold.",style=MaterialTheme.typography.bodySmall)

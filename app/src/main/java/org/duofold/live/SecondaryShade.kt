@@ -29,6 +29,7 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
  private val life=OverlayOwner()
  private var compose:ComposeView?=null
  private var coverAspect=.63f
+ private val frostedReflection=service.getSharedPreferences("standalone",0).getBoolean("frosted_reflection",false)
  private var inner=false
  private var mirrorReady=false
  private var leftStarted by mutableStateOf(false)
@@ -57,11 +58,11 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
        override fun onFrame(active:Boolean,strength:Float){this@SecondaryShade.strength=strength}
       },intensity,true)
      }else if(preview){
-      AndroidView(factory={LivePanelSurface(it){ok,note->mirrorReady=ok;if(ok && !leftStarted){leftStarted=true;event("Right preview committed; starting reflected left preview")};event(note)}.also{mirrorView=it}},modifier=Modifier.fillMaxSize())
+      AndroidView(factory={LivePanelSurface(it){ok,note->mirrorReady=ok;PreviewTransition.previewReady(ok);if(ok && !leftStarted){leftStarted=true;event("Right preview committed; starting reflected left preview")};event(note)}.also{mirrorView=it}},modifier=Modifier.fillMaxSize())
       BoxWithConstraints(Modifier.fillMaxSize()){
        // Geometry must not depend on the shared frame: surface creation clears that frame.
        val left=maxWidth-maxHeight*coverAspect
-       if(leftStarted && left.value>0 && coverAspect<.7f){
+       if(!frostedReflection && leftStarted && left.value>0 && coverAspect<.7f){
         Box(Modifier.fillMaxHeight().width(left)){
          DuoLiveShade(object:StandaloneFoldHost{
           override fun onMovement(){}

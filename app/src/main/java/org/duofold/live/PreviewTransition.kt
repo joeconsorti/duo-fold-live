@@ -13,7 +13,10 @@ internal object PreviewTransition {
  private var remote:IBinder?=null
  @Volatile private var blurStrength=.3f
  @Volatile private var seamOffset=.07f
- fun configure(context:android.content.Context){val p=context.getSharedPreferences("standalone",0);blurStrength=RenderQuality.blur(p.getFloat("blur_strength",.3f));seamOffset=RenderQuality.seam(p.getFloat("seam_offset",.07f))}
+ @Volatile private var frostedReflection=false
+ @Volatile private var rightPreviewReady=false
+ fun previewReady(ready:Boolean){rightPreviewReady=ready}
+ fun configure(context:android.content.Context){val p=context.getSharedPreferences("standalone",0);frostedReflection=p.getBoolean("frosted_reflection",false);blurStrength=RenderQuality.blur(p.getFloat("blur_strength",.3f));seamOffset=RenderQuality.seam(p.getFloat("seam_offset",.07f))}
  private var pending=false
  private var lastStamp=0L
  private var wasCover=false
@@ -77,7 +80,7 @@ internal object PreviewTransition {
   try{
    p.writeInterfaceToken(PreviewExpansion.TOKEN)
    if(code==2)p.writeInt(if(endpoint)1 else 0)
-   if(frame!=null){blurred=frost(frame.bitmap);p.writeTypedObject(blurred,0);p.writeTypedObject(frame.bitmap,0);p.writeLong(frame.stamp);p.writeFloat(seamOffset)}
+   if(frame!=null){blurred=frost(frame.bitmap);p.writeTypedObject(blurred,0);p.writeTypedObject(frame.bitmap,0);p.writeLong(frame.stamp);p.writeFloat(seamOffset);p.writeInt(if(frostedReflection)1 else 0);p.writeInt(if(rightPreviewReady)1 else 0)}
    binder().transact(code,p,r,0);r.readException();return r.readString()?:"Expansion ready"
   }catch(e:Exception){remote=null;throw e}finally{blurred?.recycle();p.recycle();r.recycle()}
  }
