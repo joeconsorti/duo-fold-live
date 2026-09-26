@@ -12,15 +12,16 @@ import java.nio.file.StandardCopyOption;
 /** Android-managed process: window sessions have a real process record. */
 public class PhotoInstrumentation extends Instrumentation {
  public static volatile boolean running;
- LayerHost host; UiAutomation automation; BroadcastReceiver screenEvents;
+ LayerHost host; UnlockTrace unlockTrace; UiAutomation automation; BroadcastReceiver screenEvents;
  final java.util.ArrayDeque<String> transitionHistory=new java.util.ArrayDeque<>();
  final java.util.ArrayDeque<String> windowSnapshots=new java.util.ArrayDeque<>();
  final java.util.concurrent.ExecutorService traceWorker=java.util.concurrent.Executors.newSingleThreadExecutor();
  volatile boolean captureBusy;long lastCapture;long reportNumber;
  synchronized void transition(String text){
   String event=SystemClock.elapsedRealtime()+" "+text;
+  if(unlockTrace!=null)unlockTrace.event(text);
   if(transitionHistory.size()>=80)transitionHistory.removeFirst();transitionHistory.addLast(event);
-  if(text.contains("SCREEN_OFF"))return;
+  if(text.contains("SCREEN_OFF")||UnlockTrace.capturing())return;
   if(traceWorker.isShutdown()||automation==null||captureBusy||SystemClock.elapsedRealtime()-lastCapture<150)return;
   captureBusy=true;lastCapture=SystemClock.elapsedRealtime();
   traceWorker.execute(()->{String snapshot;try{
@@ -46,6 +47,7 @@ public class PhotoInstrumentation extends Instrumentation {
    automation=getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES);
    if(automation==null)throw new IllegalStateException("UiAutomation unavailable");
    automation.adoptShellPermissionIdentity("android.permission.INTERNAL_SYSTEM_WINDOW","android.permission.MANAGE_ACTIVITY_TASKS","android.permission.ACCESS_SURFACE_FLINGER");
+   unlockTrace=new UnlockTrace(getTargetContext(),automation);
    publish("Registered photo host started; shell window permission adopted");
    screenEvents=new BroadcastReceiver(){public void onReceive(Context c,Intent intent){if(host!=null)host.screenEvent(intent.getAction());else transition("Screen event "+intent.getAction());}};
    IntentFilter filter=new IntentFilter();filter.addAction(Intent.ACTION_SCREEN_ON);filter.addAction(Intent.ACTION_SCREEN_OFF);filter.addAction(Intent.ACTION_USER_PRESENT);
@@ -86,6 +88,7 @@ public class PhotoInstrumentation extends Instrumentation {
    }
   }catch(Throwable e){StringWriter trace=new StringWriter();e.printStackTrace(new PrintWriter(trace));publish("Duo Wallpaper Layer 0.13\nRegistered host failed:\n"+trace);}
   finally{
+   if(unlockTrace!=null)unlockTrace.close();
    traceWorker.shutdown();
    if(screenEvents!=null)try{getTargetContext().unregisterReceiver(screenEvents);}catch(Exception ignored){}
    try {if(host!=null)runOnMainSync(()->host.stop("Registered host finished; layer removed"));}catch(Throwable ignored){}
@@ -94,7 +97,7 @@ public class PhotoInstrumentation extends Instrumentation {
   }
  }
  void publish(String report){
-  report="Report sequence: "+(++reportNumber)+"; captured elapsed ms: "+SystemClock.elapsedRealtime()+"\n"+report+traceReport();
+  report="Report sequence: "+(++reportNumber)+"; captured elapsed ms: "+SystemClock.elapsedRealtime()+"\n"+report+"\nUnlock capture: "+UnlockTrace.status()+traceReport();
   lastReport=report;
   // Persistent app-private report survives instrumentation finishing and process restarts.
   try {
