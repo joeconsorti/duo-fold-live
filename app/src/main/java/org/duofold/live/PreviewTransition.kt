@@ -21,21 +21,46 @@ internal object PreviewTransition {
  private var readySent=false
  private var serial=0
  var status="Preview transition idle";private set
+ // Main-thread registration; failed startup attempts remain pending until the helper is ready.
+ private val exclusions=java.util.WeakHashMap<SurfaceControl,Boolean>()
+ private val exclusionExecutor=Executors.newSingleThreadExecutor()
+ var exclusionRevision=0;private set
+ fun exclusionsReady():Boolean{
+  exclusions.keys.removeAll{!it.isValid}
+  return exclusions.isNotEmpty() && exclusions.values.all{it}
+ }
+ fun forgetAnimation(surface:SurfaceControl){exclusions.remove(surface)}
  fun markAnimation(view:View){
-  view.post{
+  view.post(object:Runnable{override fun run(){
+   if(!view.isAttachedToWindow)return
    try{
-    val root=View::class.java.getDeclaredMethod("getViewRootImpl").invoke(view)?:return@post
+    val root=View::class.java.getDeclaredMethod("getViewRootImpl").invoke(view) ?: throw IllegalStateException("Overlay root not ready")
     val surface=root.javaClass.getMethod("getSurfaceControl").invoke(root) as SurfaceControl
+    if(!surface.isValid)throw IllegalStateException("Overlay surface not ready")
     markAnimation(surface)
-   }catch(e:Exception){status="Animation exclusion unavailable: ${e.javaClass.simpleName}";RecoveryLog.add(status)}
-  }
+   }catch(e:Exception){view.postDelayed(this,500)}
+  }})
  }
  fun markAnimation(surface:SurfaceControl){
-  if(!surface.isValid)return
-  executor.execute{
-   val p=Parcel.obtain();val r=Parcel.obtain()
-   try{p.writeInterfaceToken(AngleReader.DESCRIPTOR);p.writeTypedObject(surface,0);LiveAngles.previewCommand(7,p,r);r.readException();val note=r.readString();main.post{status=note?:"Animation excluded from mirror";RecoveryLog.add(status)}}
-   catch(e:Exception){main.post{status="Animation exclusion failed: ${e.message}";RecoveryLog.add(status)}}finally{p.recycle();r.recycle()}
+  if(!surface.isValid || exclusions.containsKey(surface))return
+  exclusions[surface]=false
+  attemptExclusion(surface,0)
+ }
+ private fun attemptExclusion(surface:SurfaceControl,attempt:Int){
+  if(!surface.isValid || !exclusions.containsKey(surface)){exclusions.remove(surface);return}
+  exclusionExecutor.execute{
+   val p=Parcel.obtain();val r=Parcel.obtain();var failure:String?=null
+   try{p.writeInterfaceToken(AngleReader.DESCRIPTOR);p.writeTypedObject(surface,0);LiveAngles.previewCommand(7,p,r);r.readException()}
+   catch(e:Exception){failure=e.message ?: e.javaClass.simpleName}finally{p.recycle();r.recycle()}
+   val error=failure
+   main.post{
+    if(!surface.isValid || !exclusions.containsKey(surface)){exclusions.remove(surface);return@post}
+    if(error==null){exclusions[surface]=true;exclusionRevision++;status="Animation excluded from mirror; startup retry count=$attempt";RecoveryLog.add(status)}
+    else{
+     if(attempt==0){status="Waiting to exclude animation: $error";RecoveryLog.add(status)}
+     main.postDelayed({attemptExclusion(surface,attempt+1)},500)
+    }
+   }
   }
  }
  private fun binder():IBinder{
