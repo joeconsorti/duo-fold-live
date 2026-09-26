@@ -62,10 +62,11 @@ class MainActivity:ComponentActivity(){
     var fadeGradualness by remember{mutableFloatStateOf(FadeSettings.gradualness(prefs.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS)))}
     var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
     var antialias by remember{mutableStateOf(prefs.getBoolean("antialias_enabled",true))}
+    var antialiasMode by remember{mutableIntStateOf(RenderQuality.aaMode(prefs.getInt("antialias_mode",2)))}
     var antialiasStrength by remember{mutableFloatStateOf(RenderQuality.antialias(prefs.getFloat("antialias_strength",.35f)))}
     var contentFps by remember{mutableIntStateOf(RenderQuality.fps(prefs.getInt("content_fps",120)))}
     var blurStrength by remember{mutableFloatStateOf(RenderQuality.blur(prefs.getFloat("blur_strength",.3f)))}
-    var frostedReflection by remember{mutableStateOf(prefs.getBoolean("frosted_reflection",false))}
+    var frostedReflection by remember{mutableStateOf(prefs.getBoolean("frosted_reflection",true))}
     var seamOffset by remember{mutableFloatStateOf(RenderQuality.seam(prefs.getFloat("seam_offset",.07f)))}
     var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",.5f))}
     var closedThreshold by remember{mutableFloatStateOf(FoldThreshold.sanitizeClosed(prefs.getFloat("closed_threshold",2f)))}
@@ -168,18 +169,20 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Advanced","Display thresholds, fold behavior, and diagnostics."){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
-        Toggle("Texture anti-aliasing",antialias){antialias=it;booleanSetting("antialias_enabled",it)}
+        Toggle("Anti-aliasing",antialias){antialias=it;booleanSetting("antialias_enabled",it)}
         if(antialias){
+         for((id,label) in listOf(0 to "Lightweight Texture Filtering",1 to "Edge-Adaptive Smoothing",2 to "4× Supersampling"))TextButton(onClick={antialiasMode=id;prefs.edit().putInt("antialias_mode",id).apply();restart()}){Text((if(antialiasMode==id)"✓ " else "")+label)}
+         Text("4× Supersampling is the new default. The two new spatial filters cost more GPU work; compare their appearance on your device.",style=MaterialTheme.typography.bodySmall)
          Text("Anti-aliasing strength · ${(antialiasStrength*100).roundToInt()}%")
          Slider(value=antialiasStrength,onValueChange={antialiasStrength=it},valueRange=.2f..0.5f,onValueChangeFinished={prefs.edit().putFloat("antialias_strength",antialiasStrength).apply();restart()})
          TextButton(onClick={antialiasStrength=.35f;prefs.edit().putFloat("antialias_strength",.35f).apply();restart()}){Text("Reset anti-aliasing")}
         }
-        Text("Lightweight texture filtering for every glass style, independent of blur and glass strength. Reduces jagged detail and shimmer; cannot restore missing capture detail.",style=MaterialTheme.typography.bodySmall)
+        Text("All three methods work across glass styles, independent of blur and glass strength. Reduces jagged detail and shimmer; cannot restore missing capture detail.",style=MaterialTheme.typography.bodySmall)
         Text("Live content frame rate",style=MaterialTheme.typography.titleMedium)
         for(rate in listOf(12,60,120))TextButton(onClick={contentFps=rate;prefs.edit().putInt("content_fps",rate).apply();restart()}){Text((if(contentFps==rate)"✓ " else "")+when(rate){12->"Legacy · approximately 12 FPS";120->"120 FPS · experimental";else->"60 FPS · lower GPU cost"})}
         Text("Uses your selected capture target without automatic refresh-rate switching. Actual FPS depends on device speed and temperature. Status reports show measured captures per second. Screenshot mode intentionally holds a still image.",style=MaterialTheme.typography.bodySmall)
         Text("Left preview appearance",style=MaterialTheme.typography.titleMedium)
-        for(frosted in listOf(false,true))TextButton(onClick={frostedReflection=frosted;booleanSetting("frosted_reflection",frosted)}){Text((if(frostedReflection==frosted)"✓ " else "")+if(frosted)"Frosted Reflection" else "Animated Reflection")}
+        for(frosted in listOf(true,false))TextButton(onClick={frostedReflection=frosted;booleanSetting("frosted_reflection",frosted)}){Text((if(frostedReflection==frosted)"✓ " else "")+if(frosted)"Frosted Reflection" else "Animated Reflection")}
         Text("Animated Reflection mirrors the cover animation. Frosted Reflection uses a blurred, mirrored image with less rendering work. Both retain the clean right preview and center blend.",style=MaterialTheme.typography.bodySmall)
         Text("Center-edge blur offset · ${(seamOffset*100).roundToInt()}%")
         Slider(value=seamOffset,onValueChange={seamOffset=it},valueRange=0f..0.15f,onValueChangeFinished={prefs.edit().putFloat("seam_offset",seamOffset).apply();restart()})

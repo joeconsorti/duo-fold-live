@@ -29,7 +29,7 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
  private val life=OverlayOwner()
  private var compose:ComposeView?=null
  private var coverAspect=.63f
- private val frostedReflection=service.getSharedPreferences("standalone",0).getBoolean("frosted_reflection",false)
+ private val frostedReflection=service.getSharedPreferences("standalone",0).getBoolean("frosted_reflection",true)
  private var inner=false
  private var mirrorReady=false
  private var leftStarted by mutableStateOf(false)

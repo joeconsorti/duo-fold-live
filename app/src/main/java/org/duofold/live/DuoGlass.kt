@@ -42,7 +42,7 @@ internal object DuoGlassShader {
  uniform float blurStrength;
  uniform float seamOffset;
  uniform float reflectedCover;
- half4 main(float2 p) {
+ half4 shade(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
   float axis=mix(uv.x,uv.y,horizontal);
@@ -117,7 +117,7 @@ internal object DuoGlassShader {
   if(inner>0.5 && fallback<0.5 && axis>=0.5)alpha*=seamMask;
   return half4(color*half(alpha),half(alpha));
  }
- """.trimIndent()
+ """.trimIndent()+"\n"+AntiAliasShader.source
 }
 @Composable internal fun DuoGlassSurface(angle:Float,amount:Float,intensity:Float,inner:Boolean,rotation:Int,frozenFrame:GlassFrame?=null,reflectedCover:Boolean=false){
  val frame=frozenFrame ?: GlassFrames.frame
@@ -273,6 +273,8 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
      val scale=fit?.get(0) ?: if(fallback)minOf(width.toFloat()/f.bitmap.width,height.toFloat()/f.bitmap.height) else 0f
      val ew=if(fallback || projectedCover)f.bitmap.width*scale else width.toFloat();val eh=if(fallback || projectedCover)f.bitmap.height*scale else height.toFloat()
      val quality=context.getSharedPreferences("standalone",0)
+     shader.setFloatUniform("aaMode",if(quality.getBoolean("antialias_enabled",true))RenderQuality.aaMode(quality.getInt("antialias_mode",2)).toFloat() else 0f)
+     shader.setFloatUniform("aaPixelSize",width.toFloat()/canvas.width,height.toFloat()/canvas.height)
      shader.setFloatUniform("aaStrength",if(quality.getBoolean("antialias_enabled",true))RenderQuality.antialias(quality.getFloat("antialias_strength",.35f)) else 0f)
      shader.setFloatUniform("blurStrength",RenderQuality.blur(quality.getFloat("blur_strength",.3f)))
      shader.setFloatUniform("reflectedCover",if(reflectedCover)1f else 0f)

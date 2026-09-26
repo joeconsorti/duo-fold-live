@@ -13,10 +13,10 @@ internal object PreviewTransition {
  private var remote:IBinder?=null
  @Volatile private var blurStrength=.3f
  @Volatile private var seamOffset=.07f
- @Volatile private var frostedReflection=false
+ @Volatile private var frostedReflection=true
  @Volatile private var rightPreviewReady=false
  fun previewReady(ready:Boolean){rightPreviewReady=ready}
- fun configure(context:android.content.Context){val p=context.getSharedPreferences("standalone",0);frostedReflection=p.getBoolean("frosted_reflection",false);blurStrength=RenderQuality.blur(p.getFloat("blur_strength",.3f));seamOffset=RenderQuality.seam(p.getFloat("seam_offset",.07f))}
+ fun configure(context:android.content.Context){val p=context.getSharedPreferences("standalone",0);frostedReflection=p.getBoolean("frosted_reflection",true);blurStrength=RenderQuality.blur(p.getFloat("blur_strength",.3f));seamOffset=RenderQuality.seam(p.getFloat("seam_offset",.07f))}
  private var pending=false
  private var lastStamp=0L
  private var wasCover=false
