@@ -50,10 +50,19 @@ Installs that previously skipped onboarding without verifying wallpaper setup re
 
 ## Known bugs
 
-1. Unlocking directly onto Home may briefly reveal the underlying live wallpaper before the custom photo. A fix is being worked on.
-2. Occasionally part of the unfolding fade does not trigger correctly, so the transition may look choppy.
+1. **Black screen when switching between folded and unfolded displays.** This is a Samsung-side hardware limitation, not an issue with the app. We’re working on workarounds; for now, Duo uses a black fade transition to smooth the handoff in both directions.
+2. Unlocking directly onto Home may briefly reveal the underlying live wallpaper before the custom photo. The latest release improves this, but occasional flashes remain.
+3. Occasionally part of the unfolding fade does not trigger correctly, so the transition may look choppy.
 
-**Work in progress:** reliable orientation locking during folding and unfolding. The current attempt still needs device validation.
+## Work in progress
+
+- A “screenshot mode” to more closely mimic iPhone Duo’s animation. Our app does a live handoff so your content always keeps playing, but iPhone Duo does not.
+- Further workarounds for Samsung’s display-switch blackout and smoother fold/unfold handoffs.
+- More consistent custom wallpaper visibility during unlock and display changes.
+- Refinements to animation timing, responsiveness, and visual consistency.
+- Better setup recovery, compatibility checks, and diagnostics across supported devices.
+
+These are active areas of development, not promised release dates.
 
 ## Troubleshooting and reports
 
@@ -63,7 +72,7 @@ For an issue, include your app version, phone model, Android/One UI version, fol
 
 All future release announcements and updates will be on GitHub.
 
-## Optional support
+## Support the Project
 
 Duo Fold Live is free and open source. If you find it useful and would like to support the work, tips are welcome and entirely optional.
 
