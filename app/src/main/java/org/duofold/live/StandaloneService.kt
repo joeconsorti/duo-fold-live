@@ -167,6 +167,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         if(!::displays.isInitialized)return
         val current=displays.getDisplay(0)
         val primaryInner=current?.mode?.let{minOf(it.physicalWidth,it.physicalHeight).toFloat()/maxOf(it.physicalWidth,it.physicalHeight)>.7f}?:false
+        PreviewTransition.configure(this)
         PreviewTransition.update(!LiveAngles.nativeInner && previewMode() && settings().getBoolean("enabled",false) && !getSystemService(KeyguardManager::class.java).isKeyguardLocked(),primaryInner)
         val native=LiveAngles.continuityNative && !primaryInner
         val preview=!settings().getBoolean("dual",false) && settings().getBoolean("cover_preview",true) && LiveAngles.coverPreview

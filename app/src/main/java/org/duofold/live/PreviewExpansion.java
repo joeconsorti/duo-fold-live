@@ -13,7 +13,7 @@ final class PreviewExpansion extends Binder {
  private final HandlerThread thread=new HandlerThread("duo-preview-expansion");
  private final Handler handler;
  private Object dm,wm;private java.lang.reflect.Method displayInfo,keyguard;
- private SurfaceControl layer,backdrop;private Bitmap hardware,cleanHardware;private HardwareBuffer buffer,cleanBuffer;
+ private SurfaceControl layer,backdrop,seam;private Bitmap seamHardware;private HardwareBuffer seamBuffer;private int seamPixels;private Bitmap hardware,cleanHardware;private HardwareBuffer buffer,cleanBuffer;
  private String innerId;private int bw,bh;
  private volatile boolean enabled=false;
  private long stamp,start=0,ready=-1;private volatile long lastLease=0;
@@ -50,9 +50,9 @@ final class PreviewExpansion extends Binder {
   if(closed)throw new IllegalStateException("Expansion helper closed");
   data.enforceInterface(TOKEN);if(Binder.getCallingUid()!=owner)throw new SecurityException("Wrong caller");
   if(code==1){
-   Bitmap bitmap=data.readTypedObject(Bitmap.CREATOR);Bitmap clean=data.readTypedObject(Bitmap.CREATOR);long captured=data.readLong();
+   Bitmap bitmap=data.readTypedObject(Bitmap.CREATOR);Bitmap clean=data.readTypedObject(Bitmap.CREATOR);long captured=data.readLong();float seamWidth=data.dataAvail()>=4?RenderQuality.seam(data.readFloat()):.02f;
    if(bitmap==null || clean==null)throw new IllegalArgumentException("No prepared frame");
-   handler.post(()->{try{prepare(bitmap,clean,captured);}catch(Exception e){clear("Expansion prepare failed: "+root(e));}finally{bitmap.recycle();clean.recycle();}});
+   handler.post(()->{try{prepare(bitmap,clean,captured,seamWidth);}catch(Exception e){clear("Expansion prepare failed: "+root(e));}finally{bitmap.recycle();clean.recycle();}});
   }else if(code==2){boolean endpoint=data.dataAvail()>=4&&data.readInt()!=0;handler.post(()->{if(layer!=null){pendingReady=true;event(endpoint?"Fully-open clear frame committed":"Fresh inner glass frame committed");if(start>0 && ready<0){ready=SystemClock.elapsedRealtime()-start;status=endpoint?"Fully open; expansion fading":"Inner glass committed; expansion fading";}}});}
   else if(code==3){handler.post(()->{completed=false;clear("Expansion reset");});}
   else throw new IllegalArgumentException("Unknown bridge operation");
@@ -88,7 +88,7 @@ final class PreviewExpansion extends Binder {
  private boolean inner(Object info)throws Exception{
   int w=number(info,"logicalWidth"),h=number(info,"logicalHeight");return Math.min(w,h)/(float)Math.max(w,h)>.7f;
  }
- private void prepare(Bitmap bitmap,Bitmap clean,long captured)throws Exception{
+ private void prepare(Bitmap bitmap,Bitmap clean,long captured,float seamWidth)throws Exception{
   long now=SystemClock.elapsedRealtime();
   if(!enabled || !PreviewExpansionPolicy.fresh(captured,now) || start>0)return;
   init();Object primary=displayInfo.invoke(dm,0),secondary=displayInfo.invoke(dm,1);
@@ -109,8 +109,23 @@ final class PreviewExpansion extends Binder {
   if(buffer!=null)buffer.close();if(hardware!=null)hardware.recycle();
   if(cleanBuffer!=null)cleanBuffer.close();if(cleanHardware!=null)cleanHardware.recycle();
   hardware=next;buffer=nextBuffer;cleanHardware=nextClean;cleanBuffer=nextCleanBuffer;bw=bitmap.getWidth();bh=bitmap.getHeight();
-  status="Frosted left copy prepared; clean right hold ready";
+  prepareSeam(bitmap,secondary,seamWidth);
+  status="Frosted left copy prepared; clean right hold and center-edge blur ready";
   if(!polling){polling=true;handler.post(tick);}
+ }
+ private void prepareSeam(Bitmap blurred,Object target,float fraction)throws Exception{
+  if(fraction<=0){if(seam!=null)try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(seam,false).apply();}seamPixels=0;return;}
+  int w=number(target,"logicalWidth"),h=number(target,"logicalHeight");float fit=Math.min(w/(float)bw,h/(float)bh);
+  int strip=Math.min(bw,Math.max(1,(int)Math.ceil(w*fraction/fit)));int[] pixels=new int[strip*bh];
+  blurred.getPixels(pixels,0,strip,0,0,strip,bh);
+  for(int y=0;y<bh;y++)for(int x=0;x<strip;x++){float f=strip<=1?1:1-x/(float)(strip-1);f=f*f*(3-2*f);int at=y*strip+x;pixels[at]=(pixels[at]&0x00ffffff)|((int)(255*f)<<24);}
+  Bitmap soft=Bitmap.createBitmap(pixels,strip,bh,Bitmap.Config.ARGB_8888);Bitmap next=soft.copy(Bitmap.Config.HARDWARE,false);soft.recycle();HardwareBuffer nextBuffer=next.getHardwareBuffer();
+  if(seam==null)seam=new SurfaceControl.Builder().setName("Duo static center-edge blur").setBufferSize(strip,bh).setHidden(true).build();
+  try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){
+   SurfaceControl.Transaction.class.getMethod("setSkipScreenshot",SurfaceControl.class,boolean.class).invoke(t,seam,true);
+   t.setBuffer(seam,nextBuffer).setLayer(seam,Integer.MAX_VALUE-19).apply();
+  }
+  if(seamBuffer!=null)seamBuffer.close();if(seamHardware!=null)seamHardware.recycle();seamHardware=next;seamBuffer=nextBuffer;seamPixels=strip;
  }
  private final Runnable tick=new Runnable(){public void run(){
   try{
@@ -144,6 +159,11 @@ final class PreviewExpansion extends Binder {
     // Android reports a transient OFF state during the physical panel remap.
     t.setPosition(backdrop,0,0).setAlpha(backdrop,alpha).setVisibility(backdrop,leftWidth>0);
     t.setPosition(layer,leftWidth,(h-bh*fit)/2f).setAlpha(layer,alpha).setVisibility(layer,start>0);
+    if(seam!=null){
+     SurfaceControl.Transaction.class.getMethod("setLayerStack",SurfaceControl.class,int.class).invoke(t,seam,stack);
+     SurfaceControl.Transaction.class.getMethod("setMatrix",SurfaceControl.class,float.class,float.class,float.class,float.class).invoke(t,seam,fit,0f,0f,fit);
+     t.setPosition(seam,leftWidth,(h-bh*fit)/2f).setAlpha(seam,alpha).setVisibility(seam,seamPixels>0);
+    }
     if(coverCommit!=null){final java.util.concurrent.CountDownLatch fence=coverCommit;coverCommit=null;
      final long submitted=SystemClock.elapsedRealtime();
      t.addTransactionCommittedListener(Runnable::run,()->{long committedAt=SystemClock.elapsedRealtime();fence.countDown();diagnosticEvent("Replacement transaction committed in "+(committedAt-submitted)+" ms");});
@@ -161,6 +181,8 @@ final class PreviewExpansion extends Binder {
   handler.removeCallbacks(tick);polling=false;start=0;ready=-1;pendingReady=false;
   if(layer!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(layer,false).reparent(layer,null).apply();}catch(Exception ignored){}layer.release();layer=null;}
   if(backdrop!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(backdrop,false).reparent(backdrop,null).apply();}catch(Exception ignored){}backdrop.release();backdrop=null;}
+  if(seam!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(seam,false).reparent(seam,null).apply();}catch(Exception ignored){}seam.release();seam=null;}
+  if(seamBuffer!=null){seamBuffer.close();seamBuffer=null;}if(seamHardware!=null){seamHardware.recycle();seamHardware=null;}seamPixels=0;
   if(cleanBuffer!=null){cleanBuffer.close();cleanBuffer=null;}if(cleanHardware!=null){cleanHardware.recycle();cleanHardware=null;}
   if(buffer!=null){buffer.close();buffer=null;}if(hardware!=null){hardware.recycle();hardware=null;}status=message;
   if(!enabled)completed=false;

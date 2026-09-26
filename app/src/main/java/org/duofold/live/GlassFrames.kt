@@ -4,20 +4,25 @@ import android.os.*
 import android.view.SurfaceControl
 import androidx.compose.runtime.*
 import java.util.concurrent.Executors
-internal data class GlassFrame(val bitmap:Bitmap,val width:Int,val height:Int,val stamp:Long)
+internal data class GlassFrame(val bitmap:Bitmap,val width:Int,val height:Int,val stamp:Long,val levels:List<Bitmap> = emptyList())
 internal object GlassFrames {
  var frame by mutableStateOf<GlassFrame?>(null);private set
  var status by mutableStateOf("Glass renderer ready");private set
  private val main=Handler(Looper.getMainLooper())
  private val executor=Executors.newSingleThreadExecutor()
  private val settingsExecutor=Executors.newSingleThreadExecutor()
+ private var targetFps=60
+ private var measuredStart=0L;private var measuredFrames=0;private var measuredFps=0f
+ fun configure(context:android.content.Context){targetFps=RenderQuality.fps(context.getSharedPreferences("standalone",0).getInt("content_fps",60))}
+ private fun levels(bitmap:Bitmap):List<Bitmap>{val out=ArrayList<Bitmap>();var level=bitmap;repeat(7){level=Bitmap.createScaledBitmap(level,maxOf(1,level.width/2),maxOf(1,level.height/2),true);out.add(level)};return out}
  private var suspended=false
  fun suspendCapture(){suspended=true;generation++;frame=null;main.removeCallbacks(tick)}
- fun resumeCapture(){if(suspended){suspended=false;if(clients>0)main.post(tick)}}
+ fun resumeCapture(){if(suspended){suspended=false;resetMeasurement();if(clients>0)main.post(tick)}}
  private var clients=0;private var generation=0;private var pending=false
  private val surfaces=LinkedHashMap<Any,SurfaceControl>()
  fun surface(key:Any,sc:SurfaceControl?){if(sc==null)surfaces.remove(key) else surfaces[key]=sc}
- fun acquire(){clients++;if(clients==1){generation++;main.post(tick)}}
+ private fun resetMeasurement(){measuredStart=SystemClock.elapsedRealtime();measuredFrames=0;measuredFps=0f}
+ fun acquire(){clients++;if(clients==1){resetMeasurement();generation++;main.post(tick)}}
  fun release(){clients=(clients-1).coerceAtLeast(0);if(clients==0){generation++;frame=null;main.removeCallbacks(tick)}}
  private var urgentUntil=0L
  fun requestFreshCapture(){
@@ -31,7 +36,7 @@ internal object GlassFrames {
   if(pending){main.postDelayed(this,retryDelay(50));return}
   val valid=surfaces.values.filter{it.isValid}.take(4)
   if(valid.isEmpty()){frame=null;main.postDelayed(this,retryDelay(100));return}
-  val gen=generation;val captureDisplay=if(LiveAngles.continuityNative)1 else 0;pending=true
+  val started=SystemClock.elapsedRealtimeNanos();val gen=generation;val captureDisplay=if(LiveAngles.continuityNative)1 else 0;pending=true
   executor.execute{
    var result:Bundle?=null;var error="Glass frame unavailable"
    val p=Parcel.obtain();val r=Parcel.obtain()
@@ -39,11 +44,13 @@ internal object GlassFrames {
     remote.transact(1,p,r,0);r.readException();result=r.readBundle(Bitmap::class.java.classLoader);error=result?.getString("error")?:error
    }catch(e:Exception){error=e.message?:error}finally{p.recycle();r.recycle()}
    val response=result;val message=error
+   val capturedBitmap=response?.getParcelable("bitmap",Bitmap::class.java)
+   val pyramid=if(response?.getBoolean("ok")==true&&capturedBitmap!=null)runCatching{levels(capturedBitmap)}.getOrDefault(emptyList()) else emptyList()
    main.post{pending=false;if(gen==generation && clients>0 && !suspended && captureDisplay==(if(LiveAngles.continuityNative)1 else 0)){
-    val bitmap=response?.getParcelable("bitmap",Bitmap::class.java)
-    if(response?.getBoolean("ok")==true && bitmap!=null){frame=GlassFrame(bitmap,response.getInt("width"),response.getInt("height"),response.getLong("stamp"));status="Projected glass · live compositor frames · ${response.getString("backend") ?: "layer capture"}"}
+    val bitmap=capturedBitmap
+    if(response?.getBoolean("ok")==true && bitmap!=null){frame=GlassFrame(bitmap,response.getInt("width"),response.getInt("height"),response.getLong("stamp"),pyramid);val now=SystemClock.elapsedRealtime();if(measuredStart==0L)measuredStart=now;measuredFrames++;if(now-measuredStart>=1000){measuredFps=measuredFrames*1000f/(now-measuredStart);measuredFrames=0;measuredStart=now};status="Content target $targetFps FPS · measured ${"%.1f".format(measuredFps)} captures/s · ${response.getString("backend") ?: "layer capture"}"}
     else{frame=null;status="Glass unavailable; debug-style fallback: $message"}
-    main.postDelayed(this,retryDelay(if(frame==null)600L else 80L))
+    main.postDelayed(this,if(frame==null)retryDelay(600L) else RenderQuality.delay(targetFps,SystemClock.elapsedRealtimeNanos()-started))
    }else if(clients>0 && !suspended)main.post(this)}
   }
  }}

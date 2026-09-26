@@ -61,6 +61,9 @@ class MainActivity:ComponentActivity(){
     var fadeSmoothing by remember{mutableFloatStateOf(FadeSettings.smoothing(prefs.getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING)))}
     var fadeGradualness by remember{mutableFloatStateOf(FadeSettings.gradualness(prefs.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS)))}
     var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
+    var contentFps by remember{mutableIntStateOf(RenderQuality.fps(prefs.getInt("content_fps",60)))}
+    var blurStrength by remember{mutableFloatStateOf(RenderQuality.blur(prefs.getFloat("blur_strength",1.5f)))}
+    var seamWidth by remember{mutableFloatStateOf(RenderQuality.seam(prefs.getFloat("seam_width",.02f)))}
     var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",1f))}
     var closedThreshold by remember{mutableFloatStateOf(FoldThreshold.sanitizeClosed(prefs.getFloat("closed_threshold",2f)))}
     var threshold by remember{mutableFloatStateOf(FoldThreshold.sanitize(prefs.getFloat("open_threshold",172f)))}
@@ -136,6 +139,9 @@ class MainActivity:ComponentActivity(){
        TextButton(onClick={fadeSmoothing=FadeSettings.DEFAULT_SMOOTHING;fadeGradualness=FadeSettings.DEFAULT_GRADUALNESS;prefs.edit().putFloat("fade_smoothing_ms",fadeSmoothing).putFloat("fade_gradualness",fadeGradualness).apply()}){Text("Reset black fade")}
        Toggle("Full-resolution glass · higher GPU cost",fullResolution){fullResolution=it;booleanSetting("full_resolution_glass",it)}
        Text("Off renders the effect at half resolution in each direction to reduce GPU work. Screen content and handoff angles stay the same.",style=MaterialTheme.typography.bodySmall)
+       Text("Blur amount · ${(blurStrength*100).roundToInt()}%")
+       Slider(value=blurStrength,onValueChange={blurStrength=it},valueRange=0f..3f,onValueChangeFinished={prefs.edit().putFloat("blur_strength",blurStrength).apply();restart()})
+       Text("Stronger frost softens pixelation, especially on the inner display. Default: 150%.",style=MaterialTheme.typography.bodySmall)
        Text("Glass strength · ${(intensity*100).roundToInt()}%")
        Slider(value=intensity,onValueChange={intensity=it},valueRange=.3f..1.5f,onValueChangeFinished={prefs.edit().putFloat("intensity",intensity).apply();restart()})
        Text("Fully open at ${threshold.roundToInt()}°. Adjust this in Advanced.",style=MaterialTheme.typography.bodySmall)
@@ -161,6 +167,12 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Advanced","Display thresholds, fold behavior, and diagnostics."){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
+        Text("Live content frame rate",style=MaterialTheme.typography.titleMedium)
+        for(rate in listOf(12,60,120))TextButton(onClick={contentFps=rate;prefs.edit().putInt("content_fps",rate).apply();restart()}){Text((if(contentFps==rate)"✓ " else "")+when(rate){12->"Legacy · approximately 12 FPS";120->"120 FPS · experimental";else->"60 FPS · default"})}
+        Text("Capture target; actual FPS depends on device speed and temperature. Status reports show measured captures per second. Screenshot mode intentionally holds a still image.",style=MaterialTheme.typography.bodySmall)
+        Text("Center-edge blur width · ${(seamWidth*100).roundToInt()}%")
+        Slider(value=seamWidth,onValueChange={seamWidth=it},valueRange=0f..0.06f,onValueChangeFinished={prefs.edit().putFloat("seam_width",seamWidth).apply();restart()})
+        Text("Softens a narrow, stationary strip beyond the fold in screenshot and inner-preview modes. Set to 0 to disable.",style=MaterialTheme.typography.bodySmall)
         Text("Fully-open threshold · ${threshold.roundToInt()}°",style=MaterialTheme.typography.titleMedium)
         Slider(value=threshold,onValueChange={threshold=it.roundToInt().toFloat()},valueRange=165f..179f,steps=13,onValueChangeFinished={prefs.edit().putFloat("open_threshold",threshold).apply();restart()})
         Text("At this angle the inner effect is completely clear. Closing starts below this threshold. Default: 172°.",style=MaterialTheme.typography.bodySmall)
@@ -212,7 +224,7 @@ class MainActivity:ComponentActivity(){
           Text(status,style=MaterialTheme.typography.bodySmall)
           Text(LiveAngles.rotationHold,style=MaterialTheme.typography.bodySmall)
           OutlinedButton(onClick={startActivity(Intent(this@MainActivity,org.duofold.live.wallpaperlayer.WallpaperActivity::class.java).putExtra("developer",true))}){Text("Wallpaper developer settings")}
-          OutlinedButton(onClick={val sent=SupportPrompts.notify(this@MainActivity);android.widget.Toast.makeText(this@MainActivity,if(sent)"Preview notification sent; weekly schedule unchanged" else "Allow notifications in Android app settings",android.widget.Toast.LENGTH_LONG).show()}){Text("Preview support notification")}
+          OutlinedButton(onClick={val sent=SupportPrompts.notify(this@MainActivity);android.widget.Toast.makeText(this@MainActivity,if(sent)"Preview notification sent; reminder schedule unchanged" else "Allow notifications in Android app settings",android.widget.Toast.LENGTH_LONG).show()}){Text("Preview support notification")}
          }
         }
 
@@ -222,7 +234,7 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Support Duo Fold Live","Free, independent, and built with care for your Fold."){
        Text("If Duo makes your phone more enjoyable, you can help support development with a donation. Every feature stays available either way.")
        Button(onClick={SupportPrompts.open(this@MainActivity);supportBanner=false}){Text("Support on Ko-fi")}
-       Text("Support invitations begin after one week of successful use, then appear at most weekly for three invitations. Each includes snooze and dismiss options.",style=MaterialTheme.typography.bodySmall)
+       Text("Support invitations begin after 3 days of successful use, then 7 days later, 14 days later, and every 30 days thereafter. Snooze and permanent dismissal remain available.",style=MaterialTheme.typography.bodySmall)
       }
       Text("Duo Fold Live ${BuildConfig.VERSION_NAME} · Glass reference: chuspeeism/iphone-duo (MIT).",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      }

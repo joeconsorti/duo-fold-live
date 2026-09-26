@@ -36,6 +36,8 @@ internal object DuoGlassShader {
  uniform float horizontal;
  uniform float reverse;
  uniform float intensity;
+ uniform float blurStrength;
+ uniform float seamWidth;
  half4 main(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
@@ -43,7 +45,7 @@ internal object DuoGlassShader {
   axis=mix(axis,1.0-axis,reverse);
   // Project the folded physical panel through the reference's fixed eye at z=40.
   // Work in canonical hinge coordinates, then map back to screenshot orientation.
-  if(inner>0.5 && fallback<0.5 && axis>=0.5) return half4(0);
+  if(inner>0.5 && fallback<0.5 && axis>=0.5+seamWidth) return half4(0);
   float across=mix(uv.y,uv.x,horizontal);
   float a=foldRadians;
   float c=cos(a), sn=sin(a);
@@ -75,11 +77,18 @@ internal object DuoGlassShader {
   float corrected=mix(mapped,1.0-mapped,reverse);
   float projectedAcross=1.0-(projectedY-(0.34562-5.8974))/11.1035;
   float2 sourceUV=horizontal>0.5 ? float2(projectedAcross,corrected) : float2(corrected,projectedAcross);
+  float seamMask=0.0;
+  if(inner>0.5 && fallback<0.5 && seamWidth>0.0){
+   seamMask=1.0-smoothstep(0.0,seamWidth,abs(axis-0.5));
+   if(axis>=0.5)sourceUV=uv;
+  }
   sourceUV=sourceUV*sampleScale+sampleOffset;
   float shaderProgress=inner>0.5 ? clamp(a/1.570796327,0.0,1.0) : clamp((3.141592654-a)/1.570796327,0.0,1.0);
   float motion=smoothstep(0.0,1.0,shaderProgress);
   // Keep the 72 source-pixel reference radius, including the image's black margins.
   float radius=72.0*motion*pow(clamp(edge,0.0,1.0),1.35);
+  radius*=blurStrength*(inner>0.5?1.25:1.0);
+  radius=max(radius,6.0*blurStrength*max(texSize.x,texSize.y)/640.0*seamMask);
   float2 footprint=max(0.5/texSize,float2(radius)*0.75/texSize);
   half3 color=half3(0);
   if(radius<0.01){
@@ -99,6 +108,7 @@ internal object DuoGlassShader {
   float effect=motion*pow(clamp((edge-0.2)/0.8,0.0,1.0),1.35);
   color*=half(1.0-min(1.0,effect*2.0*intensity));
   float alpha=smoothstep(0.0,0.035,progress);
+  if(inner>0.5 && fallback<0.5 && axis>=0.5)alpha*=seamMask;
   return half4(color*half(alpha),half(alpha));
  }
  """.trimIndent()
@@ -106,7 +116,8 @@ internal object DuoGlassShader {
 @Composable internal fun DuoGlassSurface(angle:Float,amount:Float,intensity:Float,inner:Boolean,rotation:Int,frozenFrame:GlassFrame?=null){
  val frame=frozenFrame ?: GlassFrames.frame
  val running=frozenFrame==null && amount>.003f && LiveAngles.fresh()
- DisposableEffect(running){if(running)GlassFrames.acquire();onDispose{if(running)GlassFrames.release()}}
+ val context=androidx.compose.ui.platform.LocalContext.current
+ DisposableEffect(running){GlassFrames.configure(context);if(running)GlassFrames.acquire();onDispose{if(running)GlassFrames.release()}}
  AndroidView(factory={FrostSurface(it)},modifier=Modifier.fillMaxSize(),update={it.configure(frame,amount,intensity,inner,rotation,frozenFrame!=null,angle)})
 }
 internal class FrostSurface(context:Context,private val preview:Boolean=false):SurfaceView(context),SurfaceHolder.Callback {
@@ -237,7 +248,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
       shader.setInputShader("content",BitmapShader(f.bitmap,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP).apply{setFilterMode(BitmapShader.FILTER_MODE_LINEAR)})
       var level=f.bitmap
       for(i in 1..(if(classic)5 else 7)){
-       level=Bitmap.createScaledBitmap(level,maxOf(1,level.width/2),maxOf(1,level.height/2),true)
+       level=f.levels.getOrNull(i-1) ?: Bitmap.createScaledBitmap(level,maxOf(1,level.width/2),maxOf(1,level.height/2),true)
        val map=BitmapShader(level,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP)
        map.setFilterMode(BitmapShader.FILTER_MODE_LINEAR)
        map.setLocalMatrix(Matrix().apply{setScale(f.bitmap.width.toFloat()/level.width,f.bitmap.height.toFloat()/level.height)})
@@ -250,6 +261,9 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false):S
      val fit=if(projectedCover)LiveMirrorLayout.fill(f.bitmap.width,f.bitmap.height,width,height) else null
      val scale=fit?.get(0) ?: if(fallback)minOf(width.toFloat()/f.bitmap.width,height.toFloat()/f.bitmap.height) else 0f
      val ew=if(fallback || projectedCover)f.bitmap.width*scale else width.toFloat();val eh=if(fallback || projectedCover)f.bitmap.height*scale else height.toFloat()
+     val quality=context.getSharedPreferences("standalone",0)
+     shader.setFloatUniform("blurStrength",RenderQuality.blur(quality.getFloat("blur_strength",1.5f)))
+     shader.setFloatUniform("seamWidth",RenderQuality.seam(quality.getFloat("seam_width",.02f)))
      shader.setFloatUniform("texSize",f.bitmap.width.toFloat(),f.bitmap.height.toFloat())
      shader.setFloatUniform("origin",if(fallback)width-ew else 0f,if(fallback)(height-eh)/2f else 0f)
      shader.setFloatUniform("sampleScale",if(projectedCover)width/ew else 1f,if(projectedCover)height/eh else 1f)

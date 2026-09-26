@@ -23,13 +23,15 @@ internal object ClassicGlassShader {
  uniform float horizontal;
  uniform float reverse;
  uniform float intensity;
+ uniform float blurStrength;
+ uniform float seamWidth;
  half4 main(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
   float axis=mix(uv.x,uv.y,horizontal);
   axis=mix(axis,1.0-axis,reverse);
   float edge=inner>0.5 ? (fallback>0.5 ? 1.0-axis : 1.0-2.0*axis) : axis;
-  if(inner>0.5 && fallback<0.5 && edge<=0.0) return half4(0);
+  if(inner>0.5 && fallback<0.5 && axis>=0.5+seamWidth) return half4(0);
   float motion=smoothstep(0.0,1.0,progress);
   float a=min(progress,0.97)*1.570796327;
   // Fixed eye at z=40, intersect projected folded strip with the flat UI plane.
@@ -41,8 +43,15 @@ internal object ClassicGlassShader {
   float corrected=mix(projected,1.0-projected,reverse);
   float2 sourceUV=uv;
   if(horizontal>0.5) sourceUV.y=corrected; else sourceUV.x=corrected;
+  float seamMask=0.0;
+  if(inner>0.5 && fallback<0.5 && seamWidth>0.0){
+   seamMask=1.0-smoothstep(0.0,seamWidth,abs(axis-0.5));
+   if(axis>=0.5)sourceUV=uv;
+  }
   sourceUV=sourceUV*sampleScale+sampleOffset;
   float radius=72.0*(texSize.x/1600.0)*motion*pow(clamp(edge,0.0,1.0),1.35);
+  radius*=blurStrength*(inner>0.5?1.25:1.0);
+  radius=max(radius,6.0*blurStrength*max(texSize.x,texSize.y)/640.0*seamMask);
   float2 footprint=max(0.5/texSize,float2(radius)*0.75/texSize);
   half3 color=half3(0);
   if(radius<0.01){
@@ -62,6 +71,7 @@ internal object ClassicGlassShader {
   float effect=motion*pow(clamp((edge-0.2)/0.8,0.0,1.0),1.35);
   color*=half(1.0-min(1.0,effect*2.0*intensity));
   float alpha=smoothstep(0.0,0.035,progress);
+  if(inner>0.5 && fallback<0.5 && axis>=0.5)alpha*=seamMask;
   return half4(color*half(alpha),half(alpha));
  }
  """.trimIndent()
