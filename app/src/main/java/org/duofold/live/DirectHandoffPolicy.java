@@ -3,9 +3,12 @@ package org.duofold.live;
 final class DirectHandoffPolicy {
  static final int HOLD=0,INNER=1,COVER=2,RELEASE=3;
  static int next(boolean innerHeld,float angle,boolean fresh,boolean interactive,boolean enabled,float open){
+  return next(innerHeld,angle,fresh,interactive,enabled,open,HandoffSettings.DEFAULT);
+ }
+ static int next(boolean innerHeld,float angle,boolean fresh,boolean interactive,boolean enabled,float open,float handoff){
   if(!fresh||!interactive||!Float.isFinite(angle)||angle<=0||angle>=FoldThreshold.sanitize(open))return RELEASE;
   if(!enabled)return innerHeld?RELEASE:HOLD;
-  if(innerHeld)return angle<=94?COVER:HOLD;
-  return angle>=98?INNER:HOLD;
+  if(innerHeld)return angle<=HandoffSettings.closing(handoff)?COVER:HOLD;
+  return angle>=HandoffSettings.angle(handoff)?INNER:HOLD;
  }
 }

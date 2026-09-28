@@ -16,6 +16,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
@@ -59,6 +61,7 @@ class MainActivity:ComponentActivity(){
     var setup by remember{mutableStateOf(!enabled)}
     var smoothing by remember{mutableFloatStateOf(FrameSmoothing.sanitize(prefs.getFloat("smoothing_ms",30f)))}
     var fadeSmoothing by remember{mutableFloatStateOf(FadeSettings.smoothing(prefs.getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING)))}
+    var handoffAngle by remember{mutableFloatStateOf(HandoffSettings.angle(prefs.getFloat("handoff_angle",HandoffSettings.DEFAULT)))}
     var fadeGradualness by remember{mutableFloatStateOf(FadeSettings.gradualness(prefs.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS)))}
     var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
     var antialias by remember{mutableStateOf(prefs.getBoolean("antialias_enabled",true))}
@@ -137,31 +140,24 @@ class MainActivity:ComponentActivity(){
       ShizukuHelp()
       SettingsCard("Fine-tune your animation","Your saved glass and fade settings apply to each style."){
 
-       Text("Motion smoothness · ${smoothing.roundToInt()} ms")
+       InfoLabel("Motion smoothness · ${smoothing.roundToInt()} ms","Higher values smooth hinge motion but add delay. This does not increase FPS. Default: 30 ms.")
        Slider(value=smoothing,onValueChange={smoothing=it},valueRange=12f..120f,onValueChangeFinished={prefs.edit().putFloat("smoothing_ms",smoothing).apply();restart()})
-       Text("30 ms is the current default. Higher values soften motion with more delay; they do not increase rendering FPS.",style=MaterialTheme.typography.bodySmall)
+
        TextButton(onClick={smoothing=30f;prefs.edit().putFloat("smoothing_ms",30f).apply();restart()}){Text("Reset smoothness")}
-       Text("Blur amount · ${(blurStrength*100).roundToInt()}%")
+       InfoLabel("Blur amount · ${(blurStrength*100).roundToInt()}%","Softens pixelation, especially on the inner screen. Default: 30%.")
        Slider(value=blurStrength,onValueChange={blurStrength=it},valueRange=0f..3f,onValueChangeFinished={prefs.edit().putFloat("blur_strength",blurStrength).apply();restart()})
-       Text("Stronger frost softens pixelation, especially on the inner display. Default: 30%.",style=MaterialTheme.typography.bodySmall)
+
        TextButton(onClick={blurStrength=.3f;prefs.edit().putFloat("blur_strength",.3f).apply();restart()}){Text("Reset blur amount")}
-       Text("Glass strength · ${(intensity*100).roundToInt()}%")
+       InfoLabel("Glass strength · ${(intensity*100).roundToInt()}%","Controls the glass shading intensity, independently of blur. Default: 100%.")
        Slider(value=intensity,onValueChange={intensity=it},valueRange=.3f..1.5f,onValueChangeFinished={prefs.edit().putFloat("intensity",intensity).apply();restart()})
        TextButton(onClick={intensity=1f;prefs.edit().putFloat("intensity",1f).apply();restart()}){Text("Reset glass strength")}
-       Text("Black fade smoothing · ${fadeSmoothing.roundToInt()} ms")
-       Slider(value=fadeSmoothing,onValueChange={fadeSmoothing=it},valueRange=0f..120f,onValueChangeFinished={prefs.edit().putFloat("fade_smoothing_ms",fadeSmoothing).apply()})
-       Text("Softens changes in the fade as you move the hinge. Higher values add more smoothing.",style=MaterialTheme.typography.bodySmall)
-       Text("Black fade gradualness · ${(fadeGradualness*100).roundToInt()}%")
-       Slider(value=fadeGradualness,onValueChange={fadeGradualness=it},valueRange=0f..1f,onValueChangeFinished={prefs.edit().putFloat("fade_gradualness",fadeGradualness).apply()})
-       Text("0% is the original sharp fade. Higher values begin fading earlier and reveal the new screen more slowly.",style=MaterialTheme.typography.bodySmall)
-       TextButton(onClick={fadeSmoothing=FadeSettings.DEFAULT_SMOOTHING;fadeGradualness=FadeSettings.DEFAULT_GRADUALNESS;prefs.edit().putFloat("fade_smoothing_ms",fadeSmoothing).putFloat("fade_gradualness",fadeGradualness).apply()}){Text("Reset black fade")}
-       Toggle("Full-resolution glass · higher GPU cost",fullResolution){fullResolution=it;booleanSetting("full_resolution_glass",it)}
-       Text("Off renders the effect at half resolution in each direction to reduce GPU work. Screen content and handoff angles stay the same.",style=MaterialTheme.typography.bodySmall)
+       Toggle("Full-resolution glass · higher GPU cost",fullResolution,help="Off uses half-resolution rendering to reduce GPU work. Content and handoff angles are unchanged."){fullResolution=it;booleanSetting("full_resolution_glass",it)}
+
        Text("Fully open at ${threshold.roundToInt()}°. Adjust this in Advanced.",style=MaterialTheme.typography.bodySmall)
       }
       SettingsCard("Custom wallpaper","Your photo on Home, with live hinge support in the background."){
        Button(onClick={startActivity(Intent(this@MainActivity,org.duofold.live.wallpaperlayer.WallpaperActivity::class.java))}){Text("Choose & manage custom wallpaper")}
-       Text("Choose one photo for both screens and preview each crop. Your photo and enabled choice stay saved across updates.",style=MaterialTheme.typography.bodySmall)
+       Text("One photo, separate crops. Your selection survives updates.",style=MaterialTheme.typography.bodySmall)
       }
       SettingsCard("Connection & setup","Shizuku and accessibility keep the effect running in the background."){
        TextButton(onClick={setup=!setup}){Text(if(setup)"Hide setup" else "Show setup")}
@@ -180,30 +176,42 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Advanced","Display thresholds, fold behavior, and diagnostics."){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
-        Text("Screen placement",style=MaterialTheme.typography.titleMedium)
+        InfoLabel("Handoff angle · ${handoffAngle.roundToInt()}°","Cover-to-inner switch angle. Default: 98°; range: 83–113°. Closing uses 4° less to avoid repeated switching. Applies to live cover preview; legacy dual-screen screenshot and continuity tests use their own routing.")
+        Slider(value=handoffAngle,onValueChange={handoffAngle=it.roundToInt().toFloat()},valueRange=83f..113f,steps=29,onValueChangeFinished={prefs.edit().putFloat("handoff_angle",handoffAngle).apply();restart()})
+        TextButton(onClick={handoffAngle=HandoffSettings.DEFAULT;prefs.edit().putFloat("handoff_angle",handoffAngle).apply();restart()}){Text("Reset handoff angle")}
+       InfoLabel("Black fade smoothing · ${fadeSmoothing.roundToInt()} ms","Smooths the black fade as the hinge moves. Higher values add more smoothing.")
+       Slider(value=fadeSmoothing,onValueChange={fadeSmoothing=it},valueRange=0f..120f,onValueChangeFinished={prefs.edit().putFloat("fade_smoothing_ms",fadeSmoothing).apply()})
+
+       InfoLabel("Black fade gradualness · ${(fadeGradualness*100).roundToInt()}%","0% gives a sharp fade. Higher values fade earlier and reveal the new screen more slowly.")
+       Slider(value=fadeGradualness,onValueChange={fadeGradualness=it},valueRange=0f..1f,onValueChangeFinished={prefs.edit().putFloat("fade_gradualness",fadeGradualness).apply()})
+
+       TextButton(onClick={fadeSmoothing=FadeSettings.DEFAULT_SMOOTHING;fadeGradualness=FadeSettings.DEFAULT_GRADUALNESS;prefs.edit().putFloat("fade_smoothing_ms",fadeSmoothing).putFloat("fade_gradualness",fadeGradualness).apply()}){Text("Reset black fade")}
+        HorizontalDivider()
+
+        InfoLabel("Screen placement","V2 starts stretching earlier without the inward squeeze. Original remains available for comparison. Applies in both fold directions.")
         for((v2,label) in listOf(false to "Original",true to "V2 Window Reveal · experimental"))TextButton(onClick={windowReveal=v2;prefs.edit().putBoolean("window_reveal_v2",v2).apply();restart()}){Text((if(windowReveal==v2)"✓ " else "")+label)}
-        Text("V2 starts cover stretching continuously from the beginning, without the early reversal. Original top/bottom perspective, folding motion and later projection remain intact. Applies to every animation style in both directions.",style=MaterialTheme.typography.bodySmall)
+
 
         if(windowReveal){
          OutlinedCard(modifier=Modifier.fillMaxWidth()){
           Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
          Text("Cover display animation",style=MaterialTheme.typography.titleMedium,color=MaterialTheme.colorScheme.primary)
-         Text("Vertical compression · ${(coverVertical*100).roundToInt()}%")
+         InfoLabel("Vertical compression · ${(coverVertical*100).roundToInt()}%","100% is the original top/bottom perspective; 0% removes compression and 200% doubles it. Classic glass has no vertical compression to scale.")
          Slider(value=coverVertical,onValueChange={coverVertical=it},valueRange=0f..2f,onValueChangeFinished={prefs.edit().putFloat("cover_vertical_compression",coverVertical).apply();restart()})
-         Text("100% preserves the current top/bottom perspective. 0% removes vertical compression; 200% doubles it. Classic glass has no vertical compression to scale.",style=MaterialTheme.typography.bodySmall)
+
          TextButton(onClick={coverVertical=1.15f;prefs.edit().putFloat("cover_vertical_compression",1.15f).apply();restart()}){Text("Reset vertical compression")}
 
-         Toggle("Startup easing",startupEasing){startupEasing=it;booleanSetting("startup_easing",it)}
-         Text("Softens the first opening frames. Turn off to compare the original startup timing.",style=MaterialTheme.typography.bodySmall)
-         Text("Early stretch · ${(earlyStretch*100).roundToInt()}%")
+         Toggle("Startup easing",startupEasing,help="Softens the first opening frames. Turn off to compare."){startupEasing=it;booleanSetting("startup_easing",it)}
+
+         InfoLabel("Early stretch · ${(earlyStretch*100).roundToInt()}%","Adds stretch earlier while preserving the ending and vertical perspective. Default: 90%.")
          Slider(value=earlyStretch,onValueChange={earlyStretch=it},valueRange=0f..1f,onValueChangeFinished={prefs.edit().putFloat("early_stretch",earlyStretch*3f).apply();restart()})
-         Text("Higher values add more stretch near the start. Final stretch and top/bottom perspective stay the same. Default: 90%. New 100% equals the previous 300%; existing selections keep their animation.",style=MaterialTheme.typography.bodySmall)
+
          TextButton(onClick={earlyStretch=.9f;prefs.edit().putFloat("early_stretch",2.7f).apply();restart()}){Text("Reset early stretch")}
          Toggle("Enhanced end stretch",enhancedEnd){enhancedEnd=it;booleanSetting("enhanced_end_stretch",it)}
          if(enhancedEnd){
-          Text("End stretch · ${(endStretch*100).roundToInt()}%")
+          InfoLabel("End stretch · ${(endStretch*100).roundToInt()}%","Range: 80–150%. Default: 125%. Changes the ending stretch, not the handoff angle.")
           Slider(value=endStretch,onValueChange={endStretch=it},valueRange=.8f..1.5f,onValueChangeFinished={prefs.edit().putFloat("end_stretch",endStretch).apply();restart()})
-          Text("80% matches the previous ending. Default: 125%; up to 150% adds more end stretch without changing the handoff angle.",style=MaterialTheme.typography.bodySmall)
+
           TextButton(onClick={endStretch=1.25f;prefs.edit().putFloat("end_stretch",1.25f).apply();restart()}){Text("Reset end stretch")}
          }
           }
@@ -212,56 +220,56 @@ class MainActivity:ComponentActivity(){
          OutlinedCard(modifier=Modifier.fillMaxWidth()){
           Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
          Text("Inner display animation",style=MaterialTheme.typography.titleMedium,color=MaterialTheme.colorScheme.primary)
-         Text("Vertical compression · ${(innerVertical*100).roundToInt()}%")
+         InfoLabel("Vertical compression · ${(innerVertical*100).roundToInt()}%","100% is the original top/bottom perspective; 0% removes compression and 200% doubles it. Classic glass has no vertical compression to scale.")
          Slider(value=innerVertical,onValueChange={innerVertical=it},valueRange=0f..2f,onValueChangeFinished={prefs.edit().putFloat("inner_vertical_compression",innerVertical).apply();restart()})
-         Text("100% preserves the current top/bottom perspective. 0% removes vertical compression; 200% doubles it. Classic glass has no vertical compression to scale.",style=MaterialTheme.typography.bodySmall)
+
          TextButton(onClick={innerVertical=.6f;prefs.edit().putFloat("inner_vertical_compression",.6f).apply();restart()}){Text("Reset vertical compression")}
 
-         Toggle("Startup easing",innerStartupEasing){innerStartupEasing=it;booleanSetting("inner_startup_easing",it)}
-         Text("Softens entry into and exit from the actual inner-screen animation near fully open.",style=MaterialTheme.typography.bodySmall)
-         Text("Early stretch · ${(innerEarlyStretch*100).roundToInt()}%")
+         Toggle("Startup easing",innerStartupEasing,help="Softens the inner animation near fully open, in both directions."){innerStartupEasing=it;booleanSetting("inner_startup_easing",it)}
+
+         InfoLabel("Early stretch · ${(innerEarlyStretch*100).roundToInt()}%","Changes how early inner content stretches. Independent of the cover and reflected preview. Default: 30%.")
          Slider(value=innerEarlyStretch,onValueChange={innerEarlyStretch=it},valueRange=0f..1f,onValueChangeFinished={prefs.edit().putFloat("inner_early_stretch",innerEarlyStretch*3f).apply();restart()})
-         Text("Controls early stretch on actual inner content. Same 0–100% scale as the cover; default 30%. Independent of the cover and reflected preview.",style=MaterialTheme.typography.bodySmall)
+
          TextButton(onClick={innerEarlyStretch=.3f;prefs.edit().putFloat("inner_early_stretch",.9f).apply();restart()}){Text("Reset early stretch")}
          Toggle("Enhanced end stretch",innerEnhancedEnd){innerEnhancedEnd=it;booleanSetting("inner_enhanced_end_stretch",it)}
          if(innerEnhancedEnd){
-          Text("End stretch · ${(innerEndStretch*100).roundToInt()}%")
+          InfoLabel("End stretch · ${(innerEndStretch*100).roundToInt()}%","Range: 0–150%. Default: 45%. 0% removes horizontal stretch. Vertical perspective and handoff angle stay unchanged.")
           Slider(value=innerEndStretch,onValueChange={innerEndStretch=it},valueRange=0f..1.5f,onValueChangeFinished={prefs.edit().putFloat("inner_end_stretch",innerEndStretch).apply();restart()})
-          Text("Default: 45%; range 0–150%. Below 80% reduces horizontal stretch toward none at 0%, without inward squeezing. Values 80–150% retain their scale. Vertical perspective and handoff angle are unchanged.",style=MaterialTheme.typography.bodySmall)
+
           TextButton(onClick={innerEndStretch=.45f;prefs.edit().putFloat("inner_end_stretch",.45f).apply();restart()}){Text("Reset end stretch")}
          }
           }
          }
         }
-        Toggle("Anti-aliasing",antialias){antialias=it;booleanSetting("antialias_enabled",it)}
+        Toggle("Anti-aliasing",antialias,help="Lightweight is the default. Edge-Adaptive smooths the rendered image; 4× Supersampling doubles buffer width and height. Experimental options use more GPU power."){antialias=it;booleanSetting("antialias_enabled",it)}
         if(antialias){
          for((id,label) in listOf(0 to "Lightweight Texture Filtering",1 to "Edge-Adaptive Smoothing · experimental",2 to "4× Supersampling · experimental"))TextButton(onClick={antialiasMode=id;prefs.edit().putInt("antialias_method_v2",id).apply();restart()}){Text((if(antialiasMode==id)"✓ " else "")+label)}
-         Text("Lightweight is the default again. Edge-Adaptive filters the rendered image; 4× Supersampling doubles both render-buffer dimensions. Compare the experimental modes on your device.",style=MaterialTheme.typography.bodySmall)
+
          Text("Anti-aliasing strength · ${(antialiasStrength*100).roundToInt()}%")
          Slider(value=antialiasStrength,onValueChange={antialiasStrength=it},valueRange=.2f..0.5f,onValueChangeFinished={prefs.edit().putFloat("antialias_strength",antialiasStrength).apply();restart()})
          TextButton(onClick={antialiasStrength=.35f;prefs.edit().putFloat("antialias_strength",.35f).apply();restart()}){Text("Reset anti-aliasing")}
         }
-        Text("All three methods work across glass styles, independent of blur and glass strength. Reduces jagged detail and shimmer; cannot restore missing capture detail.",style=MaterialTheme.typography.bodySmall)
-        Text("Live content frame rate",style=MaterialTheme.typography.titleMedium)
+
+        InfoLabel("Live content frame rate","No automatic refresh-rate switching. Actual FPS depends on the device and temperature; check the status report. Screenshot mode holds a still image.")
         for(rate in listOf(12,60,120))TextButton(onClick={contentFps=rate;prefs.edit().putInt("content_fps",rate).apply();restart()}){Text((if(contentFps==rate)"✓ " else "")+when(rate){12->"Legacy · approximately 12 FPS";120->"120 FPS · experimental";else->"60 FPS · lower GPU cost"})}
-        Text("Uses your selected capture target without automatic refresh-rate switching. Actual FPS depends on device speed and temperature. Status reports show measured captures per second. Screenshot mode intentionally holds a still image.",style=MaterialTheme.typography.bodySmall)
-        Text("Left preview appearance",style=MaterialTheme.typography.titleMedium)
+
+        InfoLabel("Left preview appearance","Animated Reflection mirrors the cover animation. Frosted Reflection uses a blurred mirror with less rendering work. Both keep the clean right preview and center blend.")
         for(frosted in listOf(true,false))TextButton(onClick={frostedReflection=frosted;booleanSetting("frosted_reflection",frosted)}){Text((if(frostedReflection==frosted)"✓ " else "")+if(frosted)"Frosted Reflection" else "Animated Reflection")}
-        Text("Animated Reflection mirrors the cover animation. Frosted Reflection uses a blurred, mirrored image with less rendering work. Both retain the clean right preview and center blend.",style=MaterialTheme.typography.bodySmall)
-        Text("Center-edge blur offset · ${(seamOffset*100).roundToInt()}%")
+
+        InfoLabel("Center-edge blur offset · ${(seamOffset*100).roundToInt()}%","Moves the blend to the right of the fold, as a percentage of the full inner-screen width. Default: 7%; 0% ends at the fold.")
         Slider(value=seamOffset,onValueChange={seamOffset=it},valueRange=0f..0.15f,onValueChangeFinished={prefs.edit().putFloat("seam_offset",seamOffset).apply();restart()})
-        Text("Moves the soft transition into the right side, measured as a percentage of the full inner display width beyond the fold. Default: 7%; 0 ends at the fold.",style=MaterialTheme.typography.bodySmall)
-        Text("Fully-open threshold · ${threshold.roundToInt()}°",style=MaterialTheme.typography.titleMedium)
+
+        InfoLabel("Fully-open threshold · ${threshold.roundToInt()}°","The inner effect clears at this angle; closing starts below it. Default: 172°.")
         Slider(value=threshold,onValueChange={threshold=it.roundToInt().toFloat()},valueRange=165f..179f,steps=13,onValueChangeFinished={prefs.edit().putFloat("open_threshold",threshold).apply();restart()})
-        Text("At this angle the inner effect is completely clear. Closing starts below this threshold. Default: 172°.",style=MaterialTheme.typography.bodySmall)
+
         TextButton(onClick={threshold=172f;prefs.edit().putFloat("open_threshold",172f).apply();restart()}){Text("Reset to 172°")}
-        Text("Fully-closed threshold · ${closedThreshold.roundToInt()}°",style=MaterialTheme.typography.titleMedium)
+        InfoLabel("Fully-closed threshold · ${closedThreshold.roundToInt()}°","Clears the cover effect at or below this angle. Default: 2°.")
         Slider(value=closedThreshold,onValueChange={closedThreshold=it.roundToInt().toFloat()},valueRange=1f..10f,steps=8,onValueChangeFinished={prefs.edit().putFloat("closed_threshold",closedThreshold).apply();restart()})
-        Text("At or below this angle, treat the phone as fully closed and clear the cover effect. Default: 2°.",style=MaterialTheme.typography.bodySmall)
+
         TextButton(onClick={closedThreshold=2f;prefs.edit().putFloat("closed_threshold",2f).apply();restart()}){Text("Reset to 2°")}
         HorizontalDivider()
         Text("Auto-rotate recovery",style=MaterialTheme.typography.titleMedium)
-        Text("For stuck rotation: turn fold animation off, then repair. This enables auto-rotate for both postures and restores the default rotation policy. Requires connected Shizuku.",style=MaterialTheme.typography.bodySmall)
+        Text("Turn animation off, then repair. Requires Shizuku. Enables auto-rotate on both screens.",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(enabled=!enabled && !repairingRotation,onClick={
          repairingRotation=true;rotationRepair="Releasing rotation overrides…"
          FoldSettingsClient.request(this@MainActivity,"rotation_repair",null){result->
@@ -273,8 +281,8 @@ class MainActivity:ComponentActivity(){
         if(rotationRepair.isNotEmpty())Text(rotationRepair,style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         Text("Keep cover awake on close",style=MaterialTheme.typography.titleMedium)
-        Text("Always ON. Saved across updates and checked in the background, including when the animation is off. Reconnects automatically when authorized Shizuku becomes available.",style=MaterialTheme.typography.bodySmall)
-        Text("Phone still locks when folded? Open Samsung Settings, search for “Lock when folded”, and turn it OFF. Return to Home and fold again to test. This Samsung setting can override Keep Awake.",style=MaterialTheme.typography.bodySmall)
+        Text("Always on, including when animation is off. Requires authorized Shizuku.",style=MaterialTheme.typography.bodySmall)
+        Text("Still locking? In Samsung Settings, search “Lock when folded” and turn it OFF. Return to Home and fold to test.",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={FoldAwakeDefault.reconnect();FoldAwakeDefault.tick(this@MainActivity);startBackground()}){Text("Recheck keep-awake now")}
         TextButton(onClick={developer=!developer}){Text("☰  Developer settings")}
         if(developer){
@@ -311,9 +319,9 @@ class MainActivity:ComponentActivity(){
        OutlinedButton(onClick={val report=StandaloneService.instance?.report()?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report copied",android.widget.Toast.LENGTH_SHORT).show()}){Text("Copy status report")}
       }
       SettingsCard("Support Duo Fold Live","Free, independent, and built with care for your Fold."){
-       Text("If Duo makes your phone more enjoyable, you can help support development with a donation. Every feature stays available either way.")
+       Text("Donations support development. All features remain free.")
        Button(onClick={SupportPrompts.open(this@MainActivity);supportBanner=false}){Text("Support on Ko-fi")}
-       Text("Support invitations begin after 3 days of successful use, then 7 days later, 14 days later, and every 30 days thereafter. Snooze and permanent dismissal remain available.",style=MaterialTheme.typography.bodySmall)
+       InfoLabel("Support reminders","First shown after 3 days of successful use, then 7 days later, 14 days later, and every 30 days. You can snooze or stop reminders.")
       }
       Text("Duo Fold Live ${BuildConfig.VERSION_NAME} · Glass reference: chuspeeism/iphone-duo (MIT).",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      }
@@ -329,4 +337,12 @@ class MainActivity:ComponentActivity(){
   }
  }
 }
-@Composable private fun Toggle(label:String,checked:Boolean,onChange:(Boolean)->Unit){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(label,Modifier.weight(1f).padding(top=12.dp));Switch(checked,onChange)}}
+@Composable private fun InfoLabel(label:String,help:String,modifier:Modifier=Modifier){
+ var show by remember{mutableStateOf(false)}
+ Row(modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.Top){
+  Text(label,Modifier.weight(1f).padding(top=12.dp))
+  TextButton(onClick={show=true},modifier=Modifier.semantics{contentDescription="More information: $label"}){Text("ⓘ")}
+ }
+ if(show)AlertDialog(onDismissRequest={show=false},title={Text(label)},text={Column(Modifier.verticalScroll(rememberScrollState())){Text(help)}},confirmButton={TextButton(onClick={show=false}){Text("Done")}})
+}
+@Composable private fun Toggle(label:String,checked:Boolean,help:String?=null,onChange:(Boolean)->Unit){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){if(help==null)Text(label,Modifier.weight(1f).padding(top=12.dp)) else InfoLabel(label,help,Modifier.weight(1f));Switch(checked,onChange)}}

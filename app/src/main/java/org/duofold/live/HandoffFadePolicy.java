@@ -6,6 +6,8 @@ final class HandoffFadePolicy {
  static final long COMMIT_SETTLE_MS=2;
  private boolean requireInnerGlass;
  private float openThreshold=172;
+ private float handoff=HandoffSettings.DEFAULT;
+ void handoff(float value){handoff=HandoffSettings.angle(value);}
  private long readyAt=-1;
  String readiness="idle";
  void renderer(boolean requireGlass,float open){requireInnerGlass=requireGlass;openThreshold=FoldThreshold.sanitize(open);}
@@ -30,8 +32,12 @@ final class HandoffFadePolicy {
  boolean transitioning(){return switched>=0;}
  static float approach(boolean inner,float angle){return approach(inner,angle,0);}
  static float approach(boolean inner,float angle,float gradualness){
+  return approach(inner,angle,gradualness,HandoffSettings.DEFAULT);
+ }
+ static float approach(boolean inner,float angle,float gradualness,float handoff){
+  handoff=HandoffSettings.angle(handoff);
   float width=FadeSettings.span(gradualness);
-  float x=Math.max(0,Math.min(1,inner?(94+width-angle)/width:(angle-(98-width))/width));
+  float x=Math.max(0,Math.min(1,inner?(HandoffSettings.closing(handoff)+width-angle)/width:(angle-(handoff-width))/width));
   return x*x*(3-2*x);
  }
  float opacity(long now,boolean inner,float angle,boolean valid,boolean on,long drawn,boolean drawnInner){
@@ -68,8 +74,8 @@ final class HandoffFadePolicy {
    if(x<1)return 1-x*x*(3-2*x);
    switched=reveal=-1;
   }
-  if(!armed&&(inner?(angle>=96+FadeSettings.span(gradualness)||angle<=arrival-2):(angle<=96-FadeSettings.span(gradualness)||angle>=arrival+2)))armed=true;
-  float alpha=armed?approach(inner,angle,gradualness):0;
+  if(!armed&&(inner?(angle>=handoff-2+FadeSettings.span(gradualness)||angle<=arrival-2):(angle<=handoff-2-FadeSettings.span(gradualness)||angle>=arrival+2)))armed=true;
+  float alpha=armed?approach(inner,angle,gradualness,handoff):0;
   if(alpha<=0){blackSince=-1;expired=false;}
   if(alpha>=.999f){if(blackSince<0)blackSince=now;if(now-blackSince>1200)expired=true;}else blackSince=-1;
   return expired?0:filtered(alpha,now);

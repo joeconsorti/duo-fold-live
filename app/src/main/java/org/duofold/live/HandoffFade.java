@@ -16,7 +16,7 @@ final class HandoffFade {
  void mirrorSubmitted(){mirrorSubmitted=SystemClock.elapsedRealtime();}
  private final SurfaceControl[] layers=new SurfaceControl[2];
  private volatile boolean enabled,closed,requireInnerGlass;
- private volatile float openThreshold=172;
+ private volatile float openThreshold=172,handoffAngle=HandoffSettings.DEFAULT;
  private static final class Draw {
   final boolean inner;final long when,captured;final int kind;
   Draw(boolean inner,long when,int kind,long captured){this.inner=inner;this.when=when;this.kind=kind;this.captured=captured;}
@@ -30,7 +30,7 @@ final class HandoffFade {
  private final int[] stacks={-1,-1},extents={-1,-1};
  private long statusAt;
  private final Choreographer.FrameCallback frame=when->this.tick.run();
- void settings(float smoothing,float gradualness,boolean requireGlass,float open){this.smoothing=smoothing;this.gradualness=gradualness;requireInnerGlass=requireGlass;openThreshold=open;}
+ void settings(float smoothing,float gradualness,boolean requireGlass,float open,float handoff){handoffAngle=HandoffSettings.angle(handoff);this.smoothing=smoothing;this.gradualness=gradualness;requireInnerGlass=requireGlass;openThreshold=open;}
  private void schedule(){
   if(frames==null)frames=Choreographer.getInstance();
   frames.postFrameCallback(frame);
@@ -87,7 +87,7 @@ final class HandoffFade {
    lastPrimary=now;
    policy.mapping((String)field(p,"uniqueId").get(p));
    boolean inner=Math.min(value(p,"logicalWidth"),value(p,"logicalHeight"))/(float)Math.max(value(p,"logicalWidth"),value(p,"logicalHeight"))>.7f;
-   policy.settings(smoothing,gradualness);
+   policy.settings(smoothing,gradualness);policy.handoff(handoffAngle);
    policy.renderer(requireInnerGlass,openThreshold);
    Draw evidence=lastDraw;
    float alpha=policy.opacity(now,inner,angle,true,value(p,"state")==2,evidence.when,evidence.inner,evidence.kind,evidence.captured);
