@@ -21,6 +21,7 @@
   <activity android:name=".SetupActivity" android:exported="false" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density"/>
   <activity android:name=".FoldBridgeActivity" android:exported="false" android:theme="@style/Theme.Duo.FoldBridge" android:taskAffinity="org.duofold.live.foldbridge" android:excludeFromRecents="true" android:noHistory="true" android:resizeableActivity="true" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density"/>
   <activity android:name=".FoldProbeActivity" android:exported="false" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density"/>
+  <activity android:name=".CameraContinuityActivity" android:exported="false" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density"/>
   <activity android:name=".FoldMotionActivity" android:exported="false" android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density"/>
   <service android:name=".FoldBackgroundService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Persistent fold keep-awake setting supervision, hinge animation overlay and wallpaper-angle reader"/></service>
   <service android:name=".StandaloneService" android:label="Duo Fold Live" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">

@@ -23,3 +23,9 @@ User-requested on 2026-09-26; implemented in alpha.19 with persistent schedule m
 2026-09-26: Try the clean right cover preview first, followed by the animated horizontally reflected left preview. If device testing rejects that approach, use a horizontally reflected, frosted cover image on the left with blur bleeding across the center onto the right, to reduce work and battery cost. Do not switch to this fallback without first testing the ordered animated approach.
 
 Keep Awake remains a known bug alongside the partly fixed wallpaper flash and Samsung display-switch blackout. The alpha.25 report records sleep reason 13 and a wake request, but the user confirms the behavior still fails. Defer further Keep Awake changes for now.
+
+## Defaults from 2026-09-28
+All future alpha and official builds: cover vertical compression 90%, inner vertical compression 40%. Apply through the existing once-per-build Advanced-animation reset. Manual changes persist within that build; other settings remain intact. Inner end stretch stays 60%, handoff stays 85 degrees (75–115 range).
+
+## Handoff method 1
+Active investigation: Samsung Camera dual-preview/rear-selfie request path. No Camera APK or connected handset was available in this session. Supplied framework/services DEX string inspection alone does not establish a special Camera handoff API. Next evidence: capture Samsung Camera device-state/display changes and obtain its installed APK for call-path inspection. See tools/capture-camera-handoff.ps1.

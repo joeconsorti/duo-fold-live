@@ -68,8 +68,8 @@ class MainActivity:ComponentActivity(){
     var earlyStretch by remember{mutableFloatStateOf(prefs.getFloat("early_stretch",2.7f).let{if(it.isFinite())it.coerceIn(0f,3f)/3f else .9f})}
     var endStretch by remember{mutableFloatStateOf(prefs.getFloat("end_stretch",1.25f).let{if(it.isFinite())it.coerceIn(.8f,1.5f) else 1.25f})}
     var enhancedEnd by remember{mutableStateOf(prefs.getBoolean("enhanced_end_stretch",true))}
-    var coverVertical by remember{mutableFloatStateOf(prefs.getFloat("cover_vertical_compression",1.15f).let{if(it.isFinite())it.coerceIn(0f,2f) else 1.15f})}
-    var innerVertical by remember{mutableFloatStateOf(prefs.getFloat("inner_vertical_compression",.6f).let{if(it.isFinite())it.coerceIn(0f,2f) else .6f})}
+    var coverVertical by remember{mutableFloatStateOf(prefs.getFloat("cover_vertical_compression",.9f).let{if(it.isFinite())it.coerceIn(0f,2f) else .9f})}
+    var innerVertical by remember{mutableFloatStateOf(prefs.getFloat("inner_vertical_compression",.4f).let{if(it.isFinite())it.coerceIn(0f,2f) else .4f})}
     var startupEasing by remember{mutableStateOf(prefs.getBoolean("startup_easing",true))}
     var innerEarlyStretch by remember{mutableFloatStateOf(prefs.getFloat("inner_early_stretch",.9f).let{if(it.isFinite())it.coerceIn(0f,3f)/3f else .3f})}
     var innerEndStretch by remember{mutableFloatStateOf(prefs.getFloat("inner_end_stretch",.6f).let{if(it.isFinite())it.coerceIn(0f,1.5f) else .6f})}
@@ -199,7 +199,7 @@ class MainActivity:ComponentActivity(){
          InfoLabel("Vertical compression · ${(coverVertical*100).roundToInt()}%","100% is the original top/bottom perspective; 0% removes compression and 200% doubles it. Classic glass has no vertical compression to scale.")
          Slider(value=coverVertical,onValueChange={coverVertical=it},valueRange=0f..2f,onValueChangeFinished={prefs.edit().putFloat("cover_vertical_compression",coverVertical).apply();restart()})
 
-         TextButton(onClick={coverVertical=1.15f;prefs.edit().putFloat("cover_vertical_compression",1.15f).apply();restart()}){Text("Reset vertical compression")}
+         TextButton(onClick={coverVertical=.9f;prefs.edit().putFloat("cover_vertical_compression",.9f).apply();restart()}){Text("Reset vertical compression")}
 
          Toggle("Startup easing",startupEasing,help="Softens the first opening frames. Turn off to compare."){startupEasing=it;booleanSetting("startup_easing",it)}
 
@@ -223,7 +223,7 @@ class MainActivity:ComponentActivity(){
          InfoLabel("Vertical compression · ${(innerVertical*100).roundToInt()}%","100% is the original top/bottom perspective; 0% removes compression and 200% doubles it. Classic glass has no vertical compression to scale.")
          Slider(value=innerVertical,onValueChange={innerVertical=it},valueRange=0f..2f,onValueChangeFinished={prefs.edit().putFloat("inner_vertical_compression",innerVertical).apply();restart()})
 
-         TextButton(onClick={innerVertical=.6f;prefs.edit().putFloat("inner_vertical_compression",.6f).apply();restart()}){Text("Reset vertical compression")}
+         TextButton(onClick={innerVertical=.4f;prefs.edit().putFloat("inner_vertical_compression",.4f).apply();restart()}){Text("Reset vertical compression")}
 
          Toggle("Startup easing",innerStartupEasing,help="Softens the inner animation near fully open, in both directions."){innerStartupEasing=it;booleanSetting("inner_startup_easing",it)}
 
@@ -294,6 +294,7 @@ class MainActivity:ComponentActivity(){
          Toggle("Classic black shading (debug)",debug){debug=it;booleanSetting("debug_mode",it)}
          TextButton(onClick={selectMode("windowed")}){Text("Restore Windowed Glass")}
         }
+        OutlinedButton(onClick={startActivity(Intent(this@MainActivity,CameraContinuityActivity::class.java))}){Text("Camera-style continuity test")}
         Text("Screen continuity test",style=MaterialTheme.typography.titleMedium)
         Text("Arm, return to Home or the app you want to test, fully close, then unfold within 30 seconds. During the 20-second hold, opening past 98° tries moving real content to the inner display. The inner animation uses the transferred app. Check that content stays visible, with full-size layout, touch and navigation. Folding below 94° returns content; only one transfer per test. Temporarily requests system navigation on the inner display; restores the prior display policy after the test. Samsung may reject Home routing. Exit may still flash. Copy the connection report afterward.",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(enabled=enabled&&liveMirror&&!dual,onClick={LiveAngles.startContinuityProbe()}){Text("Arm 20-second continuity test")}
