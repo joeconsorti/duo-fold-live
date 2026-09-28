@@ -72,7 +72,7 @@ class MainActivity:ComponentActivity(){
     var innerVertical by remember{mutableFloatStateOf(prefs.getFloat("inner_vertical_compression",.6f).let{if(it.isFinite())it.coerceIn(0f,2f) else .6f})}
     var startupEasing by remember{mutableStateOf(prefs.getBoolean("startup_easing",true))}
     var innerEarlyStretch by remember{mutableFloatStateOf(prefs.getFloat("inner_early_stretch",.9f).let{if(it.isFinite())it.coerceIn(0f,3f)/3f else .3f})}
-    var innerEndStretch by remember{mutableFloatStateOf(prefs.getFloat("inner_end_stretch",.45f).let{if(it.isFinite())it.coerceIn(0f,1.5f) else .45f})}
+    var innerEndStretch by remember{mutableFloatStateOf(prefs.getFloat("inner_end_stretch",.6f).let{if(it.isFinite())it.coerceIn(0f,1.5f) else .6f})}
     var innerEnhancedEnd by remember{mutableStateOf(prefs.getBoolean("inner_enhanced_end_stretch",true))}
     var innerStartupEasing by remember{mutableStateOf(prefs.getBoolean("inner_startup_easing",true))}
     var windowReveal by remember{mutableStateOf(prefs.getBoolean("window_reveal_v2",true))}
@@ -176,8 +176,8 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Advanced","Display thresholds, fold behavior, and diagnostics."){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
-        InfoLabel("Handoff angle · ${handoffAngle.roundToInt()}°","Cover-to-inner switch angle. Default: 98°; range: 83–113°. Closing uses 4° less to avoid repeated switching. Applies to live cover preview; legacy dual-screen screenshot and continuity tests use their own routing.")
-        Slider(value=handoffAngle,onValueChange={handoffAngle=it.roundToInt().toFloat()},valueRange=83f..113f,steps=29,onValueChangeFinished={prefs.edit().putFloat("handoff_angle",handoffAngle).apply();restart()})
+        InfoLabel("Handoff angle · ${handoffAngle.roundToInt()}°","Cover-to-inner switch angle. Default: 85°; range: 75–115°. Closing uses 4° less to avoid repeated switching. Applies to live cover preview; legacy dual-screen screenshot and continuity tests use their own routing.")
+        Slider(value=handoffAngle,onValueChange={handoffAngle=it.roundToInt().toFloat()},valueRange=75f..115f,steps=39,onValueChangeFinished={prefs.edit().putFloat("handoff_angle",handoffAngle).apply();restart()})
         TextButton(onClick={handoffAngle=HandoffSettings.DEFAULT;prefs.edit().putFloat("handoff_angle",handoffAngle).apply();restart()}){Text("Reset handoff angle")}
        InfoLabel("Black fade smoothing · ${fadeSmoothing.roundToInt()} ms","Smooths the black fade as the hinge moves. Higher values add more smoothing.")
        Slider(value=fadeSmoothing,onValueChange={fadeSmoothing=it},valueRange=0f..120f,onValueChangeFinished={prefs.edit().putFloat("fade_smoothing_ms",fadeSmoothing).apply()})
@@ -233,10 +233,10 @@ class MainActivity:ComponentActivity(){
          TextButton(onClick={innerEarlyStretch=.3f;prefs.edit().putFloat("inner_early_stretch",.9f).apply();restart()}){Text("Reset early stretch")}
          Toggle("Enhanced end stretch",innerEnhancedEnd){innerEnhancedEnd=it;booleanSetting("inner_enhanced_end_stretch",it)}
          if(innerEnhancedEnd){
-          InfoLabel("End stretch · ${(innerEndStretch*100).roundToInt()}%","Range: 0–150%. Default: 45%. 0% removes horizontal stretch. Vertical perspective and handoff angle stay unchanged.")
+          InfoLabel("End stretch · ${(innerEndStretch*100).roundToInt()}%","Range: 0–150%. Default: 60%. 0% removes horizontal stretch. Vertical perspective and handoff angle stay unchanged.")
           Slider(value=innerEndStretch,onValueChange={innerEndStretch=it},valueRange=0f..1.5f,onValueChangeFinished={prefs.edit().putFloat("inner_end_stretch",innerEndStretch).apply();restart()})
 
-          TextButton(onClick={innerEndStretch=.45f;prefs.edit().putFloat("inner_end_stretch",.45f).apply();restart()}){Text("Reset end stretch")}
+          TextButton(onClick={innerEndStretch=.6f;prefs.edit().putFloat("inner_end_stretch",.6f).apply();restart()}){Text("Reset end stretch")}
          }
           }
          }

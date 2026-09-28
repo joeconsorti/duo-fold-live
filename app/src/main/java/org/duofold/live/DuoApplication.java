@@ -17,7 +17,21 @@ public final class DuoApplication extends Application {
    prefs.edit().putFloat("end_stretch",1.25f).putFloat("intensity",1f)
     .putBoolean("stretch_glass_defaults_351",true).apply();
   }
-  // Set once; never overwrite a saved mode or the user's fade tuning on updates.
+  // Reset only Advanced animation controls once per installed build.
+  // Removing these keys uses the same defaults as the UI and renderer.
+  String build=BuildConfig.VERSION_NAME+":"+BuildConfig.VERSION_CODE;
+  if(!build.equals(prefs.getString("advanced_animation_defaults_build",""))){
+   SharedPreferences.Editor edit=prefs.edit();
+   for(String key:new String[]{
+    "handoff_angle","fade_smoothing_ms","fade_gradualness","window_reveal_v2",
+    "cover_vertical_compression","startup_easing","early_stretch","enhanced_end_stretch","end_stretch",
+    "inner_vertical_compression","inner_startup_easing","inner_early_stretch","inner_enhanced_end_stretch","inner_end_stretch",
+    "antialias_enabled","antialias_method_v2","antialias_strength","content_fps","frosted_reflection",
+    "seam_offset","open_threshold","closed_threshold"
+   })edit.remove(key);
+   edit.putString("advanced_animation_defaults_build",build).commit();
+  }
+  // Keep the selected animation style and all settings outside Advanced intact.
   if(!prefs.contains("animation_mode"))prefs.edit().putString("animation_mode",AnimationModePolicy.DEFAULT).apply();
   if(!prefs.getBoolean("preview_default_203",false))prefs.edit().putBoolean("cover_preview",true).putBoolean("preview_default_203",true).apply();
   new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> org.duofold.live.wallpaperlayer.WallpaperRestore.resume(this));

@@ -3,7 +3,7 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 public class InnerRevealReadinessTest {
  private HandoffFadePolicy start(){
-  HandoffFadePolicy p=new HandoffFadePolicy();p.renderer(true,172);
+  HandoffFadePolicy p=new HandoffFadePolicy();p.handoff(98);p.renderer(true,172);
   p.opacity(0,false,98,true,true,-1,false);
   p.opacity(10,true,98,true,false,-1,false);
   p.opacity(20,true,98,true,true,-1,false);
@@ -71,7 +71,7 @@ public class InnerRevealReadinessTest {
   assertEquals(0,p.opacity(1100,true,100,true,true,-1,false),0);
  }
  @Test public void coverPathStillUsesExistingDrawSettle(){
-  HandoffFadePolicy p=new HandoffFadePolicy();p.renderer(true,172);
+  HandoffFadePolicy p=new HandoffFadePolicy();p.handoff(98);p.renderer(true,172);
   p.opacity(0,true,94,true,true,-1,true);
   p.opacity(10,false,94,true,true,-1,true);
   assertEquals(1,p.opacity(30,false,94,true,true,30,false),0);
