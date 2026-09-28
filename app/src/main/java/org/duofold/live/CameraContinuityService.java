@@ -6,6 +6,8 @@ import java.util.concurrent.*;
 /** Isolated bounded Camera-equivalent request; no task transfer or rotation writes. */
 public final class CameraContinuityService extends Binder {
  public static final String TOKEN="org.duofold.live.CameraContinuity";
+ private final CameraContentMirror mirror=new CameraContentMirror();
+ private GlassCapture capture;
  private int owner=-1; private Object manager,request; private IBinder client;
  private final ScheduledExecutorService guard=Executors.newSingleThreadScheduledExecutor();
  private long deadline,heartbeat;private String primary,status="Idle";
@@ -52,7 +54,7 @@ public final class CameraContinuityService extends Binder {
    if(m.getName().equals("toString"))return "DuoCameraProbe";
    synchronized(this){
     if(request==next&&m.getName().equals("onRequestActivated"))status="ACTIVE: "+wanted;
-    if(request==next&&m.getName().equals("onRequestCanceled")){request=null;status="Canceled by Samsung";unlink();}
+    if(request==next&&m.getName().equals("onRequestCanceled")){request=null;mirror.close();if(capture!=null)capture.close();status="Canceled by Samsung";unlink();}
    }return null;
   });
   client=token;client.linkToDeath(death,0);
@@ -63,6 +65,7 @@ public final class CameraContinuityService extends Binder {
  }
  private void unlink(){if(client!=null){client.unlinkToDeath(death,0);client=null;}}
  private synchronized void stop(String reason){
+  mirror.close();if(capture!=null){capture.close();capture=null;}
   if(request!=null)try{manager.getClass().getMethod("cancelStateRequest").invoke(manager);}
    catch(Exception e){System.exit(0);}
   request=null;unlink();status=reason;
@@ -73,9 +76,17 @@ public final class CameraContinuityService extends Binder {
   p.enforceInterface(TOKEN);int uid=Binder.getCallingUid();if(owner<0)owner=uid;if(owner!=uid)throw new SecurityException("Wrong caller");
   long identity=Binder.clearCallingIdentity();Bundle out=new Bundle();
   try{
-   if(code==1)start(p.readInt()!=0,p.readStrongBinder(),p.readString());
+   if(code==1){start(p.readInt()!=0,p.readStrongBinder(),p.readString());capture=new GlassCapture(owner);out.putBinder("capture",capture);}
    else if(code==2)heartbeat=SystemClock.elapsedRealtime();
    else if(code==3)stop("Stopped");
+   else if(code==4){
+    android.view.SurfaceControl parent=p.readTypedObject(android.view.SurfaceControl.CREATOR);
+    int width=p.readInt(),height=p.readInt();
+    if(request==null||!primary.equals(panel())){if(parent!=null)parent.release();throw new IllegalStateException("No fixed-primary session");}
+    Bundle attached=mirror.attach(1,parent,width,height,true);
+    if(!attached.getBoolean("ok"))throw new IllegalStateException(attached.getString("status"));
+    out.putString("content",attached.getString("status"));
+   }else if(code==5)mirror.close();
    else throw new IllegalArgumentException("Unknown operation");
    out.putBoolean("ok",true);
   }catch(Exception e){out.putString("error",String.valueOf(e.getCause()!=null?e.getCause():e));}

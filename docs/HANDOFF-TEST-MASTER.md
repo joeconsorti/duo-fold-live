@@ -49,3 +49,8 @@ All proposed Samsung outcomes remain unverified. AOSP main is an architectural r
 
 ## Method 1 result — 2026-09-28
 Camera capture and APK inspected; see CAMERA-HANDOFF-FINDINGS-20260928.md. Camera uses SemWindowManager.setForcedDefaultDisplayDevice, which translates to the same DeviceStateManagerGlobal request/cancel route. Dual preview is state 4/flags 4; rear-selfie wrapper argument 6 is state 5. No separate seamless-primary-switch path identified. Secondary window creation precedes the concurrent request and is a narrow readiness comparison candidate. Do not build a supposed blackout fix by merely substituting the wrapper. Next: method 2 layout/state graph.
+
+## Device validation update — alpha.3
+The owner visually confirmed no flash on either panel when activating the window-first Camera-style concurrent request in BOTH directions. Cover-primary cancellation by fully closing also showed no flash. Starting inner-primary worked, but fully closing briefly darkened the outer panel before it became primary. The owner accepts smoothing that remaining switch later.
+
+Next test is alpha.4: real primary content (live compositor mirror and optional frozen snapshot) through this proven fixed-mapping setup. Developer settings only; normal behavior untouched. Native interactive app transfer remains unproven. This supersedes the earlier suggestion to move directly to method 2.
