@@ -116,9 +116,18 @@ final class TaskDisplayRouter {
         else {
             List<?> candidates=(List<?>)api.getMethod("getTasks",int.class,boolean.class,boolean.class,int.class).invoke(manager,64,false,false,0);
             Object top=focused.getClass().getField("topActivity").get(focused);
-            for(Object candidate:candidates)if(containsTask(focused,number(candidate,"taskId"))&&Objects.equals(top,candidate.getClass().getField("topActivity").get(candidate))){task=candidate;break;}
+            // Samsung's focused root can wrap the actual app task, and childTaskIds/topActivity
+            // do not always line up during concurrent fold states. Prefer an exact top-activity
+            // match on display 0, then fall back to the first standard visible task on display 0.
+            for(Object candidate:candidates){
+                if(number(candidate,"displayId")!=0||!standard(candidate))continue;
+                if(Objects.equals(top,candidate.getClass().getField("topActivity").get(candidate))){task=candidate;break;}
+            }
+            if(task==null)for(Object candidate:candidates){
+                if(number(candidate,"displayId")==0&&standard(candidate)){task=candidate;break;}
+            }
         }
-        if(task==null)throw new IllegalStateException("No task matches focused cover root");
+        if(task==null)throw new IllegalStateException("No routable focused task on primary display");
         sourceConfiguration=String.valueOf(task.getClass().getField("configuration").get(task));
         int type=activityType(task);probeComponent=String.valueOf(task.getClass().getField("topActivity").get(task));
         if(type!=1&&type!=2)throw new UnsupportedOperationException("System screen cannot be routed");
