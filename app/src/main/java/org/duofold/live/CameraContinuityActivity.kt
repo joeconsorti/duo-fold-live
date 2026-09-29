@@ -34,9 +34,13 @@ class CameraContinuityActivity:Activity(){
  private var contentReady=false
  private var snapshotReady=false
  private var testFrozen=false
+ private var nativeReveal=false
  private var backgroundAllowed=false
  private var contentEpoch=0
+ private var overlayFrame:FrameLayout?=null
  private lateinit var freezeOption:CheckBox
+ private lateinit var nativeButton:Button
+ private lateinit var restoreButton:Button
  private lateinit var status:TextView
  private lateinit var start:Button
  private val trace=StringBuilder()
@@ -54,9 +58,11 @@ class CameraContinuityActivity:Activity(){
   org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("Landroid/view/Display;","Landroid/content/res/Configuration;")
   val column=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(24,24,24,24)}
   column.addView(TextView(this).apply{text="Camera-style continuity test";textSize=22f})
-  column.addView(TextView(this).apply{text="Turn Duo animation OFF. Start fully open to keep inner primary, or fully closed to keep cover primary. Observe both screens while slowly folding/unfolding. Start the test, then tap Show Home and open an app. Secondary content is read-only and center-fitted, not a native app transfer. Stops after 30 seconds, locking, or a primary mapping change. Full closing/exit may flash."})
+  column.addView(TextView(this).apply{text="Turn Duo animation OFF. For this native-underlay test, start fully closed so the cover stays primary. Wait for the live mirror, then tap Reveal native secondary content. The secondary window stays attached but becomes transparent; no task is moved. If Android already has native inner content underneath, you should see its real inner layout. Restore mirror compares the exact same fixed-primary session. Stops after 30 seconds, locking, or a primary mapping change."})
   freezeOption=CheckBox(this).apply{text="Freeze real content 5 seconds after Show Home";setOnCheckedChangeListener{_,v->frozen=v}};column.addView(freezeOption)
   start=Button(this).apply{text="Start 30-second Camera test";setOnClickListener{begin()}};column.addView(start)
+  nativeButton=Button(this).apply{text="Reveal native secondary content";isEnabled=false;setOnClickListener{revealNative()}};column.addView(nativeButton)
+  restoreButton=Button(this).apply{text="Restore mirrored primary content";isEnabled=false;setOnClickListener{restoreMirrored()}};column.addView(restoreButton)
   column.addView(Button(this).apply{text="Show Home during test";setOnClickListener{
    if(running){backgroundAllowed=true;startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME));if(testFrozen){val epoch=generation;main.postDelayed({if(running&&generation==epoch)freezeContent()},5000)}}
   }})
@@ -83,13 +89,13 @@ class CameraContinuityActivity:Activity(){
    inner=try{resources.configuration.javaClass.getField("semDisplayDeviceType").getInt(resources.configuration)==0}catch(_:Exception){size.x>size.y}
    primaryId=physical(primary);secondaryId=physical(secondary);primaryDisplay=primary.displayId;secondaryDisplay=secondary.displayId
    check(!getSystemService(KeyguardManager::class.java).isKeyguardLocked){"Unlock first"}
-   running=true;start.isEnabled=false;freezeOption.isEnabled=false;testFrozen=frozen;contentReady=false;snapshotReady=false;contentPending=false;backgroundAllowed=false;generation++;startAt=SystemClock.elapsedRealtime()
+   running=true;start.isEnabled=false;freezeOption.isEnabled=false;nativeButton.isEnabled=false;restoreButton.isEnabled=false;testFrozen=frozen;nativeReveal=false;contentReady=false;snapshotReady=false;contentPending=false;backgroundAllowed=false;generation++;startAt=SystemClock.elapsedRealtime()
    note("Prepare first: primary="+primaryId+" secondary="+secondaryId+" direction="+if(inner)"inner → cover" else "cover → inner")
    val ctx=createDisplayContext(secondary).createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,null)
    dialog=Dialog(ctx).apply{
     window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
     window?.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
-    val frame=FrameLayout(ctx).apply{setBackgroundColor(Color.BLACK)}
+    val frame=FrameLayout(ctx).apply{setBackgroundColor(Color.BLACK)};overlayFrame=frame
     content=SurfaceView(ctx).also{view->
      view.holder.addCallback(object:SurfaceHolder.Callback{
       override fun surfaceCreated(h:SurfaceHolder)=Unit
@@ -99,6 +105,8 @@ class CameraContinuityActivity:Activity(){
     }
     snapshot=ImageView(ctx).apply{scaleType=ImageView.ScaleType.FIT_CENTER;setBackgroundColor(Color.BLACK);visibility=View.GONE};frame.addView(snapshot,FrameLayout.LayoutParams(-1,-1))
     setContentView(frame)
+    window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+    window?.setFormat(PixelFormat.TRANSLUCENT)
     show();window?.setLayout(-1,-1)
    }
    prepared()
@@ -134,15 +142,17 @@ class CameraContinuityActivity:Activity(){
   val dm=getSystemService(DisplayManager::class.java)
   val p=dm.getDisplay(primaryDisplay);val s=dm.getDisplay(secondaryDisplay)
   if(p==null||s==null||physical(p)!=primaryId||physical(s)!=secondaryId){finishTest("Physical mapping changed");return}
-  if(s.state==Display.STATE_ON)prepareContent()
-  note("Primary state="+p.state+"; secondary state="+s.state+"; mirror="+contentReady+"; snapshot="+snapshotReady+"; elapsed="+(SystemClock.elapsedRealtime()-startAt)+" ms")
+  if(s.state==Display.STATE_ON&&!nativeReveal)prepareContent()
+  nativeButton.isEnabled=s.state==Display.STATE_ON&&!nativeReveal&&(contentReady||snapshotReady)
+  restoreButton.isEnabled=nativeReveal
+  note("Primary state="+p.state+"; secondary state="+s.state+"; native="+nativeReveal+"; mirror="+contentReady+"; snapshot="+snapshotReady+"; elapsed="+(SystemClock.elapsedRealtime()-startAt)+" ms")
   main.postDelayed({if(running)call(2){out->
    if(!out.getBoolean("ok")||!out.getBoolean("active"))finishTest(out.getString("error")?:out.getString("status")?:"Ended") else poll()
   }},500)
  }
  private fun prepareContent(){
   val view=content?:return
-  if(!running||helper==null||contentPending||contentReady||snapshotReady||!view.surfaceControl.isValid||view.width<=0||view.height<=0)return
+  if(!running||nativeReveal||helper==null||contentPending||contentReady||snapshotReady||!view.surfaceControl.isValid||view.width<=0||view.height<=0)return
   val revision=contentEpoch
   contentPending=true
   call(4,{p->p.writeTypedObject(view.surfaceControl,0);p.writeInt(view.width);p.writeInt(view.height)}){out->
@@ -153,6 +163,7 @@ class CameraContinuityActivity:Activity(){
  private fun freezeContent(){
   val remote=capture;val view=content
   if(remote==null||view==null){note("Snapshot unavailable: helper or surface not ready; retry test");return}
+  if(nativeReveal){note("Restore the mirror before taking a snapshot");return}
   if(snapshotReady||!view.surfaceControl.isValid)return
   val epoch=generation
   worker.execute{
@@ -171,14 +182,48 @@ class CameraContinuityActivity:Activity(){
    }
   }
  }
+ private fun revealNative(){
+  if(!running||nativeReveal)return
+  call(5){out->
+   contentReady=false
+   nativeReveal=true
+   content?.visibility=View.GONE
+   snapshot?.visibility=View.GONE
+   overlayFrame?.setBackgroundColor(Color.argb(1,0,0,0))
+   dialog?.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+   nativeButton.isEnabled=false;restoreButton.isEnabled=true
+   call(6){inspect->
+    note(inspect.getString("native")?:inspect.getString("error")?:out.getString("status")?:"Native secondary content exposed; overlay retained")
+   }
+  }
+ }
+ private fun restoreMirrored(){
+  if(!running||!nativeReveal)return
+  nativeReveal=false
+  overlayFrame?.setBackgroundColor(Color.BLACK)
+  restoreButton.isEnabled=false
+  if(snapshotReady){
+   snapshot?.visibility=View.VISIBLE
+   content?.visibility=View.GONE
+   nativeButton.isEnabled=true
+   note("Restored frozen primary snapshot over the same fixed-primary session")
+  }else{
+   content?.visibility=View.VISIBLE
+   contentReady=false
+   prepareContent()
+   note("Restoring live primary mirror over the same fixed-primary session")
+  }
+ }
  private fun finishTest(reason:String){
   running=false;generation++;main.removeCallbacksAndMessages(null)
   val b=helper;helper=null;capture=null;backgroundAllowed=false;contentPending=false;contentEpoch++
   if(b!=null)worker.execute{val p=Parcel.obtain();val r=Parcel.obtain();try{p.writeInterfaceToken(CameraContinuityService.TOKEN);b.transact(3,p,r,0)}catch(_:Exception){}finally{p.recycle();r.recycle()}}
   if(bound){args?.let{runCatching{Shizuku.unbindUserService(it,connection,true)}};bound=false}
-  runCatching{dialog?.dismiss()};dialog=null;content=null;snapshot=null
+  runCatching{dialog?.dismiss()};dialog=null;content=null;snapshot=null;overlayFrame=null;nativeReveal=false
   if(::start.isInitialized)start.isEnabled=true
   if(::freezeOption.isInitialized)freezeOption.isEnabled=true
+  if(::nativeButton.isInitialized)nativeButton.isEnabled=false
+  if(::restoreButton.isInitialized)restoreButton.isEnabled=false
   if(::status.isInitialized)note(reason)
  }
  override fun onPause(){if(!backgroundAllowed)finishTest("Page paused; test released");super.onPause()}
