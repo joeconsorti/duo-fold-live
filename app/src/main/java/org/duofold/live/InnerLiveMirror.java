@@ -26,7 +26,9 @@ final class InnerLiveMirror {
    mirror=SurfaceControl.class.getConstructor().newInstance();
    boolean accepted=(boolean)Class.forName("android.view.IWindowManager").getMethod("mirrorDisplay",int.class,SurfaceControl.class).invoke(wm,0,mirror);
    if(!accepted||!mirror.isValid())throw new IllegalStateException("WindowManager refused live mirror");
-   if(Math.min(sw,sh)/(float)Math.max(sw,sh)>.7f || Math.min(dw,dh)/(float)Math.max(dw,dh)<=.7f)throw new IllegalStateException("Cover-to-inner preview only");
+   boolean sourceInner=Math.min(sw,sh)/(float)Math.max(sw,sh)>.7f;
+   boolean destInner=Math.min(dw,dh)/(float)Math.max(dw,dh)>.7f;
+   if(sourceInner==destInner)throw new IllegalStateException("Expected opposite built-in panel for live handoff mirror");
    float[] fit=LiveMirrorLayout.fit(sw,sh,width,height);
    java.util.concurrent.CountDownLatch committed=new java.util.concurrent.CountDownLatch(1);
    try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){
@@ -35,7 +37,7 @@ final class InnerLiveMirror {
     t.reparent(mirror,parent).setLayer(mirror,1).setCrop(mirror,new Rect(0,0,sw,sh)).setPosition(mirror,fit[1],fit[2]).setVisibility(mirror,true).apply();
    }
    if(!committed.await(250,java.util.concurrent.TimeUnit.MILLISECONDS))throw new IllegalStateException("Right preview commit not yet confirmed; retrying");
-   owner=id;status="Live cover → inner preview (right aligned; normal handoff)";result.putBoolean("ok",true);
+   owner=id;status=sourceInner?"Live inner → cover developer handoff preview":"Live cover → inner preview (normal handoff)";result.putBoolean("ok",true);
   }catch(Exception e){close();Throwable cause=e;while(cause.getCause()!=null)cause=cause.getCause();status="Cover mirror unavailable: "+cause.getClass().getSimpleName()+": "+cause.getMessage();}
   finally{if(parent!=null)parent.release();Binder.restoreCallingIdentity(identity);}
   result.putString("status",status);return result;
