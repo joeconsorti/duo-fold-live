@@ -150,7 +150,9 @@ class CameraContinuityActivity:Activity(){
   if(p==null||s==null||physical(p)!=primaryId||physical(s)!=secondaryId){finishTest("Physical mapping changed");return}
   if(s.state==Display.STATE_ON&&!nativeReveal)prepareContent()
   nativeButton.isEnabled=s.state==Display.STATE_ON&&!nativeReveal&&(contentReady||snapshotReady)
-  restoreButton.isEnabled=nativeReveal
+  moveButton.isEnabled=s.state==Display.STATE_ON&&!nativeReveal&&(contentReady||snapshotReady)&&!nativeTaskReady
+  finishButton.isEnabled=nativeTaskReady
+  restoreButton.isEnabled=nativeReveal&&!nativeTaskReady
   note("Primary state="+p.state+"; secondary state="+s.state+"; native="+nativeReveal+"; mirror="+contentReady+"; snapshot="+snapshotReady+"; elapsed="+(SystemClock.elapsedRealtime()-startAt)+" ms")
   main.postDelayed({if(running)call(2){out->
    if(!out.getBoolean("ok")||!out.getBoolean("active"))finishTest(out.getString("error")?:out.getString("status")?:"Ended") else poll()
@@ -188,6 +190,21 @@ class CameraContinuityActivity:Activity(){
    }
   }
  }
+ private fun moveTaskToInner(){
+  if(!running||nativeTaskReady)return
+  call(7){out->
+   nativeTaskReady=out.getBoolean("nativeReady")
+   note(out.getString("nativeMove")?:out.getString("error")?:"Native task move returned no detail")
+   if(nativeTaskReady){moveButton.isEnabled=false;finishButton.isEnabled=true;revealNative()}
+  }
+ }
+ private fun finishNativeHandoff(){
+  if(!running||!nativeTaskReady)return
+  call(8){out->
+   note(out.getString("error")?:out.getString("status")?:"Concurrent cover hold released after native placement")
+   finishButton.isEnabled=false
+  }
+ }
  private fun revealNative(){
   if(!running||nativeReveal)return
   call(5){out->
@@ -205,6 +222,7 @@ class CameraContinuityActivity:Activity(){
  }
  private fun restoreMirrored(){
   if(!running||!nativeReveal)return
+  if(nativeTaskReady){note("Native task is already placed; finish the handoff or stop the test");return}
   nativeReveal=false
   overlayFrame?.setBackgroundColor(Color.BLACK)
   restoreButton.isEnabled=false
@@ -225,10 +243,12 @@ class CameraContinuityActivity:Activity(){
   val b=helper;helper=null;capture=null;backgroundAllowed=false;contentPending=false;contentEpoch++
   if(b!=null)worker.execute{val p=Parcel.obtain();val r=Parcel.obtain();try{p.writeInterfaceToken(CameraContinuityService.TOKEN);b.transact(3,p,r,0)}catch(_:Exception){}finally{p.recycle();r.recycle()}}
   if(bound){args?.let{runCatching{Shizuku.unbindUserService(it,connection,true)}};bound=false}
-  runCatching{dialog?.dismiss()};dialog=null;content=null;snapshot=null;overlayFrame=null;nativeReveal=false
+  runCatching{dialog?.dismiss()};dialog=null;content=null;snapshot=null;overlayFrame=null;nativeReveal=false;nativeTaskReady=false
   if(::start.isInitialized)start.isEnabled=true
   if(::freezeOption.isInitialized)freezeOption.isEnabled=true
   if(::nativeButton.isInitialized)nativeButton.isEnabled=false
+  if(::moveButton.isInitialized)moveButton.isEnabled=false
+  if(::finishButton.isInitialized)finishButton.isEnabled=false
   if(::restoreButton.isInitialized)restoreButton.isEnabled=false
   if(::status.isInitialized)note(reason)
  }
