@@ -88,6 +88,7 @@ final class CoverHandoff {
    return;
   }
   if(liveCommitted)return;
+  if(owned==null){finishLive(interactive,false,"Developer live handoff concurrent hold was canceled");return;}
   if(primaryInner!=liveSourceInner&&owned!=null){
    finishLive(interactive,false,"Developer live handoff mapping changed before route");
    return;
