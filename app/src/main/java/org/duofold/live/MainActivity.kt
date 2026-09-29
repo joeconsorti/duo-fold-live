@@ -57,6 +57,7 @@ class MainActivity:ComponentActivity(){
     var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
     var dual by remember{mutableStateOf(prefs.getBoolean("dual",false))}
+    var devLiveHandoff by remember{mutableStateOf(prefs.getBoolean("dev_live_handoff",false))}
     var advanced by remember{mutableStateOf(false)}
     var setup by remember{mutableStateOf(!enabled)}
     var smoothing by remember{mutableFloatStateOf(FrameSmoothing.sanitize(prefs.getFloat("smoothing_ms",30f)))}
@@ -294,6 +295,15 @@ class MainActivity:ComponentActivity(){
          Toggle("Classic black shading (debug)",debug){debug=it;booleanSetting("debug_mode",it)}
          TextButton(onClick={selectMode("windowed")}){Text("Restore Windowed Glass")}
         }
+        Toggle("Blackout-free handoff · DEV PREVIEW",devLiveHandoff,help="Runs the experimental no-blackout bridge inside the normal Windowed Glass fold/unfold animation. It keeps the outgoing panel primary while the destination panel wakes, moves the current native task to the live destination, removes the mirror, then releases the outgoing concurrent hold. Off by default. Developer preview only."){value->
+         devLiveHandoff=value
+         if(value){dual=false;liveMirror=true;LiveAngles.cancelContinuityProbe();prefs.edit().putBoolean("dev_live_handoff",true).putBoolean("dual",false).putBoolean("cover_preview",true).apply()}
+         else prefs.edit().putBoolean("dev_live_handoff",false).apply()
+         restart()
+        }
+        Text("Use the phone normally after enabling this. Fold and unfold through your existing animation in Home, Chrome, or another app. Then return here and use Copy status report.",style=MaterialTheme.typography.bodySmall)
+        Text(LiveAngles.liveHandoffStatus,style=MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
         OutlinedButton(onClick={startActivity(Intent(this@MainActivity,CameraContinuityActivity::class.java))}){Text("Camera-style continuity test")}
         Text("Screen continuity test",style=MaterialTheme.typography.titleMedium)
         Text("Arm, return to Home or the app you want to test, fully close, then unfold within 30 seconds. During the 20-second hold, opening past 98° tries moving real content to the inner display. The inner animation uses the transferred app. Check that content stays visible, with full-size layout, touch and navigation. Folding below 94° returns content; only one transfer per test. Temporarily requests system navigation on the inner display; restores the prior display policy after the test. Samsung may reject Home routing. Exit may still flash. Copy the connection report afterward.",style=MaterialTheme.typography.bodySmall)
