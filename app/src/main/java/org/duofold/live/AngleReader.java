@@ -49,6 +49,7 @@ public class AngleReader extends Binder {
    String mode=data.dataAvail()>0?AnimationModePolicy.sanitize(data.readString()):AnimationModePolicy.DEFAULT;
    boolean debug=data.dataAvail()>=4&&data.readInt()!=0;
    float handoffAngle=HandoffSettings.angle(data.dataAvail()>=4?data.readFloat():HandoffSettings.DEFAULT);
+   boolean livePreview=data.dataAvail()>=4&&data.readInt()!=0;
    boolean effectAllowed=animationMode.update(mode,effectiveAngle,last>0&&heartbeat-last<750);
    boolean mirrorMode=AnimationModePolicy.mirrors(mode);
    appEnabled=appEnabled&&effectAllowed;
