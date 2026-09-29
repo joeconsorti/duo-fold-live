@@ -307,13 +307,13 @@ class MainActivity:ComponentActivity(){
         OutlinedButton(onClick={startActivity(Intent(this@MainActivity,CameraContinuityActivity::class.java))}){Text("Camera-style continuity test")}
         Text("Screen continuity test",style=MaterialTheme.typography.titleMedium)
         Text("Arm, return to Home or the app you want to test, fully close, then unfold within 30 seconds. During the 20-second hold, opening past 98° tries moving real content to the inner display. The inner animation uses the transferred app. Check that content stays visible, with full-size layout, touch and navigation. Folding below 94° returns content; only one transfer per test. Temporarily requests system navigation on the inner display; restores the prior display policy after the test. Samsung may reject Home routing. Exit may still flash. Copy the connection report afterward.",style=MaterialTheme.typography.bodySmall)
-        OutlinedButton(enabled=enabled&&liveMirror&&!dual,onClick={LiveAngles.startContinuityProbe()}){Text("Arm 20-second continuity test")}
+        OutlinedButton(enabled=enabled&&liveMirror&&!dual&&!devLiveHandoff,onClick={LiveAngles.startContinuityProbe()}){Text("Arm 20-second continuity test")}
         TextButton(onClick={LiveAngles.cancelContinuityProbe()}){Text("Stop continuity test")}
         Text(LiveAngles.continuityStatus,style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
         Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
-        Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
+        Toggle("Dual-screen screenshot handoff",dual){value->dual=value;if(value&&devLiveHandoff){devLiveHandoff=false;prefs.edit().putBoolean("dev_live_handoff",false).putBoolean("dual",true).apply();restart()}else booleanSetting("dual",value)}
         Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
         Text(GlassFrames.status,style=MaterialTheme.typography.bodySmall)
         Text(HandoffFrames.status,style=MaterialTheme.typography.bodySmall)
