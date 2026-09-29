@@ -63,6 +63,26 @@ public final class CameraContinuityService extends Binder {
   try{type.getMethod("requestState",req,Executor.class,cb).invoke(manager,next,(Executor)Runnable::run,callback);}
   catch(Exception e){stop("Request failed");throw e;}
  }
+ private String nativeSecondary()throws Exception{
+  Object atm=Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
+  Class<?> api=Class.forName("android.app.IActivityTaskManager");
+  List<?> tasks=(List<?>)api.getMethod("getTasks",int.class,boolean.class,boolean.class,int.class).invoke(atm,8,false,false,1);
+  Object focused=api.getMethod("getFocusedRootTaskInfo").invoke(atm);
+  StringBuilder out=new StringBuilder("Native underlay exposed; display 1 tasks=");
+  if(tasks.isEmpty())out.append("none");
+  else for(int i=0;i<tasks.size();i++){
+   Object task=tasks.get(i);
+   if(i>0)out.append(" | ");
+   out.append(task.getClass().getField("taskId").getInt(task))
+      .append(":").append(task.getClass().getField("topActivity").get(task));
+  }
+  out.append("; focused=");
+  if(focused==null)out.append("none");
+  else out.append("display ").append(focused.getClass().getField("displayId").getInt(focused))
+          .append(" task ").append(focused.getClass().getField("taskId").getInt(focused))
+          .append(" top ").append(focused.getClass().getField("topActivity").get(focused));
+  return out.toString();
+ }
  private void unlink(){if(client!=null){client.unlinkToDeath(death,0);client=null;}}
  private synchronized void stop(String reason){
   mirror.close();if(capture!=null){capture.close();capture=null;}
@@ -87,6 +107,7 @@ public final class CameraContinuityService extends Binder {
     if(!attached.getBoolean("ok"))throw new IllegalStateException(attached.getString("status"));
     out.putString("content",attached.getString("status"));
    }else if(code==5)mirror.close();
+   else if(code==6)out.putString("native",nativeSecondary());
    else throw new IllegalArgumentException("Unknown operation");
    out.putBoolean("ok",true);
   }catch(Exception e){out.putString("error",String.valueOf(e.getCause()!=null?e.getCause():e));}
