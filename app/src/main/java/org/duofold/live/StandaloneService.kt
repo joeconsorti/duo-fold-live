@@ -72,7 +72,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         } else {updateDisplay();resumeIfUsable()}
     }}
     private fun usable()=::displays.isInitialized && displays.getDisplay(Display.DEFAULT_DISPLAY)?.state==Display.STATE_ON && !getSystemService(KeyguardManager::class.java).isKeyguardLocked()
-    private fun previewMode()=AnimationModePolicy.mirrors(settings().getString("animation_mode",AnimationModePolicy.DEFAULT)) && LiveAngles.effectAllowed && settings().getBoolean("cover_preview",true) && !settings().getBoolean("dual",false)
+    private fun previewMode()=AnimationModePolicy.mirrors(settings().getString("animation_mode",AnimationModePolicy.DEFAULT)) && LiveAngles.effectAllowed && (settings().getBoolean("cover_preview",true) || settings().getBoolean("dev_live_handoff",false)) && !settings().getBoolean("dual",false)
     private fun settings()=getSharedPreferences("standalone",0)
     override fun onServiceConnected(){
         instance=this;RecoveryLog.init(this);RecoveryLog.add("Accessibility service connected");handler.post(sourceGuard);displays=getSystemService(DisplayManager::class.java)
@@ -170,7 +170,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         PreviewTransition.configure(this)
         PreviewTransition.update(!LiveAngles.nativeInner && previewMode() && settings().getBoolean("enabled",false) && !getSystemService(KeyguardManager::class.java).isKeyguardLocked(),primaryInner)
         val native=LiveAngles.continuityNative && !primaryInner
-        val preview=!settings().getBoolean("dual",false) && settings().getBoolean("cover_preview",true) && LiveAngles.coverPreview
+        val preview=!settings().getBoolean("dual",false) && (settings().getBoolean("cover_preview",true) || settings().getBoolean("dev_live_handoff",false)) && LiveAngles.coverPreview
         if(!LiveAngles.effectAllowed||!settings().getBoolean("enabled",false)||(!native && !preview && (!settings().getBoolean("dual",false)||!LiveAngles.dualActive))||!usable()){dismissSecondary();return}
         val target=displays.displays.firstOrNull{it.displayId==1 && BuiltInPanel.accepts(it)}
         if(target==null){secondaryError="Concurrent mode has not exposed the second built-in panel";dismissSecondary();return}
