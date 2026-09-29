@@ -52,6 +52,7 @@ public class AngleReader extends Binder {
    boolean livePreview=data.dataAvail()>=4&&data.readInt()!=0;
    boolean effectAllowed=animationMode.update(mode,effectiveAngle,last>0&&heartbeat-last<750);
    boolean mirrorMode=AnimationModePolicy.mirrors(mode);
+   livePreview=livePreview&&mirrorMode;
    appEnabled=appEnabled&&effectAllowed;
    if(rotation==null)rotation=new FoldRotationHold(caller/100000,recoveryApk);
    rotation.update(appEnabled&&unlocked,last>0&&heartbeat-last<750,effectiveAngle,openThreshold);
