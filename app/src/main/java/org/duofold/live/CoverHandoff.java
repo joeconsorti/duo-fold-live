@@ -9,7 +9,7 @@ final class CoverHandoff {
  private int coverId=-1,innerId=-1; private boolean innerHeld=false; private final HandoffPolicy policy=new HandoffPolicy();
  private final NativeContinuityProbe nativeProbe=new NativeContinuityProbe();
  private TaskDisplayRouter liveRouter;
- private boolean liveSession,liveSourceInner,livePlaced,liveCommitted,liveRepair;
+ private boolean liveSession,liveSourceInner,livePlaced,liveCommitted,liveRepair,liveBlocked;
  private long liveRequestedAt,livePlacedAt;
  private float liveLastAngle=Float.NaN;
  private String liveStatus="Developer live handoff idle";
@@ -73,8 +73,10 @@ final class CoverHandoff {
   if(endpoint){
    if(liveSession&&!liveCommitted)finishLive(interactive,false,"Developer live handoff returned to endpoint");
    if(liveCommitted){liveSession=false;liveCommitted=false;livePlaced=false;liveRouter=null;liveStatus="Developer live handoff ready";}
+   liveBlocked=false;
    return;
   }
+  if(liveBlocked)return;
   float delta=Float.isFinite(liveLastAngle)?angle-liveLastAngle:0f;
   if(!liveSession){
    boolean opening=!primaryInner&&delta>.2f;
@@ -130,6 +132,7 @@ final class CoverHandoff {
  private void finishLive(boolean interactive,boolean keepTask,String reason){
   if(liveRouter!=null&&!keepTask)try{liveRouter.endProbe(interactive);}catch(Exception ignored){}
   liveRouter=null;liveSession=false;livePlaced=false;liveCommitted=false;liveRepair=false;
+  liveBlocked=reason.contains("failed")||reason.contains("timed out")||reason.contains("canceled")||reason.contains("could not hold");
   releaseOwned();liveStatus=reason;status=reason;
  }
  private void changeState(boolean toInner){
