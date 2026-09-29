@@ -57,9 +57,9 @@ public class AngleReader extends Binder {
    rotation.update(appEnabled&&unlocked,last>0&&heartbeat-last<750,effectiveAngle,openThreshold);
    if(fade==null)fade=new HandoffFade();
    fade.settings(fadeSmoothing,fadeGradualness,mirrorMode&&!debug,openThreshold,handoffAngle);
-   fade.update(live&&!dual&&appEnabled&&!handoff.probeHolding(),effectiveAngle,last>0&&heartbeat-last<750);
-   if(expansion!=null){expansion.motion(effectiveAngle,openThreshold);expansion.enabled(mirrorMode&&live&&!dual&&appEnabled&&!handoff.probeHolding());}
-   if(mirrorMode && live && !dual && unlocked && appEnabled && handoff.active() && !handoff.probeHolding() && angle>=handoffAngle && last>0 && heartbeat-last<750 && expansion!=null)expansion.holdBeforeRelease();
+   fade.update(live&&!dual&&appEnabled&&!handoff.probeHolding()&&!livePreview,effectiveAngle,last>0&&heartbeat-last<750);
+   if(expansion!=null){expansion.motion(effectiveAngle,openThreshold);expansion.enabled(mirrorMode&&live&&!dual&&appEnabled&&!handoff.probeHolding()&&!livePreview);}
+   if(!livePreview && mirrorMode && live && !dual && unlocked && appEnabled && handoff.active() && !handoff.probeHolding() && angle>=handoffAngle && last>0 && heartbeat-last<750 && expansion!=null)expansion.holdBeforeRelease();
    boolean wasCoverHeld=handoff.active();
    if(!effectAllowed){handoff.release();concurrent.release();}else if(dual){handoff.release();concurrent.update(effectiveAngle,last>0&&heartbeat-last<2000,unlocked,primaryInner,secondaryReady,frozenSource,openThreshold);}else{concurrent.release();handoff.update(effectiveAngle,last>0&&heartbeat-last<750,unlocked,live&&appEnabled,primaryInner,openThreshold,probeRequest,handoffAngle,livePreview);}
    if(wasCoverHeld && !handoff.active() && !livePreview && expansion!=null)expansion.releaseReturned();
