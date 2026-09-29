@@ -87,6 +87,7 @@ class CameraContinuityActivity:Activity(){
    val secondary=dm.getDisplays("com.samsung.android.hardware.display.category.BUILTIN").firstOrNull{it.displayId!=primary.displayId}?:error("Second built-in display unavailable")
    val size=Point();primary.getRealSize(size)
    inner=try{resources.configuration.javaClass.getField("semDisplayDeviceType").getInt(resources.configuration)==0}catch(_:Exception){size.x>size.y}
+   check(!inner){"Start this alpha.5 native-underlay test fully closed on the cover screen"}
    primaryId=physical(primary);secondaryId=physical(secondary);primaryDisplay=primary.displayId;secondaryDisplay=secondary.displayId
    check(!getSystemService(KeyguardManager::class.java).isKeyguardLocked){"Unlock first"}
    running=true;start.isEnabled=false;freezeOption.isEnabled=false;nativeButton.isEnabled=false;restoreButton.isEnabled=false;testFrozen=frozen;nativeReveal=false;contentReady=false;snapshotReady=false;contentPending=false;backgroundAllowed=false;generation++;startAt=SystemClock.elapsedRealtime()
