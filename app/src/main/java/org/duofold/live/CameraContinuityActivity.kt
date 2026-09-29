@@ -65,6 +65,8 @@ class CameraContinuityActivity:Activity(){
   freezeOption=CheckBox(this).apply{text="Freeze real content 5 seconds after Show Home";setOnCheckedChangeListener{_,v->frozen=v}};column.addView(freezeOption)
   start=Button(this).apply{text="Start 30-second Camera test";setOnClickListener{begin()}};column.addView(start)
   nativeButton=Button(this).apply{text="Reveal native secondary content";isEnabled=false;setOnClickListener{revealNative()}};column.addView(nativeButton)
+  moveButton=Button(this).apply{text="Move focused task to live inner display";isEnabled=false;setOnClickListener{moveTaskToInner()}};column.addView(moveButton)
+  finishButton=Button(this).apply{text="Finish handoff: release cover hold";isEnabled=false;setOnClickListener{finishNativeHandoff()}};column.addView(finishButton)
   restoreButton=Button(this).apply{text="Restore mirrored primary content";isEnabled=false;setOnClickListener{restoreMirrored()}};column.addView(restoreButton)
   column.addView(Button(this).apply{text="Show Home during test";setOnClickListener{
    if(running){backgroundAllowed=true;startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME));if(testFrozen){val epoch=generation;main.postDelayed({if(running&&generation==epoch)freezeContent()},5000)}}
@@ -93,7 +95,7 @@ class CameraContinuityActivity:Activity(){
    check(!inner){"Start this alpha.5 native-underlay test fully closed on the cover screen"}
    primaryId=physical(primary);secondaryId=physical(secondary);primaryDisplay=primary.displayId;secondaryDisplay=secondary.displayId
    check(!getSystemService(KeyguardManager::class.java).isKeyguardLocked){"Unlock first"}
-   running=true;start.isEnabled=false;freezeOption.isEnabled=false;nativeButton.isEnabled=false;restoreButton.isEnabled=false;testFrozen=frozen;nativeReveal=false;contentReady=false;snapshotReady=false;contentPending=false;backgroundAllowed=false;generation++;startAt=SystemClock.elapsedRealtime()
+   running=true;start.isEnabled=false;freezeOption.isEnabled=false;nativeButton.isEnabled=false;moveButton.isEnabled=false;finishButton.isEnabled=false;restoreButton.isEnabled=false;testFrozen=frozen;nativeReveal=false;nativeTaskReady=false;contentReady=false;snapshotReady=false;contentPending=false;backgroundAllowed=false;generation++;startAt=SystemClock.elapsedRealtime()
    note("Prepare first: primary="+primaryId+" secondary="+secondaryId+" direction="+if(inner)"inner → cover" else "cover → inner")
    val ctx=createDisplayContext(secondary).createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,null)
    dialog=Dialog(ctx).apply{
