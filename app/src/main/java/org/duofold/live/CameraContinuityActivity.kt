@@ -35,11 +35,14 @@ class CameraContinuityActivity:Activity(){
  private var snapshotReady=false
  private var testFrozen=false
  private var nativeReveal=false
+ private var nativeTaskReady=false
  private var backgroundAllowed=false
  private var contentEpoch=0
  private var overlayFrame:FrameLayout?=null
  private lateinit var freezeOption:CheckBox
  private lateinit var nativeButton:Button
+ private lateinit var moveButton:Button
+ private lateinit var finishButton:Button
  private lateinit var restoreButton:Button
  private lateinit var status:TextView
  private lateinit var start:Button
