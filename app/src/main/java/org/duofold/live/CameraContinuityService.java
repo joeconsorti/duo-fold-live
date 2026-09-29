@@ -8,6 +8,8 @@ public final class CameraContinuityService extends Binder {
  public static final String TOKEN="org.duofold.live.CameraContinuity";
  private final CameraContentMirror mirror=new CameraContentMirror();
  private GlassCapture capture;
+ private TaskDisplayRouter router;
+ private boolean probeStarted=false,commitTask=false;
  private int owner=-1; private Object manager,request; private IBinder client;
  private final ScheduledExecutorService guard=Executors.newSingleThreadScheduledExecutor();
  private long deadline,heartbeat;private String primary,status="Idle";
@@ -63,6 +65,36 @@ public final class CameraContinuityService extends Binder {
   try{type.getMethod("requestState",req,Executor.class,cb).invoke(manager,next,(Executor)Runnable::run,callback);}
   catch(Exception e){stop("Request failed");throw e;}
  }
+ private Bundle moveFocusedTaskToInner()throws Exception{
+  if(request==null||!primary.equals(panel()))throw new IllegalStateException("No fixed cover-primary session");
+  if(router==null)router=new TaskDisplayRouter();
+  if(probeStarted)throw new IllegalStateException("Native task probe already started");
+  String requested=router.beginProbe();probeStarted=true;
+  long start=SystemClock.elapsedRealtime();boolean repaired=false;String repair="";
+  while(SystemClock.elapsedRealtime()-start<1600){
+   boolean placed=router.probePlaced(),verified=router.probeVerified();
+   if(placed&&verified){
+    Bundle out=new Bundle();out.putBoolean("nativeReady",true);
+    out.putString("nativeMove",requested+"; verified on display 1; "+router.probeSnapshot());
+    return out;
+   }
+   if(!repaired&&SystemClock.elapsedRealtime()-start>=350){
+    try{repair=router.repairProbe();}catch(Exception e){repair="repair failed: "+e.getMessage();}
+    repaired=true;
+   }
+   Thread.sleep(50);
+  }
+  Bundle out=new Bundle();boolean placed=router.probePlaced(),verified=router.probeVerified();
+  out.putBoolean("nativeReady",placed&&verified);
+  out.putString("nativeMove",requested+"; verified="+verified+"; placed="+placed+(repair.isEmpty()?"":"; "+repair)+"; "+router.probeSnapshot());
+  return out;
+ }
+ private void finishNativeHandoff()throws Exception{
+  if(!probeStarted||router==null||!router.probePlaced())throw new IllegalStateException("Native inner task is not placed");
+  mirror.close();commitTask=true;
+  if(request!=null)manager.getClass().getMethod("cancelStateRequest").invoke(manager);
+  request=null;unlink();status="Concurrent cover hold released after native inner task placement";
+ }
  private String nativeSecondary()throws Exception{
   Object atm=Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
   Class<?> api=Class.forName("android.app.IActivityTaskManager");
@@ -86,6 +118,8 @@ public final class CameraContinuityService extends Binder {
  private void unlink(){if(client!=null){client.unlinkToDeath(death,0);client=null;}}
  private synchronized void stop(String reason){
   mirror.close();if(capture!=null){capture.close();capture=null;}
+  if(router!=null&&probeStarted&&!commitTask)try{router.endProbe(true);}catch(Exception ignored){}
+  probeStarted=false;
   if(request!=null)try{manager.getClass().getMethod("cancelStateRequest").invoke(manager);}
    catch(Exception e){System.exit(0);}
   request=null;unlink();status=reason;
@@ -108,6 +142,11 @@ public final class CameraContinuityService extends Binder {
     out.putString("content",attached.getString("status"));
    }else if(code==5)mirror.close();
    else if(code==6)out.putString("native",nativeSecondary());
+   else if(code==7){
+    Bundle moved=moveFocusedTaskToInner();
+    out.putBoolean("nativeReady",moved.getBoolean("nativeReady"));
+    out.putString("nativeMove",moved.getString("nativeMove"));
+   }else if(code==8)finishNativeHandoff();
    else throw new IllegalArgumentException("Unknown operation");
    out.putBoolean("ok",true);
   }catch(Exception e){out.putString("error",String.valueOf(e.getCause()!=null?e.getCause():e));}
