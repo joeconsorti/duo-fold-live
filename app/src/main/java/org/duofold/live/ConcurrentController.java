@@ -15,6 +15,7 @@ final class ConcurrentController {
  private boolean nativeRetried;
  synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
+ private boolean cameraSession;private String fixedPrimary="";
  String status="Dual-screen mode ready";
  synchronized boolean active(){return owned!=null;}
  private void init()throws Exception{
@@ -30,6 +31,11 @@ final class ConcurrentController {
   requestType=Class.forName("android.hardware.devicestate.DeviceStateRequest");callbackType=Class.forName("android.hardware.devicestate.DeviceStateRequest$Callback");
   request=type.getMethod("requestState",requestType,Executor.class,callbackType);cancel=type.getMethod("cancelStateRequest");manager=candidate;
  }
+ private String physicalPrimary()throws Exception{
+  Object dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
+  Object info=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,0);
+  return String.valueOf(info.getClass().getField("uniqueId").get(info));
+ }
  private void begin(boolean inner,long now)throws Exception{
   init();
   IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"device_state");
@@ -37,11 +43,13 @@ final class ConcurrentController {
   Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
   if(!current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Existing display override; stop other test apps first");
+  if(cameraSession)fixedPrimary=physicalPrimary();
   setConcurrent(inner,now); // Captured outgoing panel becomes the secondary Presentation.
  }
  private void setConcurrent(boolean inner,long now)throws Exception{
   nativeFailure="";nativeRetried=false;primaryInner=contentInner=inner;started=now;readyLostAt=now;endpointSince=0;mappingDeadline=now+1800;
   Object builder=requestType.getMethod("newBuilder",int.class).invoke(null,inner?innerId:outerId);
+  if(cameraSession&&inner)builder.getClass().getMethod("setFlags",int.class).invoke(builder,4);
   Object next=builder.getClass().getMethod("build").invoke(builder);owned=next;
   Object callback=Proxy.newProxyInstance(callbackType.getClassLoader(),new Class<?>[]{callbackType},(proxy,m,args)->{
    switch(m.getName()){
@@ -54,9 +62,10 @@ final class ConcurrentController {
   request.invoke(manager,next,(Executor)Runnable::run,callback);
   status="Waiting for second-panel Presentation (state "+(inner?innerId:outerId)+")";
  }
- synchronized void update(float angle,boolean fresh,boolean unlocked,boolean primaryIsInner,boolean secondaryReady,int frozenSource,float openThreshold){
+ synchronized void update(float angle,boolean fresh,boolean unlocked,boolean primaryIsInner,boolean secondaryReady,int frozenSource,float openThreshold,boolean cameraStartup,boolean windowPrepared){
   long token=Binder.clearCallingIdentity();long now=SystemClock.elapsedRealtime();
   try{
+   if(owned!=null && cameraSession!=cameraStartup){releaseInternal();blocked=true;return;}
    if(!unlocked){releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;return;}
    if(!fresh){
     if(bootstrapping && owned!=null && now-started<3500)return;
@@ -70,7 +79,22 @@ final class ConcurrentController {
     if(angle>=FoldThreshold.sanitize(openThreshold) || now-endpointSince>=350){releaseInternal();blocked=false;}return;
    }
    endpointSince=0;
-   if(owned==null){if(!blocked&&FoldThreshold.canStart(angle,openThreshold)){if(FreezePolicy.canSwitch(primaryIsInner,frozenSource))begin(FreezePolicy.targetInner(frozenSource),now);else status="Waiting for outgoing frame before switching displays";}return;}
+   if(owned==null){
+    if(!blocked&&FoldThreshold.canStart(angle,openThreshold)){
+     if(cameraStartup){
+      if(ScreenshotStartupPolicy.canBegin(primaryIsInner,frozenSource,windowPrepared)){
+       cameraSession=true;begin(ScreenshotStartupPolicy.keepInnerPrimary(frozenSource),now);
+       status="Window-first screenshot: keeping outgoing primary; waiting for secondary ON";
+      }else status="Screenshot startup waiting for outgoing frame and attached destination window";
+     }else{cameraSession=false;if(FreezePolicy.canSwitch(primaryIsInner,frozenSource))begin(FreezePolicy.targetInner(frozenSource),now);else status="Waiting for outgoing frame before switching displays";}
+    }return;
+   }
+   if(cameraSession){
+    if(!windowPrepared||!fixedPrimary.equals(physicalPrimary()))throw new IllegalStateException("Screenshot window lost or primary mapping changed");
+    if(now-started>=30000){releaseInternal();blocked=true;status="Screenshot hold reached 30-second limit";return;}
+    status=secondaryReady?"Window-first screenshot active: outgoing primary retained; final native switch pending":"Window-first screenshot: waiting for secondary ON";
+    return;
+   }
    if(primaryIsInner!=primaryInner && now<mappingDeadline)return;
    if(primaryIsInner!=primaryInner)throw new IllegalStateException("Primary physical display changed during session");
    // Hold one inner-primary session for the entire overlap; do not move tasks or swap at 90 degrees.

@@ -57,6 +57,7 @@ class MainActivity:ComponentActivity(){
     var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
     var dual by remember{mutableStateOf(prefs.getBoolean("dual",false))}
+    var screenshotStartup by remember{mutableStateOf(prefs.getBoolean("screenshot_camera_startup",false))}
     var advanced by remember{mutableStateOf(false)}
     var setup by remember{mutableStateOf(!enabled)}
     var smoothing by remember{mutableFloatStateOf(FrameSmoothing.sanitize(prefs.getFloat("smoothing_ms",30f)))}
@@ -304,6 +305,8 @@ class MainActivity:ComponentActivity(){
         Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
         Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
+        Toggle("Screenshot window-first startup (experimental)",screenshotStartup){screenshotStartup=it;booleanSetting("screenshot_camera_startup",it)}
+        Text("Requires Dual-screen screenshot handoff ON. Prepares the second window before waking its panel, keeping the outgoing screen primary during the held-image animation. Final native-layout switch may still flash. Maximum hold: 30 seconds. Turn this off to restore the original screenshot path.",style=MaterialTheme.typography.bodySmall)
         Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
         Text(GlassFrames.status,style=MaterialTheme.typography.bodySmall)
         Text(HandoffFrames.status,style=MaterialTheme.typography.bodySmall)
