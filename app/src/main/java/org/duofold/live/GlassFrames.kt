@@ -4,7 +4,7 @@ import android.os.*
 import android.view.SurfaceControl
 import androidx.compose.runtime.*
 import java.util.concurrent.Executors
-internal data class GlassFrame(val bitmap:Bitmap,val width:Int,val height:Int,val stamp:Long,val levels:List<Bitmap> = emptyList())
+internal data class GlassFrame(val bitmap:Bitmap,val width:Int,val height:Int,val stamp:Long,val levels:List<Bitmap> = emptyList(),val physicalId:String="unknown",val displayId:Int=-1)
 internal object GlassFrames {
  var frame by mutableStateOf<GlassFrame?>(null);private set
  var status by mutableStateOf("Glass renderer ready");private set
@@ -54,7 +54,7 @@ internal object GlassFrames {
    }else if(clients>0 && !suspended)main.post(this)}
   }
  }}
- fun freeze(done:(GlassFrame?,String)->Unit){
+ fun freeze(labelled:Boolean=false,done:(GlassFrame?,String)->Unit){
   val requestedAt=SystemClock.elapsedRealtime()
   val valid=surfaces.values.filter{it.isValid}.take(4)
   if(valid.isEmpty()){done(null,"Waiting for overlay exclusion surface");return}
@@ -65,7 +65,21 @@ internal object GlassFrames {
     p.writeInterfaceToken(GlassCapture.TOKEN);p.writeInt(valid.size);valid.forEach{p.writeTypedObject(it,0)}
     LiveAngles.captureBinder().transact(3,p,r,0);r.readException();val result=r.readBundle(Bitmap::class.java.classLoader)
     val bitmap=result?.getParcelable("bitmap",Bitmap::class.java)
-    if(result?.getBoolean("ok")==true && bitmap!=null){captured=GlassFrame(bitmap,result.getInt("width"),result.getInt("height"),result.getLong("stamp"));note="capture ${SystemClock.elapsedRealtime()-captureStarted} ms; queue ${captureStarted-requestedAt} ms"}
+    if(result?.getBoolean("ok")==true && bitmap!=null){val source=result.getString("physicalId")?:"unknown"
+     val w=result.getInt("width");val h=result.getInt("height");val stamp=result.getLong("stamp")
+     val tagged=if(labelled)bitmap.copy(Bitmap.Config.ARGB_8888,true).also{copy->
+      val canvas=android.graphics.Canvas(copy);val paint=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+      val size=(copy.width/28f).coerceAtLeast(16f);val bar=size*2.7f
+      val panel=if(minOf(w,h).toFloat()/maxOf(w,h)>.7f)"INNER" else "COVER"
+      for(y in listOf(copy.height*.16f,copy.height*.78f)){
+       paint.color=android.graphics.Color.MAGENTA;canvas.drawRect(0f,y,copy.width.toFloat(),y+bar,paint)
+       paint.color=android.graphics.Color.BLACK;paint.textSize=size;paint.typeface=android.graphics.Typeface.DEFAULT_BOLD
+       canvas.drawText("FROZEN $panel #${stamp%100000}",8f,y+size,paint)
+       paint.textSize=size*.62f;canvas.drawText("src D${result.getInt("displayId")} / ${source.takeLast(8)} / ${w}x${h}",8f,y+size*2f,paint)
+      }
+      bitmap.recycle()
+     } else bitmap
+     captured=GlassFrame(tagged,w,h,stamp,physicalId=source,displayId=result.getInt("displayId"));note="source D${result.getInt("displayId")} physical=$source; label=$labelled; "+"capture ${SystemClock.elapsedRealtime()-captureStarted} ms; queue ${captureStarted-requestedAt} ms"}
     else note=result?.getString("error")?:note
    }catch(e:Exception){note=e.message?:note}finally{p.recycle();r.recycle()}
    val f=captured;val message=note;main.post{done(f,message)}

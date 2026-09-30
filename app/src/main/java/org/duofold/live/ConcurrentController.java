@@ -16,10 +16,12 @@ final class ConcurrentController {
  synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
  private boolean cameraSession;private String fixedPrimary="";
+ private final ScreenshotWindowTrace windows=new ScreenshotWindowTrace();
+ private long afterReleaseAt;private int afterReleaseStage;
  private final ArrayDeque<String> samples=new ArrayDeque<>();
  private long sampledAt;private String panelSample="";private boolean capturedTasks;
  private void log(String text){samples.addLast(SystemClock.elapsedRealtime()+": "+text);while(samples.size()>90)samples.removeFirst();}
- synchronized String trace(){return "Screenshot panel trace (software states, not optical proof):\n"+String.join("\n",samples);}
+ synchronized String trace(){return "Screenshot panel trace (software states, not optical proof):\n"+String.join("\n",samples)+"\n"+windows.report();}
  private void samplePanels(float angle,boolean windowReady,boolean ready,boolean force){
   long now=SystemClock.elapsedRealtime();if(!force&&now-sampledAt<100)return;sampledAt=now;
   try{
@@ -34,15 +36,17 @@ final class ConcurrentController {
    }
    String next=line.toString();
    if(force||!next.equals(panelSample)){panelSample=next;log("angle="+angle+" prepared="+windowReady+" secondaryReady="+ready+next);}
-   if(secondOn&&owned!=null&&!capturedTasks){capturedTasks=true;logNativeTasks();}
+   if(secondOn&&owned!=null&&!capturedTasks){capturedTasks=true;logNativeTasks();windows.capture("secondary ON");}
   }catch(Exception e){if(force)log("Display sample failed: "+e);}
  }
  private void logNativeTasks(){
   try{
    Object atm=Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
-   List<?> roots=(List<?>)Class.forName("android.app.IActivityTaskManager").getMethod("getAllRootTaskInfosOnDisplay",int.class).invoke(atm,1);
-   log("Incoming display roots="+roots.size()+"; content source=live underlay, no screenshot, no task move");
-   for(Object root:roots)log("Incoming task="+root.getClass().getField("taskId").get(root)+" top="+root.getClass().getField("topActivity").get(root)+" configuration="+root.getClass().getField("configuration").get(root));
+   for(int display=0;display<=1;display++){
+    List<?> roots=(List<?>)Class.forName("android.app.IActivityTaskManager").getMethod("getAllRootTaskInfosOnDisplay",int.class).invoke(atm,display);
+    log("Tasks display="+display+" roots="+roots.size());
+    for(Object root:roots)log("D"+display+" task="+root.getClass().getField("taskId").get(root)+" top="+root.getClass().getField("topActivity").get(root)+" configuration="+root.getClass().getField("configuration").get(root));
+   }
   }catch(Exception e){log("Incoming task diagnostics unavailable: "+e);}
  }
  String status="Dual-screen mode ready";
@@ -67,6 +71,7 @@ final class ConcurrentController {
  }
  private void begin(boolean inner,long now)throws Exception{
   init();
+  if(cameraSession){afterReleaseAt=0;logNativeTasks();windows.capture("before request");}
   IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"device_state");
   Object service=Class.forName("android.hardware.devicestate.IDeviceStateManager$Stub").getMethod("asInterface",IBinder.class).invoke(null,binder);
   Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
@@ -85,7 +90,7 @@ final class ConcurrentController {
     case "hashCode":return System.identityHashCode(proxy);
     case "equals":return proxy==args[0];
     case "toString":return "DuoConcurrentRequest";
-    case "onRequestCanceled":synchronized(this){if(owned==next){owned=null;blocked=true;status="Concurrent request canceled by Android";if(cameraSession){log(status);samplePanels(Float.NaN,false,false,true);}}}
+    case "onRequestCanceled":synchronized(this){if(owned==next){owned=null;blocked=true;status="Concurrent request canceled by Android";if(cameraSession){log(status);samplePanels(Float.NaN,false,false,true);afterReleaseAt=SystemClock.elapsedRealtime();afterReleaseStage=0;windows.capture("Android canceled");}}}
    }return null;
   });
   request.invoke(manager,next,(Executor)Runnable::run,callback);
@@ -94,6 +99,13 @@ final class ConcurrentController {
  synchronized void update(float angle,boolean fresh,boolean unlocked,boolean primaryIsInner,boolean secondaryReady,int frozenSource,float openThreshold,boolean cameraStartup,boolean windowPrepared){
   long token=Binder.clearCallingIdentity();long now=SystemClock.elapsedRealtime();
   try{
+   if(afterReleaseAt>0){
+    long elapsed=now-afterReleaseAt;
+    if(elapsed>=(afterReleaseStage==0?200:1200)){
+     log("AFTER RELEASE +"+elapsed+" ms");samplePanels(angle,windowPrepared,secondaryReady,true);logNativeTasks();windows.capture("after release +"+elapsed+"ms");
+     if(++afterReleaseStage>=2)afterReleaseAt=0;
+    }
+   }
    if(owned!=null && cameraSession!=cameraStartup){if(cameraSession)log("RELEASE: screenshot mode changed");releaseInternal();blocked=true;return;}
    if(!unlocked){if(cameraSession&&owned!=null)log("RELEASE: locked, screen off, or host disabled");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;return;}
    if(!fresh){
@@ -133,7 +145,7 @@ final class ConcurrentController {
   finally{Binder.restoreCallingIdentity(token);}
  }
  private void releaseInternal(){
-  if(owned!=null){try{cancel.invoke(manager);owned=null;status="Normal display control restored";}catch(Exception e){status="Display release pending";}}
+  if(owned!=null){try{if(cameraSession){logNativeTasks();windows.capture("before release");afterReleaseAt=SystemClock.elapsedRealtime();afterReleaseStage=0;}cancel.invoke(manager);owned=null;status="Normal display control restored";}catch(Exception e){status="Display release pending";}}
  }
  synchronized void release(){long token=Binder.clearCallingIdentity();try{if(cameraSession&&owned!=null)log("RELEASE: controller disabled or stopped");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;}finally{Binder.restoreCallingIdentity(token);}}
 }
