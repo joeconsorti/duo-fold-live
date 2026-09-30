@@ -36,6 +36,10 @@ class CameraContinuityActivity:Activity(){
  private var testFrozen=false
  private var backgroundAllowed=false
  private var contentEpoch=0
+ private var nativeReveal=false
+ private var revealed=false
+ private var revealScheduled=false
+ private lateinit var nativeOption:CheckBox
  private lateinit var freezeOption:CheckBox
  private lateinit var status:TextView
  private lateinit var start:Button
@@ -56,9 +60,12 @@ class CameraContinuityActivity:Activity(){
   column.addView(TextView(this).apply{text="Camera-style continuity test";textSize=22f})
   column.addView(TextView(this).apply{text="Turn Duo animation OFF. Start fully open to keep inner primary, or fully closed to keep cover primary. Observe both screens while slowly folding/unfolding. Start the test, then tap Show Home and open an app. Secondary content is read-only and center-fitted, not a native app transfer. Stops after 30 seconds, locking, or a primary mapping change. Full closing/exit may flash."})
   freezeOption=CheckBox(this).apply{text="Freeze real content 5 seconds after Show Home";setOnCheckedChangeListener{_,v->frozen=v}};column.addView(freezeOption)
+  nativeOption=CheckBox(this).apply{text="Reveal native inner content 5 seconds after Show Home";setOnCheckedChangeListener{_,v->if(v)freezeOption.isChecked=false}};column.addView(nativeOption)
+  freezeOption.setOnCheckedChangeListener{_,v->frozen=v;if(v)nativeOption.isChecked=false}
+  column.addView(TextView(this).apply{text="Native reveal: start fully closed, tap Show Home, then unfold before 5 seconds. Duo removes its image while keeping the transparent secondary window and the same primary display. Check the inner layout and touch; a blank screen is a useful result. No tasks are moved."})
   start=Button(this).apply{text="Start 30-second Camera test";setOnClickListener{begin()}};column.addView(start)
   column.addView(Button(this).apply{text="Show Home during test";setOnClickListener{
-   if(running){backgroundAllowed=true;startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME));if(testFrozen){val epoch=generation;main.postDelayed({if(running&&generation==epoch)freezeContent()},5000)}}
+   if(running){backgroundAllowed=true;startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME));if(!revealScheduled&&(testFrozen||nativeReveal)){revealScheduled=true;val epoch=generation;main.postDelayed({if(running&&generation==epoch){if(nativeReveal)revealNative() else freezeContent()}},5000)}}
   }})
   column.addView(Button(this).apply{text="Stop test";setOnClickListener{finishTest("Stopped by user")}})
   column.addView(Button(this).apply{text="Copy Camera test report";setOnClickListener{
@@ -81,9 +88,10 @@ class CameraContinuityActivity:Activity(){
    val secondary=dm.getDisplays("com.samsung.android.hardware.display.category.BUILTIN").firstOrNull{it.displayId!=primary.displayId}?:error("Second built-in display unavailable")
    val size=Point();primary.getRealSize(size)
    inner=try{resources.configuration.javaClass.getField("semDisplayDeviceType").getInt(resources.configuration)==0}catch(_:Exception){size.x>size.y}
+   check(!nativeOption.isChecked||!inner){"Native inner reveal: start fully closed on the cover"}
    primaryId=physical(primary);secondaryId=physical(secondary);primaryDisplay=primary.displayId;secondaryDisplay=secondary.displayId
    check(!getSystemService(KeyguardManager::class.java).isKeyguardLocked){"Unlock first"}
-   running=true;start.isEnabled=false;freezeOption.isEnabled=false;testFrozen=frozen;contentReady=false;snapshotReady=false;contentPending=false;backgroundAllowed=false;generation++;startAt=SystemClock.elapsedRealtime()
+   running=true;nativeReveal=nativeOption.isChecked;revealed=false;revealScheduled=false;nativeOption.isEnabled=false;start.isEnabled=false;freezeOption.isEnabled=false;testFrozen=frozen;contentReady=false;snapshotReady=false;contentPending=false;backgroundAllowed=false;generation++;startAt=SystemClock.elapsedRealtime()
    note("Prepare first: primary="+primaryId+" secondary="+secondaryId+" direction="+if(inner)"inner → cover" else "cover → inner")
    val ctx=createDisplayContext(secondary).createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,null)
    dialog=Dialog(ctx).apply{
@@ -135,19 +143,44 @@ class CameraContinuityActivity:Activity(){
   val p=dm.getDisplay(primaryDisplay);val s=dm.getDisplay(secondaryDisplay)
   if(p==null||s==null||physical(p)!=primaryId||physical(s)!=secondaryId){finishTest("Physical mapping changed");return}
   if(s.state==Display.STATE_ON)prepareContent()
-  note("Primary state="+p.state+"; secondary state="+s.state+"; mirror="+contentReady+"; snapshot="+snapshotReady+"; elapsed="+(SystemClock.elapsedRealtime()-startAt)+" ms")
+  note("Primary state="+p.state+"; secondary state="+s.state+"; mirror="+contentReady+"; snapshot="+snapshotReady+"; nativeReveal="+revealed+"; elapsed="+(SystemClock.elapsedRealtime()-startAt)+" ms")
   main.postDelayed({if(running)call(2){out->
    if(!out.getBoolean("ok")||!out.getBoolean("active"))finishTest(out.getString("error")?:out.getString("status")?:"Ended") else poll()
   }},500)
  }
  private fun prepareContent(){
   val view=content?:return
-  if(!running||helper==null||contentPending||contentReady||snapshotReady||!view.surfaceControl.isValid||view.width<=0||view.height<=0)return
+  if(!running||revealed||helper==null||contentPending||contentReady||snapshotReady||!view.surfaceControl.isValid||view.width<=0||view.height<=0)return
   val revision=contentEpoch
   contentPending=true
   call(4,{p->p.writeTypedObject(view.surfaceControl,0);p.writeInt(view.width);p.writeInt(view.height)}){out->
    contentPending=false
    if(revision==contentEpoch){contentReady=out.getBoolean("ok");note(out.getString("content")?:out.getString("error")?:"Mirror attached")}
+  }
+ }
+ private fun revealNative(){
+  if(!running||revealed)return
+  val dm=getSystemService(DisplayManager::class.java)
+  if(!contentReady||contentPending||dm.getDisplay(secondaryDisplay)?.state!=Display.STATE_ON){
+   note("Native reveal skipped: inner live mirror not ready. Stop and retry, unfolding before 5 seconds.");return
+  }
+  // Block all mirror reattachment before detaching it on the helper thread.
+  revealed=true;contentEpoch++
+  call(6){out->
+   if(!out.getBoolean("ok")){finishTest(out.getString("error")?:"Native reveal failed");return@call}
+   contentReady=false;snapshotReady=false
+   snapshot?.setImageDrawable(null);snapshot?.visibility=View.GONE
+   content?.visibility=View.GONE
+   // Keep the same attached window, but make all its pixels invisible. Alpha zero
+   // also lets touches pass through an untrusted application overlay on Android.
+   dialog?.window?.let{window->
+    window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+    window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+    val attributes=window.attributes;attributes.alpha=0f;attributes.dimAmount=0f;window.attributes=attributes
+   }
+   note("Native underlay exposed; primary request retained; no task/focus changes. "+out.getString("diagnostics"))
+   val epoch=generation
+   main.postDelayed({if(running&&generation==epoch)call(7){report->note("After reveal: "+(report.getString("diagnostics")?:report.getString("error"))) }},1500)
   }
  }
  private fun freezeContent(){
@@ -178,6 +211,7 @@ class CameraContinuityActivity:Activity(){
   if(bound){args?.let{runCatching{Shizuku.unbindUserService(it,connection,true)}};bound=false}
   runCatching{dialog?.dismiss()};dialog=null;content=null;snapshot=null
   if(::start.isInitialized)start.isEnabled=true
+  if(::nativeOption.isInitialized)nativeOption.isEnabled=true
   if(::freezeOption.isInitialized)freezeOption.isEnabled=true
   if(::status.isInitialized)note(reason)
  }

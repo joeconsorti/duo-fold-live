@@ -70,6 +70,25 @@ public final class CameraContinuityService extends Binder {
    catch(Exception e){System.exit(0);}
   request=null;unlink();status=reason;
  }
+ // Read-only task diagnostics: never resumes, focuses, or reparents a task.
+ private String nativeSnapshot(){
+  try{
+   Object atm=Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
+   Class<?> api=Class.forName("android.app.IActivityTaskManager");
+   StringBuilder text=new StringBuilder("primary=").append(panel());
+   for(int display=0;display<=1;display++){
+    List<?> roots=(List<?>)api.getMethod("getAllRootTaskInfosOnDisplay",int.class).invoke(atm,display);
+    text.append("; display ").append(display).append(" roots=").append(roots.size());
+    for(Object root:roots){
+     Class<?> type=root.getClass();
+     text.append(" [task=").append(type.getField("taskId").get(root))
+      .append(" top=").append(type.getField("topActivity").get(root))
+      .append(" config=").append(type.getField("configuration").get(root)).append("]");
+    }
+   }
+   return text.toString();
+  }catch(Exception e){return "Task diagnostics unavailable: "+e;}
+ }
  @Override protected synchronized boolean onTransact(int code,Parcel p,Parcel r,int flags)throws RemoteException{
   if(code==INTERFACE_TRANSACTION){r.writeString(TOKEN);return true;}
   if(code==16777115){stop("Helper stopped");System.exit(0);return true;}
@@ -87,6 +106,11 @@ public final class CameraContinuityService extends Binder {
     if(!attached.getBoolean("ok"))throw new IllegalStateException(attached.getString("status"));
     out.putString("content",attached.getString("status"));
    }else if(code==5)mirror.close();
+   else if(code==6||code==7){
+    if(request==null||!primary.equals(panel()))throw new IllegalStateException("No fixed-primary session");
+    if(code==6)mirror.close();
+    out.putString("diagnostics",nativeSnapshot());
+   }
    else throw new IllegalArgumentException("Unknown operation");
    out.putBoolean("ok",true);
   }catch(Exception e){out.putString("error",String.valueOf(e.getCause()!=null?e.getCause():e));}
