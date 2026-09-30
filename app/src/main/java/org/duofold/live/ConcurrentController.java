@@ -16,6 +16,35 @@ final class ConcurrentController {
  synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
  private boolean cameraSession;private String fixedPrimary="";
+ private final ArrayDeque<String> samples=new ArrayDeque<>();
+ private long sampledAt;private String panelSample="";private boolean capturedTasks;
+ private void log(String text){samples.addLast(SystemClock.elapsedRealtime()+": "+text);while(samples.size()>90)samples.removeFirst();}
+ synchronized String trace(){return "Screenshot panel trace (software states, not optical proof):\n"+String.join("\n",samples);}
+ private void samplePanels(float angle,boolean windowReady,boolean ready,boolean force){
+  long now=SystemClock.elapsedRealtime();if(!force&&now-sampledAt<100)return;sampledAt=now;
+  try{
+   Object dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
+   StringBuilder line=new StringBuilder();boolean secondOn=false;
+   for(int id=0;id<=1;id++){
+    Object d=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,id);
+    if(d==null){line.append(" display").append(id).append("=missing");continue;}
+    Class<?> c=d.getClass();int state=c.getField("state").getInt(d);if(id==1)secondOn=state==2;
+    line.append(" display").append(id).append(" physical=").append(c.getField("uniqueId").get(d)).append(" state=").append(state)
+     .append(" size=").append(c.getField("logicalWidth").get(d)).append("x").append(c.getField("logicalHeight").get(d));
+   }
+   String next=line.toString();
+   if(force||!next.equals(panelSample)){panelSample=next;log("angle="+angle+" prepared="+windowReady+" secondaryReady="+ready+next);}
+   if(secondOn&&owned!=null&&!capturedTasks){capturedTasks=true;logNativeTasks();}
+  }catch(Exception e){if(force)log("Display sample failed: "+e);}
+ }
+ private void logNativeTasks(){
+  try{
+   Object atm=Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);
+   List<?> roots=(List<?>)Class.forName("android.app.IActivityTaskManager").getMethod("getAllRootTaskInfosOnDisplay",int.class).invoke(atm,1);
+   log("Incoming display roots="+roots.size()+"; content source=live underlay, no screenshot, no task move");
+   for(Object root:roots)log("Incoming task="+root.getClass().getField("taskId").get(root)+" top="+root.getClass().getField("topActivity").get(root)+" configuration="+root.getClass().getField("configuration").get(root));
+  }catch(Exception e){log("Incoming task diagnostics unavailable: "+e);}
+ }
  String status="Dual-screen mode ready";
  synchronized boolean active(){return owned!=null;}
  private void init()throws Exception{
@@ -43,7 +72,7 @@ final class ConcurrentController {
   Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
   if(!current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Existing display override; stop other test apps first");
-  if(cameraSession)fixedPrimary=physicalPrimary();
+  if(cameraSession){fixedPrimary=physicalPrimary();capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
   setConcurrent(inner,now); // Captured outgoing panel becomes the secondary Presentation.
  }
  private void setConcurrent(boolean inner,long now)throws Exception{
@@ -56,7 +85,7 @@ final class ConcurrentController {
     case "hashCode":return System.identityHashCode(proxy);
     case "equals":return proxy==args[0];
     case "toString":return "DuoConcurrentRequest";
-    case "onRequestCanceled":synchronized(this){if(owned==next){owned=null;blocked=true;status="Concurrent request canceled by Android";}}
+    case "onRequestCanceled":synchronized(this){if(owned==next){owned=null;blocked=true;status="Concurrent request canceled by Android";if(cameraSession){log(status);samplePanels(Float.NaN,false,false,true);}}}
    }return null;
   });
   request.invoke(manager,next,(Executor)Runnable::run,callback);
@@ -65,18 +94,18 @@ final class ConcurrentController {
  synchronized void update(float angle,boolean fresh,boolean unlocked,boolean primaryIsInner,boolean secondaryReady,int frozenSource,float openThreshold,boolean cameraStartup,boolean windowPrepared){
   long token=Binder.clearCallingIdentity();long now=SystemClock.elapsedRealtime();
   try{
-   if(owned!=null && cameraSession!=cameraStartup){releaseInternal();blocked=true;return;}
-   if(!unlocked){releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;return;}
+   if(owned!=null && cameraSession!=cameraStartup){if(cameraSession)log("RELEASE: screenshot mode changed");releaseInternal();blocked=true;return;}
+   if(!unlocked){if(cameraSession&&owned!=null)log("RELEASE: locked, screen off, or host disabled");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;return;}
    if(!fresh){
     if(bootstrapping && owned!=null && now-started<3500)return;
-    releaseInternal();bootstrapping=false;
+    if(cameraSession&&owned!=null)log("RELEASE: stale hinge angle");releaseInternal();bootstrapping=false;
     status="Waiting for fresh angle and outgoing capture";
     return;
    }
    bootstrapping=false;
    if(FoldThreshold.endpoint(angle,openThreshold)){
     if(endpointSince==0)endpointSince=now;
-    if(angle>=FoldThreshold.sanitize(openThreshold) || now-endpointSince>=350){releaseInternal();blocked=false;}return;
+    if(angle>=FoldThreshold.sanitize(openThreshold) || now-endpointSince>=350){if(cameraSession&&owned!=null){log("RELEASE: endpoint angle="+angle);samplePanels(angle,windowPrepared,secondaryReady,true);}releaseInternal();blocked=false;}return;
    }
    endpointSince=0;
    if(owned==null){
@@ -85,13 +114,14 @@ final class ConcurrentController {
       if(ScreenshotStartupPolicy.canBegin(primaryIsInner,frozenSource,windowPrepared)){
        cameraSession=true;begin(ScreenshotStartupPolicy.keepInnerPrimary(frozenSource),now);
        status="Window-first screenshot: keeping outgoing primary; waiting for secondary ON";
-      }else status="Screenshot startup waiting for outgoing frame and attached destination window";
+      }else status="Screenshot startup waiting for outgoing frame COMMIT and attached destination window";
      }else{cameraSession=false;if(FreezePolicy.canSwitch(primaryIsInner,frozenSource))begin(FreezePolicy.targetInner(frozenSource),now);else status="Waiting for outgoing frame before switching displays";}
     }return;
    }
    if(cameraSession){
+    samplePanels(angle,windowPrepared,secondaryReady,false);
     if(!windowPrepared||!fixedPrimary.equals(physicalPrimary()))throw new IllegalStateException("Screenshot window lost or primary mapping changed");
-    if(now-started>=30000){releaseInternal();blocked=true;status="Screenshot hold reached 30-second limit";return;}
+    if(now-started>=30000){log("RELEASE: 30-second limit");releaseInternal();blocked=true;status="Screenshot hold reached 30-second limit";return;}
     status=secondaryReady?"Window-first screenshot active: outgoing primary retained; final native switch pending":"Window-first screenshot: waiting for secondary ON";
     return;
    }
@@ -99,11 +129,11 @@ final class ConcurrentController {
    if(primaryIsInner!=primaryInner)throw new IllegalStateException("Primary physical display changed during session");
    // Hold one inner-primary session for the entire overlap; do not move tasks or swap at 90 degrees.
    status=secondaryReady?(primaryInner?"Inner live + frozen cover":"Cover live + frozen inner"):"Waiting for outgoing-panel freeze Presentation";
-  }catch(Exception e){Throwable root=e;while(root.getCause()!=null)root=root.getCause();releaseInternal();blocked=true;status="Concurrent mode error: "+root.getMessage();}
+  }catch(Exception e){Throwable root=e;while(root.getCause()!=null)root=root.getCause();if(cameraSession)log("RELEASE: "+root);releaseInternal();blocked=true;status="Concurrent mode error: "+root.getMessage();}
   finally{Binder.restoreCallingIdentity(token);}
  }
  private void releaseInternal(){
   if(owned!=null){try{cancel.invoke(manager);owned=null;status="Normal display control restored";}catch(Exception e){status="Display release pending";}}
  }
- synchronized void release(){long token=Binder.clearCallingIdentity();try{releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;}finally{Binder.restoreCallingIdentity(token);}}
+ synchronized void release(){long token=Binder.clearCallingIdentity();try{if(cameraSession&&owned!=null)log("RELEASE: controller disabled or stopped");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;}finally{Binder.restoreCallingIdentity(token);}}
 }

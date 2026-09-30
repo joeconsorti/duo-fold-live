@@ -306,7 +306,7 @@ class MainActivity:ComponentActivity(){
         Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
         Toggle("Screenshot window-first startup (experimental)",screenshotStartup){screenshotStartup=it;booleanSetting("screenshot_camera_startup",it)}
-        Text("Requires Dual-screen screenshot handoff ON. Prepares the second window before waking its panel, keeping the outgoing screen primary during the held-image animation. Final native-layout switch may still flash. Maximum hold: 30 seconds. Turn this off to restore the original screenshot path.",style=MaterialTheme.typography.bodySmall)
+        Text("Requires Dual-screen screenshot handoff ON. Diagnostic: commits the outgoing screenshot, then wakes the incoming panel while keeping the outgoing screen on. Incoming content is uncovered live content, with incoming glass temporarily omitted. Final native-layout switch may still flash. Maximum hold: 30 seconds. Turn this off to restore the original screenshot path.",style=MaterialTheme.typography.bodySmall)
         Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
         Text(GlassFrames.status,style=MaterialTheme.typography.bodySmall)
         Text(HandoffFrames.status,style=MaterialTheme.typography.bodySmall)

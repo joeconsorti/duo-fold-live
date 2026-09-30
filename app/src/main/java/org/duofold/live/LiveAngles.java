@@ -13,6 +13,7 @@ public final class LiveAngles {
  private static float angle=Float.NaN;
  private static long last=0;
  public static boolean dualActive=false;
+ public static String screenshotTrace="Screenshot trace idle";
  public static boolean coverPreview=false;
  private static volatile long continuityRequest;
  public static String continuityStatus="Continuity test idle",continuityTrace="No continuity samples";
@@ -132,7 +133,7 @@ public final class LiveAngles {
     p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("dual",false)?1:0);
     android.view.Display display=context.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
     android.view.Display.Mode mode=display.getMode();p.writeInt(Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight())/(float)Math.max(mode.getPhysicalWidth(),mode.getPhysicalHeight())>.7f?1:0);
-    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("enabled",false)?1:0);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("closed_threshold",2f));p.writeLong(continuityRequest);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING));p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS));p.writeString(context.getSharedPreferences("standalone",0).getString("animation_mode",AnimationModePolicy.DEFAULT));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("debug_mode",false)?1:0);p.writeFloat(HandoffSettings.angle(context.getSharedPreferences("standalone",0).getFloat("handoff_angle",HandoffSettings.DEFAULT)));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("screenshot_camera_startup",false)?1:0);p.writeInt(host!=null&&host.screenshotWindowReady()?1:0);
+    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("enabled",false)?1:0);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("closed_threshold",2f));p.writeLong(continuityRequest);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING));p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS));p.writeString(context.getSharedPreferences("standalone",0).getString("animation_mode",AnimationModePolicy.DEFAULT));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("debug_mode",false)?1:0);p.writeFloat(HandoffSettings.angle(context.getSharedPreferences("standalone",0).getFloat("handoff_angle",HandoffSettings.DEFAULT)));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("screenshot_camera_startup",false)?1:0);p.writeInt(host!=null&&host.screenshotWindowReady()&&host.screenshotFrameReady()?1:0);
    }
    if(!b.transact(code,p,r,0))throw new IllegalStateException("Unsupported reader");r.readException();return code==2?r.readBundle(getClass().getClassLoader()):null;
   }finally{p.recycle();r.recycle();}
@@ -150,6 +151,7 @@ public final class LiveAngles {
    String nextHandoff=b.getString("handoff", "Unknown display status");
    if(!nextHandoff.equals(handoffStatus))RecoveryLog.add(nextHandoff);
    handoffStatus=nextHandoff;continuityStatus=b.getString("continuityProbe","Continuity status unavailable");continuityTrace=b.getString("continuityTrace","");
+   screenshotTrace=b.getString("screenshotTrace","Screenshot trace idle");
    rotationHold=b.getString("rotationHold","Rotation hold idle");effectAllowed=b.getBoolean("effectAllowed",true);handoffFade=b.getString("handoffFade","Handoff fade idle");dualActive=b.getBoolean("dualActive");coverPreview=b.getBoolean("coverPreview");expansionStatus=b.getString("expansion","Expansion idle");bridgeTrace=b.getString("bridgeTrace","No bridge");
    mirrorStatus=b.getString("mirror","Inner mirror status unavailable");nativeInner=b.getBoolean("nativeInner");continuityNative=b.getBoolean("continuityNative");
    StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null&&SystemClock.elapsedRealtime()>=secondaryRefreshAt){secondaryRefreshAt=SystemClock.elapsedRealtime()+8;host.refreshSecondary();}
