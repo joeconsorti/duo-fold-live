@@ -23,7 +23,7 @@ internal object HandoffFrames {
   unavailableSince=0L
   if(dual){active=true;return}
   if(active){clear();return}
-  if(!FoldThreshold.canStart(angle,openThreshold)){clear();return}
+  if(!(if(labelled)ScreenshotStartupPolicy.mayStart(inner,angle,openThreshold) else FoldThreshold.canStart(angle,openThreshold))){clear();return}
   if(ready>=0){if(inner!=sourceInner || now-readyAt>1500){clear();retryAt=now+200};return}
   if(preparing || now<retryAt)return
   preparing=true;sourceInner=inner;val gen=++generation

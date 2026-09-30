@@ -15,6 +15,7 @@ final class ConcurrentController {
  private boolean nativeRetried;
  synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
+ private boolean remapRequested,remapVerified;private int screenshotSource=-1;
  private boolean cameraSession;private String fixedPrimary="";
  private final ScreenshotWindowTrace windows=new ScreenshotWindowTrace();
  private long afterReleaseAt;private int afterReleaseStage;
@@ -45,7 +46,11 @@ final class ConcurrentController {
    for(int display=0;display<=1;display++){
     List<?> roots=(List<?>)Class.forName("android.app.IActivityTaskManager").getMethod("getAllRootTaskInfosOnDisplay",int.class).invoke(atm,display);
     log("Tasks display="+display+" roots="+roots.size());
-    for(Object root:roots)log("D"+display+" task="+root.getClass().getField("taskId").get(root)+" top="+root.getClass().getField("topActivity").get(root)+" configuration="+root.getClass().getField("configuration").get(root));
+    for(Object root:roots){
+     String config=String.valueOf(root.getClass().getField("configuration").get(root));
+     int bounds=config.indexOf("mBounds=");int end=bounds<0?-1:config.indexOf(')',bounds);
+     log("D"+display+" task="+root.getClass().getField("taskId").get(root)+" top="+root.getClass().getField("topActivity").get(root)+" "+(end>bounds?config.substring(bounds,end+1):"bounds unavailable"));
+    }
    }
   }catch(Exception e){log("Incoming task diagnostics unavailable: "+e);}
  }
@@ -77,7 +82,7 @@ final class ConcurrentController {
   Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
   if(!current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Existing display override; stop other test apps first");
-  if(cameraSession){fixedPrimary=physicalPrimary();capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
+  if(cameraSession){remapRequested=false;remapVerified=false;screenshotSource=inner?1:0;fixedPrimary=physicalPrimary();capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
   setConcurrent(inner,now); // Captured outgoing panel becomes the secondary Presentation.
  }
  private void setConcurrent(boolean inner,long now)throws Exception{
@@ -121,7 +126,7 @@ final class ConcurrentController {
    }
    endpointSince=0;
    if(owned==null){
-    if(!blocked&&FoldThreshold.canStart(angle,openThreshold)){
+    if(!blocked&&(cameraStartup?ScreenshotStartupPolicy.mayStart(primaryIsInner,angle,openThreshold):FoldThreshold.canStart(angle,openThreshold))){
      if(cameraStartup){
       if(ScreenshotStartupPolicy.canBegin(primaryIsInner,frozenSource,windowPrepared)){
        cameraSession=true;begin(ScreenshotStartupPolicy.keepInnerPrimary(frozenSource),now);
@@ -132,9 +137,27 @@ final class ConcurrentController {
    }
    if(cameraSession){
     samplePanels(angle,windowPrepared,secondaryReady,false);
-    if(!windowPrepared||!fixedPrimary.equals(physicalPrimary()))throw new IllegalStateException("Screenshot window lost or primary mapping changed");
+    if(!remapRequested){
+     if(!fixedPrimary.equals(physicalPrimary()))throw new IllegalStateException("Primary mapping changed before incoming request");
+     if(!windowPrepared)throw new IllegalStateException("Outgoing screenshot or startup window lost");
+     if(secondaryReady){
+      // Replace the owned request directly: never cancel into single-panel mode between stages.
+      remapRequested=true;capturedTasks=false;
+      log("PROMOTE incoming primary; outgoing physical="+fixedPrimary+"; target="+(screenshotSource==0?"inner":"cover"));
+      windows.capture("before incoming-primary request");
+      setConcurrent(ScreenshotStartupPolicy.incomingInner(screenshotSource),now);
+      status="Incoming-primary request sent; waiting for physical remap and outgoing screenshot";
+     }else if(now-started>1800)throw new IllegalStateException("Second panel did not become ready before promotion");
+     return;
+    }
+    boolean mapped=primaryIsInner==primaryInner&&!fixedPrimary.equals(physicalPrimary());
+    if(!mapped || !secondaryReady){
+     if(now>mappingDeadline)throw new IllegalStateException("Incoming-primary remap or outgoing screenshot did not become ready");
+     status="Waiting for incoming-primary remap and outgoing screenshot";return;
+    }
+    if(!remapVerified){remapVerified=true;log("VERIFIED incoming primary; outgoing screenshot ready");logNativeTasks();windows.capture("incoming primary ready");}
     if(now-started>=30000){log("RELEASE: 30-second limit");releaseInternal();blocked=true;status="Screenshot hold reached 30-second limit";return;}
-    status=secondaryReady?"Window-first screenshot active: outgoing primary retained; final native switch pending":"Window-first screenshot: waiting for secondary ON";
+    status="Incoming primary live + outgoing physical-panel screenshot";
     return;
    }
    if(primaryIsInner!=primaryInner && now<mappingDeadline)return;

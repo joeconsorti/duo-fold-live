@@ -19,9 +19,15 @@ final class ScreenshotWindowTrace {
     final java.lang.Process running=process;final StringBuilder lines=new StringBuilder();
     Thread reader=new Thread(()->{
      try(BufferedReader in=new BufferedReader(new InputStreamReader(running.getInputStream(),StandardCharsets.UTF_8))){
-      String line;while((line=in.readLine())!=null){
-       if(line.contains("Window #")||line.contains("mDisplayId=")||line.contains("mHasSurface=")||line.contains("isOnScreen=")||line.contains("mCurrentFocus=")||line.contains("mFocusedApp=")||line.contains("mFrame=")){
-        synchronized(lines){if(lines.length()<7000)lines.append(line.length()>350?line.substring(0,350):line).append('\n');}
+      String line;String header="";boolean relevant=false;int kept=0;
+      while((line=in.readLine())!=null){
+       if(line.contains("Window #")){header=line.trim();relevant=header.contains("Duo")||header.contains("org.duofold")||header.contains("launcher")||header.contains("Taskbar");kept=0;}
+       if(line.contains("mDisplayId=")){
+        // Reserve output for every secondary window and primary app/launcher/animation windows.
+        relevant|=line.contains("mDisplayId=1");
+        if(relevant)synchronized(lines){if(lines.length()<12000)lines.append(header).append(' ').append(line.trim()).append('\n');}
+       }else if((relevant&&kept<3&&(line.contains("mHasSurface=")||line.contains("isOnScreen=")||line.contains("mFrame=")))||line.contains("mCurrentFocus=")||line.contains("mFocusedApp=")){
+        synchronized(lines){if(lines.length()<12000)lines.append(line.trim()).append('\n');}kept++;
        }
       }
      }catch(IOException ignored){}
