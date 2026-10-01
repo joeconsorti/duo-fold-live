@@ -57,7 +57,6 @@ internal class ScreenshotStartupWindow(context:Context,display:Display){
     }
    }
   }
-  val intensity=context.getSharedPreferences("standalone",0).getFloat("intensity",1f)
   view.setContent{
    val frame=HandoffFrames.frame?.takeIf{ScreenshotStartupPolicy.ownsFrame(it.physicalId,physical)}
    SideEffect{composedStamp=frame?.stamp ?: 0L}
@@ -65,10 +64,7 @@ internal class ScreenshotStartupWindow(context:Context,display:Display){
     Box(Modifier.fillMaxSize()){
      if(frame!=null){
       Image(frame.bitmap.asImageBitmap(),null,Modifier.fillMaxSize(),contentScale=ContentScale.Fit)
-      DuoLiveShade(object:StandaloneFoldHost{
-       override fun onMovement(){}
-       override fun onFrame(active:Boolean,strength:Float){}
-      },intensity,minOf(frame.width,frame.height).toFloat()/maxOf(frame.width,frame.height)>.7f,frame)
+
      }
     }
    }

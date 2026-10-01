@@ -15,7 +15,7 @@ final class ConcurrentController {
  private boolean nativeRetried;
  synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
- private boolean remapRequested,remapVerified;private int screenshotSource=-1;
+ private FixedTaskRoute fixedRoute;private boolean taskRequested,taskVerified,routeUnlocked;private long routePollAt,restoreAt,panelsReadySince;private String fixedSecondary="";
  private boolean cameraSession;private String fixedPrimary="";
  private final ScreenshotWindowTrace windows=new ScreenshotWindowTrace();
  private long afterReleaseAt;private int afterReleaseStage;
@@ -69,20 +69,21 @@ final class ConcurrentController {
   requestType=Class.forName("android.hardware.devicestate.DeviceStateRequest");callbackType=Class.forName("android.hardware.devicestate.DeviceStateRequest$Callback");
   request=type.getMethod("requestState",requestType,Executor.class,callbackType);cancel=type.getMethod("cancelStateRequest");manager=candidate;
  }
- private String physicalPrimary()throws Exception{
+ private String physicalPrimary()throws Exception{return physicalId(0);}
+ private String physicalId(int id)throws Exception{
   Object dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
-  Object info=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,0);
+  Object info=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,id);
   return String.valueOf(info.getClass().getField("uniqueId").get(info));
  }
  private void begin(boolean inner,long now)throws Exception{
   init();
-  if(cameraSession){afterReleaseAt=0;logNativeTasks();windows.capture("before request");}
+  if(cameraSession){afterReleaseAt=0;if(fixedRoute==null)fixedRoute=new FixedTaskRoute();log(fixedRoute.prepare());logNativeTasks();windows.capture("before request");}
   IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"device_state");
   Object service=Class.forName("android.hardware.devicestate.IDeviceStateManager$Stub").getMethod("asInterface",IBinder.class).invoke(null,binder);
   Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
   if(!current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Existing display override; stop other test apps first");
-  if(cameraSession){remapRequested=false;remapVerified=false;screenshotSource=inner?1:0;fixedPrimary=physicalPrimary();capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
+  if(cameraSession){taskRequested=false;taskVerified=false;panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
   setConcurrent(inner,now); // Captured outgoing panel becomes the secondary Presentation.
  }
  private void setConcurrent(boolean inner,long now)throws Exception{
@@ -101,9 +102,29 @@ final class ConcurrentController {
   request.invoke(manager,next,(Executor)Runnable::run,callback);
   status="Waiting for second-panel Presentation (state "+(inner?innerId:outerId)+")";
  }
+ private boolean panelsReady()throws Exception{
+  Object dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
+  for(int id=0;id<2;id++){
+   Object d=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,id);if(d==null)return false;
+   Class<?> c=d.getClass();if(c.getField("state").getInt(d)!=2)return false;
+   String physical=String.valueOf(c.getField("uniqueId").get(d));
+   if(!physical.equals(id==0?fixedPrimary:fixedSecondary))return false;
+   int w=c.getField("logicalWidth").getInt(d),h=c.getField("logicalHeight").getInt(d);
+   if(w<=0||h<=0||(Math.min(w,h)/(float)Math.max(w,h)>.7f)!=(id==0?primaryInner:!primaryInner))return false;
+  }return true;
+ }
+ private void returnTask(){
+  if(fixedRoute==null||!fixedRoute.pending())return;
+  try{log(fixedRoute.restore(routeUnlocked));}catch(Exception e){log("Task return pending: "+e);}
+ }
  synchronized void update(float angle,boolean fresh,boolean unlocked,boolean primaryIsInner,boolean secondaryReady,int frozenSource,float openThreshold,boolean cameraStartup,boolean windowPrepared){
   long token=Binder.clearCallingIdentity();long now=SystemClock.elapsedRealtime();
   try{
+   routeUnlocked=unlocked;
+   if(owned==null&&fixedRoute!=null&&fixedRoute.pending()){
+    if(now-restoreAt>=1000){restoreAt=now;returnTask();}
+    if(fixedRoute.pending()){status="Waiting to return exact routed app";return;}
+   }
    if(afterReleaseAt>0){
     long elapsed=now-afterReleaseAt;
     if(elapsed>=(afterReleaseStage==0?200:1200)){
@@ -137,27 +158,21 @@ final class ConcurrentController {
    }
    if(cameraSession){
     samplePanels(angle,windowPrepared,secondaryReady,false);
-    if(!remapRequested){
-     if(!fixedPrimary.equals(physicalPrimary()))throw new IllegalStateException("Primary mapping changed before incoming request");
-     if(!windowPrepared)throw new IllegalStateException("Outgoing screenshot or startup window lost");
-     if(secondaryReady){
-      // Replace the owned request directly: never cancel into single-panel mode between stages.
-      remapRequested=true;capturedTasks=false;
-      log("PROMOTE incoming primary; outgoing physical="+fixedPrimary+"; target="+(screenshotSource==0?"inner":"cover"));
-      windows.capture("before incoming-primary request");
-      setConcurrent(ScreenshotStartupPolicy.incomingInner(screenshotSource),now);
-      status="Incoming-primary request sent; waiting for physical remap and outgoing screenshot";
-     }else if(now-started>1800)throw new IllegalStateException("Second panel did not become ready before promotion");
-     return;
+    if(!fixedPrimary.equals(physicalPrimary()))throw new IllegalStateException("Fixed primary changed during task route");
+    boolean ready=windowPrepared&&secondaryReady&&panelsReady();
+    if(!ready){panelsReadySince=0;taskVerified=false;if(now-started>2500)throw new IllegalStateException("Fixed panels or screenshot lost readiness");status="Waiting for fixed panels and committed outgoing screenshot";return;}
+    if(panelsReadySince==0)panelsReadySince=now;
+    if(now-panelsReadySince<120){status="Checking stable fixed-panel readiness";return;}
+    if(!fixedRoute.selected()){status="Home/system screen not routed — test inside a fullscreen app";}
+    else if(!taskRequested){taskRequested=true;log(fixedRoute.move());windows.capture("app route requested");status="App route requested; waiting for D1 placement and focus";}
+    else if(now-routePollAt>=100){
+     routePollAt=now;
+     if(fixedRoute.placedAndFocused()){
+      if(!taskVerified){taskVerified=true;log("TASK PLACED + FOCUSED on D1; fixed panels ON; optical continuity not verified");logNativeTasks();windows.capture("app placed and focused");}
+      status="Fixed panels: outgoing screenshot + incoming app (plain diagnostic)";
+     }else{taskVerified=false;status="Waiting for selected app placement and focus on D1";if(now-started>3000)throw new IllegalStateException("App did not reach focused D1 task");}
     }
-    boolean mapped=primaryIsInner==primaryInner&&!fixedPrimary.equals(physicalPrimary());
-    if(!mapped || !secondaryReady){
-     if(now>mappingDeadline)throw new IllegalStateException("Incoming-primary remap or outgoing screenshot did not become ready");
-     status="Waiting for incoming-primary remap and outgoing screenshot";return;
-    }
-    if(!remapVerified){remapVerified=true;log("VERIFIED incoming primary; outgoing screenshot ready");logNativeTasks();windows.capture("incoming primary ready");}
-    if(now-started>=30000){log("RELEASE: 30-second limit");releaseInternal();blocked=true;status="Screenshot hold reached 30-second limit";return;}
-    status="Incoming primary live + outgoing physical-panel screenshot";
+    if(now-started>=30000){log("RELEASE: 30-second limit");releaseInternal();blocked=true;status="Fixed-panel test reached time limit";return;}
     return;
    }
    if(primaryIsInner!=primaryInner && now<mappingDeadline)return;
@@ -168,6 +183,7 @@ final class ConcurrentController {
   finally{Binder.restoreCallingIdentity(token);}
  }
  private void releaseInternal(){
+  returnTask();
   if(owned!=null){try{if(cameraSession){logNativeTasks();windows.capture("before release");afterReleaseAt=SystemClock.elapsedRealtime();afterReleaseStage=0;}cancel.invoke(manager);owned=null;status="Normal display control restored";}catch(Exception e){status="Display release pending";}}
  }
  synchronized void release(){long token=Binder.clearCallingIdentity();try{if(cameraSession&&owned!=null)log("RELEASE: controller disabled or stopped");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;}finally{Binder.restoreCallingIdentity(token);}}
