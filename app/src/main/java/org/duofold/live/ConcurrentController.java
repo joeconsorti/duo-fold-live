@@ -16,6 +16,8 @@ final class ConcurrentController {
  synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
  private FixedTaskRoute fixedRoute;private boolean taskRequested,taskVerified,routeUnlocked;private long routePollAt,restoreAt,panelsReadySince;private String fixedSecondary="";
+ private final EndpointPowerTrace endpointPower=new EndpointPowerTrace();
+ private boolean endpointReturnWaiting;private long endpointReturnDeadline;private String endpointTarget="";
  private boolean routeCheckpoint;private String routeObservation="";
  private boolean cameraSession;private String fixedPrimary="";
  private final ScreenshotWindowTrace windows=new ScreenshotWindowTrace();
@@ -23,7 +25,7 @@ final class ConcurrentController {
  private final ArrayDeque<String> samples=new ArrayDeque<>();
  private long sampledAt;private String panelSample="";private boolean capturedTasks;
  private void log(String text){samples.addLast(SystemClock.elapsedRealtime()+": "+text);while(samples.size()>90)samples.removeFirst();}
- synchronized String trace(){return "Screenshot panel trace (software states, not optical proof):\n"+String.join("\n",samples)+"\n"+windows.report();}
+ synchronized String trace(){return "Screenshot panel trace (software states, not optical proof):\n"+String.join("\n",samples)+"\n"+windows.report()+"\n"+endpointPower.report();}
  private void samplePanels(float angle,boolean windowReady,boolean ready,boolean force){
   long now=SystemClock.elapsedRealtime();if(!force&&now-sampledAt<100)return;sampledAt=now;
   try{
@@ -97,7 +99,7 @@ final class ConcurrentController {
     case "hashCode":return System.identityHashCode(proxy);
     case "equals":return proxy==args[0];
     case "toString":return "DuoConcurrentRequest";
-    case "onRequestCanceled":synchronized(this){if(owned==next){owned=null;blocked=true;status="Concurrent request canceled by Android";if(cameraSession){log(status);samplePanels(Float.NaN,false,false,true);afterReleaseAt=SystemClock.elapsedRealtime();afterReleaseStage=0;windows.capture("Android canceled");}}}
+    case "onRequestCanceled":synchronized(this){if(owned==next){owned=null;blocked=true;status="Concurrent request canceled by Android";if(cameraSession){log(status);endpointPower.arm("Android canceled concurrent request");samplePanels(Float.NaN,false,false,true);afterReleaseAt=SystemClock.elapsedRealtime();afterReleaseStage=0;windows.capture("Android canceled");}}}
    }return null;
   });
   request.invoke(manager,next,(Executor)Runnable::run,callback);
@@ -114,6 +116,11 @@ final class ConcurrentController {
    if(w<=0||h<=0||(Math.min(w,h)/(float)Math.max(w,h)>.7f)!=(id==0?primaryInner:!primaryInner))return false;
   }return true;
  }
+ private boolean primaryOn(String physical)throws Exception{
+  Object dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
+  Object d=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,0);if(d==null)return false;
+  return physical.equals(String.valueOf(d.getClass().getField("uniqueId").get(d)))&&d.getClass().getField("state").getInt(d)==2;
+ }
  private void returnTask(){
   if(fixedRoute==null||!fixedRoute.pending())return;
   try{log(fixedRoute.restore(routeUnlocked));}catch(Exception e){log("Task return pending: "+e);}
@@ -121,7 +128,18 @@ final class ConcurrentController {
  synchronized void update(float angle,boolean fresh,boolean unlocked,boolean primaryIsInner,boolean secondaryReady,int frozenSource,float openThreshold,boolean cameraStartup,boolean windowPrepared){
   long token=Binder.clearCallingIdentity();long now=SystemClock.elapsedRealtime();
   try{
-   routeUnlocked=unlocked;
+   routeUnlocked=unlocked;endpointPower.sample();
+   if(endpointReturnWaiting){
+    if(owned!=null){releaseInternal();return;}
+    boolean mapped=false;
+    try{mapped=primaryOn(endpointTarget);}catch(Exception e){log("Endpoint mapping observation unavailable: "+e.getClass().getSimpleName());}
+    if(EndpointReturnPolicy.shouldWait(now,endpointReturnDeadline,unlocked&&cameraStartup,mapped)){
+     status="Endpoint: waiting for incoming physical panel on D0 before task return";return;
+    }
+    endpointReturnWaiting=false;
+    log(mapped?"ENDPOINT: incoming physical panel is D0 and ON; return exact app":"ENDPOINT: mapping wait ended; recover exact app");
+    returnTask();
+   }
    if(owned==null&&fixedRoute!=null&&fixedRoute.pending()){
     if(now-restoreAt>=1000){restoreAt=now;returnTask();}
     if(fixedRoute.pending()){status="Waiting to return exact routed app";return;}
@@ -144,7 +162,13 @@ final class ConcurrentController {
    bootstrapping=false;
    if(FoldThreshold.endpoint(angle,openThreshold)){
     if(endpointSince==0)endpointSince=now;
-    if(angle>=FoldThreshold.sanitize(openThreshold) || now-endpointSince>=350){if(cameraSession&&owned!=null){log("RELEASE: endpoint angle="+angle);samplePanels(angle,windowPrepared,secondaryReady,true);}releaseInternal();blocked=false;}return;
+    if(angle>=FoldThreshold.sanitize(openThreshold) || now-endpointSince>=350){if(cameraSession&&owned!=null){
+      log("RELEASE: endpoint angle="+angle);endpointPower.arm("Endpoint release angle="+angle);samplePanels(angle,windowPrepared,secondaryReady,true);
+      if(!primaryInner&&angle>=FoldThreshold.sanitize(openThreshold)&&fixedRoute!=null&&fixedRoute.pending()){
+       endpointReturnWaiting=true;endpointTarget=fixedSecondary;endpointReturnDeadline=now+1800;
+       log("ENDPOINT: retain app on D1 while canceling concurrency; target primary="+endpointTarget);
+      }
+     }releaseInternal();blocked=false;}return;
    }
    endpointSince=0;
    if(owned==null){
@@ -199,8 +223,8 @@ final class ConcurrentController {
   finally{Binder.restoreCallingIdentity(token);}
  }
  private void releaseInternal(){
-  returnTask();
+  if(!endpointReturnWaiting)returnTask();
   if(owned!=null){try{if(cameraSession){logNativeTasks();windows.capture("before release");afterReleaseAt=SystemClock.elapsedRealtime();afterReleaseStage=0;}cancel.invoke(manager);owned=null;status="Normal display control restored";}catch(Exception e){status="Display release pending";}}
  }
- synchronized void release(){long token=Binder.clearCallingIdentity();try{if(cameraSession&&owned!=null)log("RELEASE: controller disabled or stopped");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;}finally{Binder.restoreCallingIdentity(token);}}
+ synchronized void release(){endpointReturnWaiting=false;long token=Binder.clearCallingIdentity();try{if(cameraSession&&owned!=null)log("RELEASE: controller disabled or stopped");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;}finally{Binder.restoreCallingIdentity(token);}}
 }
