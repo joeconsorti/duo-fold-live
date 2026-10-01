@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -19,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
@@ -27,7 +30,12 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
 import kotlin.math.roundToInt
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 class MainActivity:ComponentActivity(){
+ private var developerShortcut by mutableIntStateOf(0)
+ fun openDeveloperSettings(){developerShortcut++}
+ override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);if(intent.getBooleanExtra(DeveloperShortcut.EXTRA,false))openDeveloperSettings()}
+
  private val shizukuPermission=rikka.shizuku.Shizuku.OnRequestPermissionResultListener { code,result ->
   if(code==42)runOnUiThread {
    android.widget.Toast.makeText(this,if(result==0)"Shizuku authorized" else "Shizuku authorization denied. Enable Duo in Shizuku → Authorized applications.",android.widget.Toast.LENGTH_LONG).show()
@@ -41,6 +49,7 @@ class MainActivity:ComponentActivity(){
  }
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
+  if(intent.getBooleanExtra(DeveloperShortcut.EXTRA,false))openDeveloperSettings()
   if(intent.action=="org.duofold.live.SUPPORT"){intent.action=null;SupportPrompts.open(this)}
   rikka.shizuku.Shizuku.addRequestPermissionResultListener(shizukuPermission)
   if(FirstRun.required(this)){startActivity(Intent(this,SetupActivity::class.java));finish();return}
@@ -53,12 +62,17 @@ class MainActivity:ComponentActivity(){
     var legacy by remember{mutableStateOf(false)}
     var supportBanner by remember{mutableStateOf(false)}
     var developer by remember{mutableStateOf(false)}
+    val developerAnchor=remember{BringIntoViewRequester()}
     var animationStyle by remember{mutableStateOf(prefs.getString("animation_style","duo") ?: "duo")}
     var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
     var dual by remember{mutableStateOf(prefs.getBoolean("dual",false))}
+    var powerOverride by remember{mutableStateOf(prefs.getBoolean("handoff_power_override",false))}
     var screenshotStartup by remember{mutableStateOf(prefs.getBoolean("screenshot_camera_startup",false))}
     var advanced by remember{mutableStateOf(false)}
+    LaunchedEffect(developerShortcut){
+     if(developerShortcut>0){advanced=true;developer=true;withFrameNanos{};withFrameNanos{};developerAnchor.bringIntoView(Rect(0f,0f,1f,resources.displayMetrics.heightPixels*.75f))}
+    }
     var setup by remember{mutableStateOf(!enabled)}
     var smoothing by remember{mutableFloatStateOf(FrameSmoothing.sanitize(prefs.getFloat("smoothing_ms",30f)))}
     var fadeSmoothing by remember{mutableFloatStateOf(FadeSettings.smoothing(prefs.getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING)))}
@@ -285,7 +299,8 @@ class MainActivity:ComponentActivity(){
         Text("Always on, including when animation is off. Requires authorized Shizuku.",style=MaterialTheme.typography.bodySmall)
         Text("Still locking? In Samsung Settings, search “Lock when folded” and turn it OFF. Return to Home and fold to test.",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={FoldAwakeDefault.reconnect();FoldAwakeDefault.tick(this@MainActivity);startBackground()}){Text("Recheck keep-awake now")}
-        TextButton(onClick={developer=!developer}){Text("☰  Developer settings")}
+        TextButton(modifier=Modifier.bringIntoViewRequester(developerAnchor),onClick={developer=!developer}){Text("☰  Developer settings")}
+        Text("Shortcut: tap with four fingers anywhere in the app.",style=MaterialTheme.typography.bodySmall)
         if(developer){
          SettingsCard("Developer settings","Diagnostics and experimental controls. Normal use does not require these."){
         TextButton(onClick={legacy=!legacy}){Text(if(legacy)"Hide legacy & experimental visuals" else "Legacy & experimental visuals")}
@@ -306,6 +321,8 @@ class MainActivity:ComponentActivity(){
         Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
         Toggle("Screenshot window-first startup (experimental)",screenshotStartup){screenshotStartup=it;booleanSetting("screenshot_camera_startup",it)}
+        Toggle("Hold displays ON at handoff (experimental)",powerOverride){powerOverride=it;booleanSetting("handoff_power_override",it)}
+        Text("Requires both screenshot handoff options above. Requests Samsung ON overrides near full opening/closing, then releases them after two seconds. May be rejected or delay the switch; compare ON versus OFF and copy the short report.",style=MaterialTheme.typography.bodySmall)
         Text("Requires Dual-screen screenshot handoff ON. Diagnostic: commits the outgoing screenshot, then wakes the incoming panel while keeping the outgoing screen on. Incoming content is uncovered live content, with incoming glass temporarily omitted. Final native-layout switch may still flash. Maximum hold: 30 seconds. Turn this off to restore the original screenshot path.",style=MaterialTheme.typography.bodySmall)
         Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
         Text(GlassFrames.status,style=MaterialTheme.typography.bodySmall)

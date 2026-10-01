@@ -4,12 +4,17 @@ import java.util.*;
 /** Independent ring so task dumps cannot evict endpoint power evidence. */
 final class EndpointPowerTrace {
  private final ArrayDeque<String> events=new ArrayDeque<>();
- private long until,lastSample;private String previous="",apis="Not sampled";
+ private Handler handler;
+ private long until,lastSample,maxGap;private String previous="";private volatile String apis="Not sampled";
  private Object dm,power;private Class<?> powerApi;private boolean inspected;
- private void add(String text){events.addLast(SystemClock.elapsedRealtime()+": "+text);while(events.size()>100)events.removeFirst();}
- void arm(String reason){until=SystemClock.elapsedRealtime()+2500;previous="";add(reason);sample();}
+ private synchronized void add(String text){events.addLast(SystemClock.elapsedRealtime()+": "+text);while(events.size()>100)events.removeFirst();}
+ synchronized void arm(String reason){
+  if(handler==null){HandlerThread thread=new HandlerThread("Duo-endpoint-trace");thread.start();handler=new Handler(thread.getLooper());}
+  handler.post(()->{until=SystemClock.elapsedRealtime()+3500;previous="";lastSample=0;maxGap=0;add(reason);handler.removeCallbacks(poll);handler.post(poll);});
+ }
+ private final Runnable poll=new Runnable(){public void run(){if(SystemClock.elapsedRealtime()>until){add("Sampling completed; maximum gap="+maxGap+" ms");return;}sample();handler.postDelayed(this,25);}};
  void sample(){
-  long now=SystemClock.elapsedRealtime();if(now>until||now-lastSample<25)return;lastSample=now;
+  long now=SystemClock.elapsedRealtime();if(now>until||now-lastSample<25)return;if(lastSample>0)maxGap=Math.max(maxGap,now-lastSample);lastSample=now;
   try{
    if(dm==null)dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
    if(power==null){powerApi=Class.forName("android.os.IPowerManager");IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"power");power=Class.forName("android.os.IPowerManager$Stub").getMethod("asInterface",IBinder.class).invoke(null,binder);}
@@ -32,5 +37,5 @@ final class EndpointPowerTrace {
    String next=line.toString();if(!next.equals(previous)){previous=next;add(next);}
   }catch(Exception e){String next="Endpoint sample unavailable: "+e;if(!next.equals(previous)){previous=next;add(next);}}
  }
- String report(){return "Endpoint power trace (25 ms target; polling gaps possible; software states):\n"+String.join("\n",events)+"\nAvailable power APIs (inspection only): "+apis;}
+ synchronized String report(){return "Endpoint power trace (25 ms target; polling gaps possible; software states):\n"+String.join("\n",events)+"\nAvailable power APIs (inspection only): "+apis;}
 }

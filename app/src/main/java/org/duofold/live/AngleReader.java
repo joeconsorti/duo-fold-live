@@ -51,6 +51,7 @@ public class AngleReader extends Binder {
    boolean debug=data.dataAvail()>=4&&data.readInt()!=0;
    float handoffAngle=HandoffSettings.angle(data.dataAvail()>=4?data.readFloat():HandoffSettings.DEFAULT);
    boolean screenshotStartup=data.dataAvail()>=4&&data.readInt()!=0;boolean screenshotPrepared=data.dataAvail()>=4&&data.readInt()!=0;
+   concurrent.powerOverrideEnabled(data.dataAvail()>=4&&data.readInt()!=0);
    boolean effectAllowed=animationMode.update(mode,effectiveAngle,last>0&&heartbeat-last<750);
    boolean mirrorMode=AnimationModePolicy.mirrors(mode);
    appEnabled=appEnabled&&effectAllowed;

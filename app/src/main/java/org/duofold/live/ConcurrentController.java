@@ -16,6 +16,8 @@ final class ConcurrentController {
  synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
  private FixedTaskRoute fixedRoute;private boolean taskRequested,taskVerified,routeUnlocked;private long routePollAt,restoreAt,panelsReadySince;private String fixedSecondary="";
+ private HandoffPowerOverride powerOverride;private boolean powerOverrideEnabled,powerOverrideArmed,powerCancellationSent;
+ synchronized void powerOverrideEnabled(boolean enabled){if(powerOverrideEnabled&&!enabled&&powerOverride!=null)powerOverride.cancel("option disabled");powerOverrideEnabled=enabled;}
  private final EndpointPowerTrace endpointPower=new EndpointPowerTrace();
  private boolean endpointReturnWaiting;private long endpointReturnDeadline;private String endpointTarget="";
  private boolean routeCheckpoint;private String routeObservation="";
@@ -25,7 +27,7 @@ final class ConcurrentController {
  private final ArrayDeque<String> samples=new ArrayDeque<>();
  private long sampledAt;private String panelSample="";private boolean capturedTasks;
  private void log(String text){samples.addLast(SystemClock.elapsedRealtime()+": "+text);while(samples.size()>90)samples.removeFirst();}
- synchronized String trace(){return "Screenshot panel trace (software states, not optical proof):\n"+String.join("\n",samples)+"\n"+windows.report()+"\n"+endpointPower.report();}
+ synchronized String trace(){return "Screenshot panel trace (software states, not optical proof):\n"+String.join("\n",samples)+"\n"+windows.report()+"\n"+endpointPower.report()+(powerOverride==null?"\nSamsung ON override experiment: not armed":("\n"+powerOverride.report()));}
  private void samplePanels(float angle,boolean windowReady,boolean ready,boolean force){
   long now=SystemClock.elapsedRealtime();if(!force&&now-sampledAt<100)return;sampledAt=now;
   try{
@@ -87,6 +89,7 @@ final class ConcurrentController {
   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
   if(!current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Existing display override; stop other test apps first");
   if(cameraSession){taskRequested=false;taskVerified=false;routeCheckpoint=false;routeObservation="";panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
+  if(cameraSession&&powerOverrideEnabled){if(powerOverride==null)powerOverride=new HandoffPowerOverride();powerOverrideArmed=false;powerCancellationSent=false;powerOverride.newSession();}
   setConcurrent(inner,now); // Captured outgoing panel becomes the secondary Presentation.
  }
  private void setConcurrent(boolean inner,long now)throws Exception{
@@ -128,7 +131,12 @@ final class ConcurrentController {
  synchronized void update(float angle,boolean fresh,boolean unlocked,boolean primaryIsInner,boolean secondaryReady,int frozenSource,float openThreshold,boolean cameraStartup,boolean windowPrepared){
   long token=Binder.clearCallingIdentity();long now=SystemClock.elapsedRealtime();
   try{
-   routeUnlocked=unlocked;endpointPower.sample();
+   routeUnlocked=unlocked;
+   if(powerOverride!=null){
+    if((!fresh||!cameraStartup)&&!powerCancellationSent){powerCancellationSent=true;powerOverride.cancel("stale angle or mode changed");}
+    else if(!unlocked&&!powerCancellationSent){powerCancellationSent=true;powerOverride.cancelUnlessFoldSleep();}
+    else if(unlocked&&fresh&&cameraStartup&&!powerCancellationSent&&powerOverrideEnabled&&!powerOverrideArmed&&cameraSession&&owned!=null&&((primaryInner&&angle<=30f)||(!primaryInner&&angle>=150f))){powerOverrideArmed=true;endpointPower.arm("Samsung ON override boundary");powerOverride.arm();}
+   }
    if(endpointReturnWaiting){
     if(owned!=null){releaseInternal();return;}
     boolean mapped=false;
@@ -226,5 +234,5 @@ final class ConcurrentController {
   if(!endpointReturnWaiting)returnTask();
   if(owned!=null){try{if(cameraSession){logNativeTasks();windows.capture("before release");afterReleaseAt=SystemClock.elapsedRealtime();afterReleaseStage=0;}cancel.invoke(manager);owned=null;status="Normal display control restored";}catch(Exception e){status="Display release pending";}}
  }
- synchronized void release(){endpointReturnWaiting=false;long token=Binder.clearCallingIdentity();try{if(cameraSession&&owned!=null)log("RELEASE: controller disabled or stopped");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;}finally{Binder.restoreCallingIdentity(token);}}
+ synchronized void release(){if(powerOverride!=null)powerOverride.cancel("controller stopped");endpointReturnWaiting=false;long token=Binder.clearCallingIdentity();try{if(cameraSession&&owned!=null)log("RELEASE: controller disabled or stopped");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;}finally{Binder.restoreCallingIdentity(token);}}
 }
