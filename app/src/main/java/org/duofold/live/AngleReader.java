@@ -52,6 +52,7 @@ public class AngleReader extends Binder {
    float handoffAngle=HandoffSettings.angle(data.dataAvail()>=4?data.readFloat():HandoffSettings.DEFAULT);
    boolean screenshotStartup=data.dataAvail()>=4&&data.readInt()!=0;boolean screenshotPrepared=data.dataAvail()>=4&&data.readInt()!=0;
    concurrent.powerOverrideEnabled(data.dataAvail()>=4&&data.readInt()!=0);
+   boolean closingPower=data.dataAvail()>=4&&data.readInt()!=0;
    boolean effectAllowed=animationMode.update(mode,effectiveAngle,last>0&&heartbeat-last<750);
    boolean mirrorMode=AnimationModePolicy.mirrors(mode);
    appEnabled=appEnabled&&effectAllowed;
@@ -65,6 +66,7 @@ public class AngleReader extends Binder {
    boolean needsBridge=mirrorMode && live && !dual && unlocked && appEnabled && handoff.active() && !handoff.probeHolding() && angle>=handoffAngle && angle<FoldThreshold.sanitize(openThreshold) && last>0 && heartbeat-last<750 && expansion!=null;
    if(needsBridge)bridgeReady=expansion.holdBeforeRelease();else if(expansion!=null)expansion.cancelReleaseWait();
    concurrent.observeMotion(effectiveAngle,last>0&&heartbeat-last<2000,appEnabled&&unlocked,openThreshold,dual,screenshotStartup);
+   handoff.closingPowerEnabled(closingPower&&!dual&&appEnabled&&live, effectiveAngle,last>0&&heartbeat-last<750,unlocked);
    boolean wasCoverHeld=handoff.active();
    if(!effectAllowed){handoff.release();concurrent.release();}else if(dual){handoff.release();concurrent.update(effectiveAngle,last>0&&heartbeat-last<2000,unlocked,primaryInner,secondaryReady,frozenSource,openThreshold,screenshotStartup,screenshotPrepared);}else{concurrent.release();if(bridgeReady)handoff.update(effectiveAngle,last>0&&heartbeat-last<750,unlocked,live&&appEnabled,openThreshold,probeRequest,handoffAngle);}
    if(wasCoverHeld && !handoff.active() && expansion!=null)expansion.releaseReturned();
