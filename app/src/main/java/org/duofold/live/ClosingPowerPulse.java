@@ -90,7 +90,8 @@ final class ClosingPowerPulse {
    restorePending=false;handler.removeCallbacks(restore);log("requestDisplayPower(D0, UNKNOWN/current policy) returned="+accepted+"; "+reason+"; elapsed since ON request="+(SystemClock.elapsedRealtime()-(restoreAt-ClosingPowerPolicy.PULSE_MS))+" ms");
   }catch(Exception e){log("POLICY RESTORE FAILED: "+root(e));
    handler.removeCallbacks(restore);if(restoreRetries++<3)handler.postDelayed(restore,100);
-   // Pending failure blocks subsequent experiments; never issue another ON until cleanup succeeds.}
+   // Pending failure blocks subsequent experiments; never issue another ON until cleanup succeeds.
+  }
   finally{Binder.restoreCallingIdentity(identity);}
  }
  private static Throwable root(Throwable e){while(e.getCause()!=null)e=e.getCause();return e;}
