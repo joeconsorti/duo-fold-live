@@ -22,7 +22,8 @@ final class PreviewExpansion extends Binder {
  private long stamp,start=0,ready=-1;private volatile long lastLease=0;
  private boolean polling=false,completed=false,pendingReady=false;
  private volatile boolean closed=false;
- private java.util.concurrent.CountDownLatch coverCommit;
+ private PreviewReleaseGate coverCommit;
+ private volatile PreviewReleaseGate releaseGate;
  volatile String trace="No handoff yet";
  private int lastStack=-1,lastPanelState=-1;
  private long lastSample=0,maxSampleGap=0,offSince=-1,missingSince=-1,diagnosticStart=0;
@@ -44,11 +45,17 @@ final class PreviewExpansion extends Binder {
   if(off && offSince<0){offSince=now;diagnosticEvent("Inner reports OFF");}
   if(!off && offSince>=0){diagnosticEvent("Inner OFF interval "+(now-offSince)+" ms (sampled)");offSince=-1;}
  }
- void releaseReturned(){final long when=SystemClock.elapsedRealtime();handler.post(()->{if(diagnosticStart>0)diagnosticEvent("Cover-primary handoff call returned at +"+(when-diagnosticStart)+" ms");});}
+ void releaseReturned(){final long when=SystemClock.elapsedRealtime();final PreviewReleaseGate gate=releaseGate;
+  if(gate!=null){gate.mayRelease(when);handler.post(()->diagnosticEvent("Cover-primary handoff returned; request="+gate.requestedAt+"; elapsed="+(when-gate.requestedAt)+" ms; gate="+gate.outcome()));}
+ }
+ void cancelReleaseWait(){final PreviewReleaseGate gate=releaseGate;if(gate==null)return;
+  boolean waiting=gate.outcome().equals("WAITING");gate.abort("motion reversed, stale, disabled or locked");releaseGate=null;
+  if(waiting)handler.post(()->{if(releaseGate==null)clear("Pre-release wait canceled");});
+ }
  private synchronized void event(String text){trace=(trace+" | "+SystemClock.elapsedRealtime()+": "+text);if(trace.length()>6000)trace=trace.substring(trace.length()-6000);}
  volatile String status="Expansion idle";
  PreviewExpansion(int owner){this.owner=owner;thread.start();handler=new Handler(thread.getLooper());attachInterface(null,TOKEN);}
- void enabled(boolean value){boolean changed=enabled!=value;enabled=value;lastLease=SystemClock.elapsedRealtime();if(!value && changed)handler.post(()->clear("Expansion disabled"));}
+ void enabled(boolean value){boolean changed=enabled!=value;enabled=value;lastLease=SystemClock.elapsedRealtime();if(!value && changed)handler.post(()->clear("Expansion disabled"));if(value&&changed){PreviewReleaseGate old=releaseGate;if(old!=null)old.abort("new enabled session");releaseGate=null;}}
  protected boolean onTransact(int code,Parcel data,Parcel reply,int flags)throws RemoteException{
   if(closed)throw new IllegalStateException("Expansion helper closed");
   data.enforceInterface(TOKEN);if(Binder.getCallingUid()!=owner)throw new SecurityException("Wrong caller");
@@ -62,19 +69,23 @@ final class PreviewExpansion extends Binder {
   else throw new IllegalArgumentException("Unknown bridge operation");
   reply.writeNoException();reply.writeString(status);return true;
  }
- void holdBeforeRelease(){
-  if(!enabled || closed)return;
-  java.util.concurrent.CountDownLatch committed=new java.util.concurrent.CountDownLatch(1);
-  handler.post(()->{
-   if(layer==null || start>0 || !PreviewExpansionPolicy.fresh(stamp,SystemClock.elapsedRealtime())){committed.countDown();return;}
-   trace="";diagnosticStart=SystemClock.elapsedRealtime();lastSample=0;maxSampleGap=0;offSince=-1;missingSince=-1;lastMapping="";
-   event("MEASURED SOFTWARE EVENTS ONLY: panel state is sampled; commit/draw is not photon visibility");
-   event("Pre-release hold requested; prepared frame age="+(diagnosticStart-stamp)+" ms");
-   start=SystemClock.elapsedRealtime();ready=-1;coverCommit=committed;
-   handler.removeCallbacks(tick);tick.run();
-  });
-  try{boolean acknowledged=committed.await(24,java.util.concurrent.TimeUnit.MILLISECONDS);
-   final long when=SystemClock.elapsedRealtime();handler.post(()->{if(diagnosticStart>0)diagnosticEvent("Pre-release wait ended +"+(when-diagnosticStart)+" ms; commit observed="+acknowledged);});}catch(InterruptedException e){Thread.currentThread().interrupt();}
+ boolean holdBeforeRelease(){
+  if(!enabled || closed)return true;
+  long now=SystemClock.elapsedRealtime();PreviewReleaseGate current=releaseGate;
+  if(current==null){
+   final PreviewReleaseGate gate=new PreviewReleaseGate(now);releaseGate=gate;current=gate;
+   handler.post(()->{
+    if(releaseGate!=gate||!enabled||closed){gate.abort("inactive session");return;}
+    if(!gate.maySubmit(SystemClock.elapsedRealtime())){event("Pre-release preparation skipped: queue missed deadline; request="+gate.requestedAt);return;}
+    if(layer==null||start>0||!PreviewExpansionPolicy.fresh(stamp,SystemClock.elapsedRealtime())){gate.abort("no fresh prepared layer or hold already active");event("Pre-release "+gate.outcome()+"; request="+gate.requestedAt);return;}
+    trace="";diagnosticStart=gate.requestedAt;lastSample=0;maxSampleGap=0;offSince=-1;missingSince=-1;lastMapping="";
+    event("MEASURED SOFTWARE EVENTS ONLY: panel state is sampled; commit/draw is not photon visibility");
+    event("Pre-release request="+gate.requestedAt+"; queue="+(SystemClock.elapsedRealtime()-gate.requestedAt)+" ms; prepared age="+(SystemClock.elapsedRealtime()-stamp)+" ms");
+    start=SystemClock.elapsedRealtime();ready=-1;coverCommit=gate;
+    handler.removeCallbacks(tick);tick.run();
+   });
+  }
+  return current.mayRelease(now);
  }
  private static String root(Throwable e){while(e.getCause()!=null)e=e.getCause();return e.getClass().getSimpleName()+": "+e.getMessage();}
  private Object service(String name,String stub)throws Exception{
@@ -154,6 +165,7 @@ final class PreviewExpansion extends Binder {
    int w=number(target,"logicalWidth"),h=number(target,"logicalHeight");
    float fit=Math.min(w/(float)bw,h/(float)bh);
    float leftWidth=Math.max(0f,w-bw*fit);
+   if(coverCommit!=null&&!coverCommit.maySubmit(SystemClock.elapsedRealtime())){event("Replacement not submitted: gate deadline expired during preparation; request="+coverCommit.requestedAt);coverCommit=null;start=0;ready=-1;handler.postDelayed(this,8);return;}
    try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){
     SurfaceControl.Transaction.class.getMethod("setLayerStack",SurfaceControl.class,int.class).invoke(t,layer,number(target,"layerStack"));
     SurfaceControl.Transaction.class.getMethod("setMatrix",SurfaceControl.class,float.class,float.class,float.class,float.class).invoke(t,layer,fit,0f,0f,fit);
@@ -168,10 +180,10 @@ final class PreviewExpansion extends Binder {
      SurfaceControl.Transaction.class.getMethod("setMatrix",SurfaceControl.class,float.class,float.class,float.class,float.class).invoke(t,seam,fit,0f,0f,fit);
      t.setPosition(seam,leftWidth,(h-bh*fit)/2f).setAlpha(seam,alpha*seamMotion).setVisibility(seam,seamPixels>0);
     }
-    if(coverCommit!=null){final java.util.concurrent.CountDownLatch fence=coverCommit;coverCommit=null;
+    if(coverCommit!=null){final PreviewReleaseGate fence=coverCommit;coverCommit=null;
      final long submitted=SystemClock.elapsedRealtime();
-     t.addTransactionCommittedListener(Runnable::run,()->{long committedAt=SystemClock.elapsedRealtime();fence.countDown();diagnosticEvent("Replacement transaction committed in "+(committedAt-submitted)+" ms");});
-     event("Replacement submitted before cover release");
+     t.addTransactionCommittedListener(Runnable::run,()->{long committedAt=SystemClock.elapsedRealtime();boolean timely=fence.commit(committedAt);diagnosticEvent("Replacement transaction committed in "+(committedAt-submitted)+" ms; request="+fence.requestedAt+"; timely="+timely+"; gate="+fence.outcome());});
+     event("Replacement submitted; request="+fence.requestedAt+"; age="+(submitted-fence.requestedAt)+" ms");
     }
     t.apply();
    }
@@ -181,7 +193,8 @@ final class PreviewExpansion extends Binder {
  private void clear(String message){
   if(start>0){event(message+"; hold duration="+(SystemClock.elapsedRealtime()-start)+" ms; maximum state-sampling gap="+maxSampleGap+" ms");
    if(offSince>=0)event("OFF interval still open at cleanup");if(missingSince>=0)event("Missing mapping interval still open at cleanup");}
-  diagnosticStart=0;if(coverCommit!=null){coverCommit.countDown();coverCommit=null;}
+  diagnosticStart=0;if(coverCommit!=null){coverCommit.abort(message);coverCommit=null;}
+  if(releaseGate!=null)releaseGate.abort(message);
   handler.removeCallbacks(tick);polling=false;start=0;ready=-1;pendingReady=false;
   if(layer!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(layer,false).reparent(layer,null).apply();}catch(Exception ignored){}layer.release();layer=null;}
   if(backdrop!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(backdrop,false).reparent(backdrop,null).apply();}catch(Exception ignored){}backdrop.release();backdrop=null;}

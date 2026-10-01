@@ -44,8 +44,19 @@ final class EndpointPowerTrace {
     if(id==0){String physical=String.valueOf(c.getField("uniqueId").get(d));if(!observedPrimary.isEmpty()&&!physical.equals(observedPrimary)){add("PRIMARY REMAP "+observedPrimary+" -> "+physical);appWindows.start(watchedTask,SystemClock.elapsedRealtime());}observedPrimary=physical;}
     line.append(c.getField("uniqueId").get(d)).append(" state=").append(c.getField("state").get(d)).append(' ').append(c.getField("logicalWidth").get(d)).append('x').append(c.getField("logicalHeight").get(d));
    }
-   String next=line.toString();if(!next.equals(previous)){previous=next;add(next);}
+   String next=line.toString();if(!next.equals(previous)){previous=next;add(next);sampleDeviceState();}
   }catch(Exception e){String next="Endpoint sample unavailable: "+e;if(!next.equals(previous)){previous=next;add(next);}}
  }
+ private void sampleDeviceState(){
+  try{
+   IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"device_state");
+   Object service=Class.forName("android.hardware.devicestate.IDeviceStateManager$Stub").getMethod("asInterface",IBinder.class).invoke(null,binder);
+   Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
+   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
+   String state="Device state current="+current.getClass().getMethod("getIdentifier").invoke(current)+" base="+base.getClass().getMethod("getIdentifier").invoke(base);
+   if(!state.equals(lastDeviceState)){lastDeviceState=state;add(state);}
+  }catch(Exception e){String state="Device state unavailable: "+e.getClass().getSimpleName();if(!state.equals(lastDeviceState)){lastDeviceState=state;add(state);}}
+ }
+ private String lastDeviceState="";
  synchronized String report(){return "Endpoint power trace (25 ms target; polling gaps possible; software states):\n"+String.join("\n",events)+"\nAvailable power APIs (inspection only): "+apis+"\n"+appWindows.report();}
 }

@@ -13,6 +13,10 @@ final class CoverHandoff {
  synchronized boolean probeHolding(){return probe.holding();}
  synchronized String probeStatus(){return probe.status+"\n"+nativeProbe.report();}
  private float handoffAngle=HandoffSettings.DEFAULT;
+ private float observedAngle=Float.NaN;
+ private final ArrayDeque<String> events=new ArrayDeque<>();
+ private void event(String message){events.addLast(SystemClock.elapsedRealtime()+": angle="+observedAngle+" "+message);while(events.size()>48)events.removeFirst();}
+ synchronized String trace(){return "Normal handoff request events (explicit cancel vs Android callback):\n"+String.join("\n",events);}
  String status="Normal display control";
  private void init()throws Exception{
   if(manager!=null)return;
@@ -29,21 +33,21 @@ final class CoverHandoff {
   request=type.getMethod("requestState",requestType,Executor.class,callbackType);cancel=type.getMethod("cancelStateRequest");manager=candidate;
  }
  synchronized void update(float angle,boolean fresh,boolean interactive,boolean direct,float openThreshold,long probeRequest,float handoffAngle){
-  this.handoffAngle=HandoffSettings.angle(handoffAngle);policy.handoff(this.handoffAngle);
+  observedAngle=angle;this.handoffAngle=HandoffSettings.angle(handoffAngle);policy.handoff(this.handoffAngle);
   int test=probe.update(SystemClock.elapsedRealtime(),probeRequest,angle,fresh,interactive&&direct,owned!=null&&!innerHeld);
   nativeProbe.update(test==ContinuityProbePolicy.HOLD,angle,interactive);
   if(test==ContinuityProbePolicy.HOLD)return;
-  if(test==ContinuityProbePolicy.FINISH){releaseOwned();return;}
+  if(test==ContinuityProbePolicy.FINISH){event("RELEASE reason=continuity test finished");releaseOwned();return;}
   if(owned!=null){
    int next=DirectHandoffPolicy.next(innerHeld,angle,fresh,interactive,direct,openThreshold,this.handoffAngle);
-   if(next==DirectHandoffPolicy.RELEASE){releaseOwned();return;}
+   if(next==DirectHandoffPolicy.RELEASE){event("RELEASE decision: fresh="+fresh+" interactive="+interactive+" direct="+direct+" open="+openThreshold);releaseOwned();return;}
    if(next==DirectHandoffPolicy.INNER){changeState(true);policy.reset();return;}
    if(next==DirectHandoffPolicy.COVER){changeState(false);policy.cover=owned!=null;return;}
    if(innerHeld)return;
   }
-  if(!fresh||!interactive){releaseOwned();return;}
+  if(!fresh||!interactive){if(owned!=null)event("RELEASE reason=stale or not interactive");releaseOwned();return;}
   int action=policy.update(angle,fresh,interactive);
-  if(action<0){releaseOwned();return;}if(action!=1)return;
+  if(action<0){event("RELEASE reason=cover policy endpoint");releaseOwned();return;}if(action!=1)return;
   changeState(false);
  }
  private void changeState(boolean toInner){
@@ -56,13 +60,14 @@ final class CoverHandoff {
    Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
    Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
    if(owned==null && !current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Another display override is active");
+   event("REQUEST "+(toInner?"inner":"cover")+" id="+(toInner?innerId:coverId)+" current="+current.getClass().getMethod("getIdentifier").invoke(current)+" base="+base.getClass().getMethod("getIdentifier").invoke(base));
    Object builder=requestType.getMethod("newBuilder",int.class).invoke(null,toInner?innerId:coverId);
    Object next=builder.getClass().getMethod("build").invoke(builder);
    Object callback=Proxy.newProxyInstance(callbackType.getClassLoader(),new Class<?>[]{callbackType},(proxy,m,args)->{
     if(m.getName().equals("hashCode"))return System.identityHashCode(proxy);
     if(m.getName().equals("equals"))return proxy==args[0];
     if(m.getName().equals("toString"))return "DuoCoverHandoff";
-    if(m.getName().equals("onRequestCanceled")){synchronized(this){if(owned==next){owned=null;innerHeld=false;status="Concurrent handoff request canceled by system";}}}return null;
+    if(m.getName().equals("onRequestCanceled")){synchronized(this){event("ANDROID CANCEL callback; current owned request="+(owned==next)+" request="+(toInner?"inner":"cover"));if(owned==next){owned=null;innerHeld=false;status="Concurrent handoff request canceled by system";}}}return null;
    });
    owned=next;innerHeld=toInner;request.invoke(manager,next,(Executor)Runnable::run,callback);
    status=toInner?"Direct concurrent handoff: inner primary; holding until fully open":"Cover held below handoff; switch at "+Math.round(handoffAngle)+"° or closed";
@@ -73,6 +78,6 @@ final class CoverHandoff {
  synchronized void release(){probe.abort();nativeProbe.update(false,0,false);releaseOwned();}
  private void releaseOwned(){
   policy.reset();if(owned==null)return;long identity=Binder.clearCallingIdentity();
-  try{cancel.invoke(manager);owned=null;innerHeld=false;status="Normal display control restored";}catch(Exception e){status="Display release pending";}finally{Binder.restoreCallingIdentity(identity);}
+  try{event("EXPLICIT cancelStateRequest; held="+(innerHeld?"inner":"cover"));cancel.invoke(manager);event("EXPLICIT cancelStateRequest returned");owned=null;innerHeld=false;status="Normal display control restored";}catch(Exception e){status="Display release pending";}finally{Binder.restoreCallingIdentity(identity);}
  }
 }
