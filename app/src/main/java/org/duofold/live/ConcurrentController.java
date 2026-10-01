@@ -16,6 +16,7 @@ final class ConcurrentController {
  synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
  private FixedTaskRoute fixedRoute;private boolean taskRequested,taskVerified,routeUnlocked;private long routePollAt,restoreAt,panelsReadySince;private String fixedSecondary="";
+ private boolean routeCheckpoint;private String routeObservation="";
  private boolean cameraSession;private String fixedPrimary="";
  private final ScreenshotWindowTrace windows=new ScreenshotWindowTrace();
  private long afterReleaseAt;private int afterReleaseStage;
@@ -83,7 +84,7 @@ final class ConcurrentController {
   Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
   if(!current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Existing display override; stop other test apps first");
-  if(cameraSession){taskRequested=false;taskVerified=false;panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
+  if(cameraSession){taskRequested=false;taskVerified=false;routeCheckpoint=false;routeObservation="";panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
   setConcurrent(inner,now); // Captured outgoing panel becomes the secondary Presentation.
  }
  private void setConcurrent(boolean inner,long now)throws Exception{
@@ -157,6 +158,7 @@ final class ConcurrentController {
     }return;
    }
    if(cameraSession){
+    if(now-started>=30000){log("RELEASE: 30-second limit");releaseInternal();blocked=true;status="Fixed-panel test reached time limit";return;}
     samplePanels(angle,windowPrepared,secondaryReady,false);
     if(!fixedPrimary.equals(physicalPrimary()))throw new IllegalStateException("Fixed primary changed during task route");
     boolean ready=windowPrepared&&secondaryReady&&panelsReady();
@@ -165,14 +167,28 @@ final class ConcurrentController {
     if(now-panelsReadySince<120){status="Checking stable fixed-panel readiness";return;}
     if(!fixedRoute.selected()){status="Home/system screen not routed — test inside a fullscreen app";}
     else if(!taskRequested){taskRequested=true;log(fixedRoute.move());windows.capture("app route requested");status="App route requested; waiting for D1 placement and focus";}
-    else if(now-routePollAt>=100){
+    else if(now-routePollAt>=250){
      routePollAt=now;
-     if(fixedRoute.placedAndFocused()){
-      if(!taskVerified){taskVerified=true;log("TASK PLACED + FOCUSED on D1; fixed panels ON; optical continuity not verified");logNativeTasks();windows.capture("app placed and focused");}
-      status="Fixed panels: outgoing screenshot + incoming app (plain diagnostic)";
-     }else{taskVerified=false;status="Waiting for selected app placement and focus on D1";if(now-started>3000)throw new IllegalStateException("App did not reach focused D1 task");}
+     // Task/focus queries are diagnostics, not evidence that the visible app failed.
+     // Never tear down or re-route a working fixed-panel session on this check.
+     try{
+      FixedTaskRoute.Observation observation=fixedRoute.observe();
+      String next=observation.summary();
+      if(!next.equals(routeObservation)){routeObservation=next;log("TASK OBSERVATION: "+next);}
+      if(observation.verified()&&!taskVerified){log("TASK PLACED + FOCUSED on D1; optical continuity not verified");windows.capture("app placed and focused");}
+      taskVerified=observation.verified();
+      status="Fixed panels held; "+next;
+     }catch(Exception diagnosticError){
+      taskVerified=false;
+      String next="Task observation unavailable: "+diagnosticError;
+      if(!next.equals(routeObservation)){routeObservation=next;log(next);}
+      status="Fixed panels held; task observation unavailable";
+     }
+     if(!routeCheckpoint&&now-started>=3000){
+      routeCheckpoint=true;log("HOLD: three-second checkpoint; "+routeObservation+"; no task verification timeout");
+      logNativeTasks();windows.capture("three-second hold checkpoint");
+     }
     }
-    if(now-started>=30000){log("RELEASE: 30-second limit");releaseInternal();blocked=true;status="Fixed-panel test reached time limit";return;}
     return;
    }
    if(primaryIsInner!=primaryInner && now<mappingDeadline)return;

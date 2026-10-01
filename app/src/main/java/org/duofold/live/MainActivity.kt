@@ -321,6 +321,7 @@ class MainActivity:ComponentActivity(){
 
        }
        OutlinedButton(onClick={val report=StandaloneService.instance?.report()?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report copied",android.widget.Toast.LENGTH_SHORT).show()}){Text("Copy status report")}
+       OutlinedButton(onClick={val report=StandaloneService.instance?.report(includeHealthHistory=false)?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report copied without health history",android.widget.Toast.LENGTH_SHORT).show()}){Text("Copy status without health history")}
       }
       SettingsCard("Support Duo Fold Live","Free, independent, and built with care for your Fold."){
        Text("Donations support development. All features remain free.")

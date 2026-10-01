@@ -34,11 +34,19 @@ final class FixedTaskRoute {
   if(result<0)throw new IllegalStateException("App route rejected: "+result);
   return "ROUTE requested task="+task+" to D1; result="+result;
  }
- boolean placedAndFocused()throws Exception{
+ static final class Observation {
+  final boolean placed,focused;final int focusedDisplay,focusedTask;
+  Observation(boolean placed,boolean focused,int display,int task){this.placed=placed;this.focused=focused;focusedDisplay=display;focusedTask=task;}
+  boolean verified(){return placed&&focused;}
+  String summary(){return "D1 placement="+placed+"; selected app focused on D1="+focused+"; focused display="+focusedDisplay+" root="+focusedTask;}
+ }
+ Observation observe()throws Exception{
   boolean placed=false;for(Object item:tasks(1))if(number(item,"taskId")==task)placed=true;
   Object root=api.getMethod("getFocusedRootTaskInfo").invoke(manager);
-  return placed&&root!=null&&number(root,"displayId")==1&&contains(root,task);
+  int display=root==null?-1:number(root,"displayId"),rootTask=root==null?-1:number(root,"taskId");
+  return new Observation(placed,root!=null&&display==1&&contains(root,task),display,rootTask);
  }
+ boolean placedAndFocused()throws Exception{return observe().verified();}
  String restore(boolean unlocked)throws Exception{
   if(!requested)return "No task return pending";
   boolean onSecondary=false;for(Object item:tasks(1))if(number(item,"taskId")==task)onSecondary=true;
