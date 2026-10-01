@@ -62,6 +62,7 @@ public class AngleReader extends Binder {
    fade.update(live&&!dual&&appEnabled&&!handoff.probeHolding(),effectiveAngle,last>0&&heartbeat-last<750);
    if(expansion!=null){expansion.motion(effectiveAngle,openThreshold);expansion.enabled(mirrorMode&&live&&!dual&&appEnabled&&!handoff.probeHolding());}
    if(mirrorMode && live && !dual && unlocked && appEnabled && handoff.active() && !handoff.probeHolding() && angle>=handoffAngle && last>0 && heartbeat-last<750 && expansion!=null)expansion.holdBeforeRelease();
+   concurrent.observeMotion(effectiveAngle,last>0&&heartbeat-last<2000,appEnabled&&unlocked,openThreshold,dual,screenshotStartup);
    boolean wasCoverHeld=handoff.active();
    if(!effectAllowed){handoff.release();concurrent.release();}else if(dual){handoff.release();concurrent.update(effectiveAngle,last>0&&heartbeat-last<2000,unlocked,primaryInner,secondaryReady,frozenSource,openThreshold,screenshotStartup,screenshotPrepared);}else{concurrent.release();handoff.update(effectiveAngle,last>0&&heartbeat-last<750,unlocked,live&&appEnabled,openThreshold,probeRequest,handoffAngle);}
    if(wasCoverHeld && !handoff.active() && expansion!=null)expansion.releaseReturned();

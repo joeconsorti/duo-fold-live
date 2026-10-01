@@ -320,6 +320,7 @@ class MainActivity:ComponentActivity(){
         Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
         Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
         Toggle("Dual-screen screenshot handoff",dual){dual=it;booleanSetting("dual",it)}
+        Text(if(dual)"Active path: dual-screen screenshot handoff" else "Active path: normal handoff. The next two switches are inactive while dual-screen handoff is OFF.",style=MaterialTheme.typography.bodySmall)
         Toggle("Screenshot window-first startup (experimental)",screenshotStartup){screenshotStartup=it;booleanSetting("screenshot_camera_startup",it)}
         Toggle("Hold displays ON at handoff (experimental)",powerOverride){powerOverride=it;booleanSetting("handoff_power_override",it)}
         Text("Requires both screenshot handoff options above. Requests Samsung ON overrides near full opening/closing, then releases them after two seconds. May be rejected or delay the switch; compare ON versus OFF and copy the short report.",style=MaterialTheme.typography.bodySmall)

@@ -19,6 +19,15 @@ final class ConcurrentController {
  private HandoffPowerOverride powerOverride;private boolean powerOverrideEnabled,powerOverrideArmed,powerCancellationSent;
  synchronized void powerOverrideEnabled(boolean enabled){if(powerOverrideEnabled&&!enabled&&powerOverride!=null)powerOverride.cancel("option disabled");powerOverrideEnabled=enabled;}
  private final EndpointPowerTrace endpointPower=new EndpointPowerTrace();
+ private final HandoffTracePolicy tracePolicy=new HandoffTracePolicy();
+ synchronized void observeMotion(float angle,boolean fresh,boolean allowed,float open,boolean dual,boolean windowFirst){
+  String event=tracePolicy.update(angle,fresh,allowed,FoldThreshold.sanitize(open),SystemClock.elapsedRealtime());
+  if(event.isEmpty())return;
+  String route="; route="+(dual?(windowFirst?"dual window-first":"dual original"):"normal (dual OFF)");
+  if(event.startsWith("MOTION"))endpointPower.motion(event+route);
+  else endpointPower.arm(event+route);
+ }
+
  private boolean endpointReturnWaiting;private long endpointReturnDeadline;private String endpointTarget="";
  private boolean routeCheckpoint;private String routeObservation="";
  private boolean cameraSession;private String fixedPrimary="";
@@ -147,6 +156,7 @@ final class ConcurrentController {
     endpointReturnWaiting=false;
     log(mapped?"ENDPOINT: incoming physical panel is D0 and ON; return exact app":"ENDPOINT: mapping wait ended; recover exact app");
     returnTask();
+    status=mapped?"Endpoint complete — normal display control restored":"Endpoint mapping wait ended — recovery attempted";
    }
    if(owned==null&&fixedRoute!=null&&fixedRoute.pending()){
     if(now-restoreAt>=1000){restoreAt=now;returnTask();}

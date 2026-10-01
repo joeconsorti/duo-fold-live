@@ -5,12 +5,20 @@ import java.util.*;
 final class EndpointPowerTrace {
  private final ArrayDeque<String> events=new ArrayDeque<>();
  private Handler handler;
+ private final EndpointWindowTrace appWindows=new EndpointWindowTrace();
+ private String observedPrimary="";private int watchedTask=-1;
  private long until,lastSample,maxGap;private String previous="";private volatile String apis="Not sampled";
  private Object dm,power;private Class<?> powerApi;private boolean inspected;
  private synchronized void add(String text){events.addLast(SystemClock.elapsedRealtime()+": "+text);while(events.size()>100)events.removeFirst();}
- synchronized void arm(String reason){
+ void arm(String reason){queue(reason,3500,null);}
+ void motion(String reason){queue(reason,30000,-2);}
+ private synchronized void queue(String reason,long duration,Integer task){
   if(handler==null){HandlerThread thread=new HandlerThread("Duo-endpoint-trace");thread.start();handler=new Handler(thread.getLooper());}
-  handler.post(()->{until=SystemClock.elapsedRealtime()+3500;previous="";lastSample=0;maxGap=0;add(reason);handler.removeCallbacks(poll);handler.post(poll);});
+  handler.post(()->{until=SystemClock.elapsedRealtime()+duration;if(task!=null){
+    watchedTask=-1;observedPrimary="";
+    try{FixedTaskRoute observer=new FixedTaskRoute();add("TRACE ONLY: "+observer.prepare());watchedTask=observer.selectedTask();}
+    catch(Exception e){add("Trace task selection unavailable: "+e.getClass().getSimpleName());}
+   }previous="";lastSample=0;maxGap=0;add(reason);handler.removeCallbacks(poll);handler.post(poll);});
  }
  private final Runnable poll=new Runnable(){public void run(){if(SystemClock.elapsedRealtime()>until){add("Sampling completed; maximum gap="+maxGap+" ms");return;}sample();handler.postDelayed(this,25);}};
  void sample(){
@@ -32,10 +40,12 @@ final class EndpointPowerTrace {
     Object d=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,id);
     line.append(" D").append(id).append('=');
     if(d==null){line.append("missing");continue;}
-    Class<?> c=d.getClass();line.append(c.getField("uniqueId").get(d)).append(" state=").append(c.getField("state").get(d)).append(' ').append(c.getField("logicalWidth").get(d)).append('x').append(c.getField("logicalHeight").get(d));
+    Class<?> c=d.getClass();
+    if(id==0){String physical=String.valueOf(c.getField("uniqueId").get(d));if(!observedPrimary.isEmpty()&&!physical.equals(observedPrimary)){add("PRIMARY REMAP "+observedPrimary+" -> "+physical);appWindows.start(watchedTask,SystemClock.elapsedRealtime());}observedPrimary=physical;}
+    line.append(c.getField("uniqueId").get(d)).append(" state=").append(c.getField("state").get(d)).append(' ').append(c.getField("logicalWidth").get(d)).append('x').append(c.getField("logicalHeight").get(d));
    }
    String next=line.toString();if(!next.equals(previous)){previous=next;add(next);}
   }catch(Exception e){String next="Endpoint sample unavailable: "+e;if(!next.equals(previous)){previous=next;add(next);}}
  }
- synchronized String report(){return "Endpoint power trace (25 ms target; polling gaps possible; software states):\n"+String.join("\n",events)+"\nAvailable power APIs (inspection only): "+apis;}
+ synchronized String report(){return "Endpoint power trace (25 ms target; polling gaps possible; software states):\n"+String.join("\n",events)+"\nAvailable power APIs (inspection only): "+apis+"\n"+appWindows.report();}
 }

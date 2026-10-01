@@ -23,6 +23,7 @@ final class FixedTaskRoute {
   for(Object candidate:tasks(0))if(contains(root,number(candidate,"taskId"))&&Objects.equals(field(root,"topActivity"),field(candidate,"topActivity"))){task=number(candidate,"taskId");component=String.valueOf(field(candidate,"topActivity"));return "SELECT task="+task+" component="+component;}
   return "SKIP: no exact focused app task";
  }
+ int selectedTask(){return task;}
  boolean selected(){return task>=0;}
  boolean pending(){return requested;}
  String move()throws Exception{
