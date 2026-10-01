@@ -16,6 +16,8 @@ final class ConcurrentController {
  synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
  private FixedTaskRoute fixedRoute;private boolean taskRequested,taskVerified,routeUnlocked;private long routePollAt,restoreAt,panelsReadySince;private String fixedSecondary="";
+ private boolean closingAppReturnEnabled,closingAppReturnAttempted;
+ synchronized void closingAppReturnEnabled(boolean enabled){closingAppReturnEnabled=enabled;}
  private HandoffPowerOverride powerOverride;private boolean powerOverrideEnabled,powerOverrideArmed,powerCancellationSent;
  synchronized void powerOverrideEnabled(boolean enabled){if(powerOverrideEnabled&&!enabled&&powerOverride!=null)powerOverride.cancel("option disabled");powerOverrideEnabled=enabled;}
  private final EndpointPowerTrace endpointPower=new EndpointPowerTrace();
@@ -98,7 +100,7 @@ final class ConcurrentController {
   Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
   if(!current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Existing display override; stop other test apps first");
-  if(cameraSession){taskRequested=false;taskVerified=false;routeCheckpoint=false;routeObservation="";panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);captureDestinationSize();capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
+  if(cameraSession){closingAppReturnAttempted=false;taskRequested=false;taskVerified=false;routeCheckpoint=false;routeObservation="";panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);captureDestinationSize();capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
   if(cameraSession&&powerOverrideEnabled){if(powerOverride==null)powerOverride=new HandoffPowerOverride();powerOverrideArmed=false;powerCancellationSent=false;powerOverride.newSession();}
   setConcurrent(inner,now); // Captured outgoing panel becomes the secondary Presentation.
  }
@@ -160,6 +162,13 @@ final class ConcurrentController {
     else if(!unlocked&&!powerCancellationSent){powerCancellationSent=true;powerOverride.cancelUnlessFoldSleep();}
     else if(unlocked&&fresh&&cameraStartup&&!powerCancellationSent&&powerOverrideEnabled&&!powerOverrideArmed&&cameraSession&&owned!=null&&((primaryInner&&angle<=30f)||(!primaryInner&&angle>=150f))){powerOverrideArmed=true;endpointPower.arm("Samsung ON override boundary");powerOverride.arm();}
    }
+   if(ClosingAppReturnPolicy.shouldReturn(closingAppReturnEnabled,cameraSession&&cameraStartup,primaryInner,owned!=null,fresh,unlocked,closingAppReturnAttempted,angle)&&fixedRoute!=null&&fixedRoute.pending()){
+    closingAppReturnAttempted=true;
+    log("APP-FIRST CLOSING: early task return requested at angle="+angle+"; concurrency retained; sleep prevention unverified");
+    returnTask();
+    try{log("APP-FIRST CLOSING: "+fixedRoute.primaryFocusSummary());}catch(Exception e){log("APP-FIRST focus unavailable: "+e);}
+   }
+   if(closingAppReturnAttempted&&owned!=null&&(!closingAppReturnEnabled||(fresh&&angle>25))){log("APP-FIRST CLOSING: disabled or reopened; release test session");releaseInternal();blocked=true;return;}
    if(endpointReturnWaiting){
     if(owned!=null){releaseInternal();return;}
     boolean mapped=false;

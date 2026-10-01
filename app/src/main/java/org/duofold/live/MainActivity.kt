@@ -67,6 +67,7 @@ class MainActivity:ComponentActivity(){
     var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
     var dual by remember{mutableStateOf(prefs.getBoolean("dual",false))}
+    var closingAppReturn by remember{mutableStateOf(prefs.getBoolean("closing_app_return",false))}
     var closingPower by remember{mutableStateOf(prefs.getBoolean("closing_direct_power",false))}
     var powerOverride by remember{mutableStateOf(prefs.getBoolean("handoff_power_override",false))}
     var screenshotStartup by remember{mutableStateOf(prefs.getBoolean("screenshot_camera_startup",false))}
@@ -326,6 +327,8 @@ class MainActivity:ComponentActivity(){
         Toggle("Hold displays ON at handoff (experimental)",powerOverride){powerOverride=it;booleanSetting("handoff_power_override",it)}
         Text("Requires both screenshot handoff options above. Requests Samsung ON overrides near full opening/closing, then releases them after two seconds. May be rejected or delay the switch; compare ON versus OFF and copy the short report.",style=MaterialTheme.typography.bodySmall)
         Text("Requires Dual-screen screenshot handoff ON. Diagnostic: commits the outgoing screenshot, then wakes the incoming panel while keeping the outgoing screen on. Incoming content is uncovered live content, with incoming glass temporarily omitted. Final native-layout switch may still flash. Maximum hold: 30 seconds. Turn this off to restore the original screenshot path.",style=MaterialTheme.typography.bodySmall)
+        Toggle("Closing app-first return (experimental)",closingAppReturn){closingAppReturn=it;booleanSetting("closing_app_return",it)}
+        Text("Screenshot window-first tests only. Returns the selected app to the primary screen at 15° while closing, before Android releases dual mode. Tests whether leaving Home focused contributes to fold sleep. May interrupt the live cover preview near closure. OFF by default.",style=MaterialTheme.typography.bodySmall)
         Toggle("Closing cover power pulse (experimental)",closingPower){closingPower=it;booleanSetting("closing_direct_power",it)}
         Text("Normal handoff only (Dual-screen OFF, Cover preview ON). After closing releases concurrency, requests cover ON once if native closed mode reports the cover OFF. Restores the system power request after 250 ms. Compare OFF versus ON; opening is unchanged.",style=MaterialTheme.typography.bodySmall)
         Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
@@ -341,8 +344,8 @@ class MainActivity:ComponentActivity(){
         }
 
        }
-       OutlinedButton(onClick={val report=StandaloneService.instance?.report()?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report copied",android.widget.Toast.LENGTH_SHORT).show()}){Text("Copy status report")}
-       OutlinedButton(onClick={val report=StandaloneService.instance?.report(includeHealthHistory=false)?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report copied without health history",android.widget.Toast.LENGTH_SHORT).show()}){Text("Copy status without health history")}
+       Button(onClick={val report=StandaloneService.instance?.report(includeHealthHistory=false)?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Status report copied",android.widget.Toast.LENGTH_SHORT).show()}){Text("Copy status report")}
+       TextButton(colors=ButtonDefaults.textButtonColors(contentColor=MaterialTheme.colorScheme.tertiary),onClick={val report=StandaloneService.instance?.report(includeHealthHistory=true)?:"Duo Fold Live: accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Duo Fold Live",report));android.widget.Toast.makeText(this@MainActivity,"Report with health history copied",android.widget.Toast.LENGTH_SHORT).show()}){Text("With health history",style=MaterialTheme.typography.labelSmall)}
       }
       SettingsCard("Support Duo Fold Live","Free, independent, and built with care for your Fold."){
        Text("Donations support development. All features remain free.")

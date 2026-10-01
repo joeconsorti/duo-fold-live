@@ -53,6 +53,7 @@ public class AngleReader extends Binder {
    boolean screenshotStartup=data.dataAvail()>=4&&data.readInt()!=0;boolean screenshotPrepared=data.dataAvail()>=4&&data.readInt()!=0;
    concurrent.powerOverrideEnabled(data.dataAvail()>=4&&data.readInt()!=0);
    boolean closingPower=data.dataAvail()>=4&&data.readInt()!=0;
+   concurrent.closingAppReturnEnabled(data.dataAvail()>=4&&data.readInt()!=0);
    boolean effectAllowed=animationMode.update(mode,effectiveAngle,last>0&&heartbeat-last<750);
    boolean mirrorMode=AnimationModePolicy.mirrors(mode);
    appEnabled=appEnabled&&effectAllowed;
