@@ -13,7 +13,8 @@ final class FoldRotationHold {
  private final HandlerThread thread=new HandlerThread("duo-fold-rotation");
  private final Handler handler;
  private final FoldRotationPolicy policy=new FoldRotationPolicy();
- private volatile boolean enabled,fresh,closed;
+ private volatile boolean enabled,fresh,closed,screenshotRelease;
+ void screenshotRelease(boolean enabled){screenshotRelease=enabled;}
  private volatile float angle,open;
  private volatile long heartbeat;
  volatile String status="Rotation hold idle";
@@ -38,9 +39,10 @@ final class FoldRotationHold {
    long now=SystemClock.elapsedRealtime();
    if(now<retryAfter){handler.postDelayed(this,Math.max(32,retryAfter-now));return;}
    if(backend==null){backend=new Backend(user);recovery=RotationRecoveryProcess.start(apk,user);}
+   backend.reconcileFixed=screenshotRelease;
    if(recovery!=null&&!recovery.alive())throw new IOException("Rotation recovery helper exited; releasing hold");
    boolean wanted=!restorationPending&&policy.update(now,!closed&&enabled,fresh&&now-heartbeat<1000,angle,open);
-   if(!active){backend.recover();restorationPending=false;if(wanted){
+   if(!active){boolean hadRecovery=backend.journal.exists();backend.recover();if(hadRecovery&&screenshotRelease&&!backend.journal.exists())status="Rotation release verified after recovery on both saved panels";restorationPending=false;if(wanted){
     Object info=backend.display();if(info==null)throw new IllegalStateException("Primary display unavailable");
     heldRotation=info.getClass().getField("rotation").getInt(info);
     if(recovery==null)recovery=RotationRecoveryProcess.start(apk,user);
@@ -61,7 +63,7 @@ final class FoldRotationHold {
     status=(verified?"Rotation hold verified":"Rotation hold requested; awaiting readback")+" · "+(heldRotation*90)+" degrees";
    } else if(active){backend.restore();active=false;restorationPending=false;status="Rotation release verified on both saved panels";}
   } catch(Exception error){restorationPending=true;retryAfter=SystemClock.elapsedRealtime()+2000;status="Rotation hold: "+root(error);enabled=false;
-   try{if(backend!=null)backend.restore();active=false;restorationPending=false;if(recovery!=null&&!recovery.alive()){recovery.close();recovery=null;}}catch(Exception restore){status="Rotation restoration pending: "+root(restore);}
+   try{boolean hadRecovery=backend!=null&&backend.journal.exists();if(backend!=null)backend.restore();active=false;restorationPending=false;if(hadRecovery&&screenshotRelease&&!backend.journal.exists())status="Rotation release verified after recovery on both saved panels";if(recovery!=null&&!recovery.alive()){recovery.close();recovery=null;}}catch(Exception restore){status="Rotation restoration pending: "+root(restore);}
   } finally {Binder.restoreCallingIdentity(identity);}
   if(!closed||active||restorationPending)handler.postDelayed(this,32);else {if(backend!=null)backend.close();if(recovery!=null)recovery.close();released.countDown();thread.quitSafely();}
  }};
@@ -102,6 +104,7 @@ final class FoldRotationHold {
  private static java.util.Map<Integer,Integer> preferencesForRepair(JSONObject j)throws Exception{return Backend.preferences(j);}
  private static final class Backend implements AutoCloseable {
   final Object wm,dm;final Method freeze,thaw,frozen,userRotation,info,postureSetting,fixed;
+  boolean reconcileFixed;
   final int user;
   final File journal;final RandomAccessFile lease;FileLock lock;
   Backend(int user)throws Exception {
@@ -148,7 +151,7 @@ final class FoldRotationHold {
   void begin()throws Exception{
    if(!acquire())throw new IOException("Another orientation hold is active");
    if(journal.exists())throw new IOException("Prior rotation restoration pending");
-   JSONObject j=new JSONObject();j.put("locked",frozen.invoke(wm,0));j.put("rotation",userRotation.invoke(wm,0));
+   JSONObject j=new JSONObject();j.put("reconcileFixedOnRelease",reconcileFixed);j.put("locked",frozen.invoke(wm,0));j.put("rotation",userRotation.invoke(wm,0));
    j.put("auto",nullable(get(Settings.System.class,"accelerometer_rotation")));
    j.put("userRotation",nullable(get(Settings.System.class,"user_rotation")));
    String states=get(Settings.Secure.class,"device_state_rotation_lock");
@@ -265,7 +268,7 @@ final class FoldRotationHold {
     boolean expected=id==0?expectedPrimaryLock(j,d):saved.getBoolean("locked");
     if((boolean)frozen.invoke(wm,id)!=expected)throw new IOException("Rotation lock readback mismatch on display "+id);
     JSONObject modes=j.optJSONObject("fixed");
-    if(modes!=null&&modes.has(physical)&&fixedMode(id)!=modes.getInt(physical))throw new IOException("Fixed override remains on display "+id);
+    if(modes!=null&&modes.has(physical)){int actual=fixedMode(id),expectedMode=modes.getInt(physical);if(actual!=expectedMode)throw new IOException("Fixed override remains on display "+id+" physical="+physical+" expected="+expectedMode+" actual="+actual);}
     if(findPanel(physical)!=id)throw new IOException("Panel remapped during release verification");
    }
    java.util.Map<Integer,Integer> saved=preferences(j);
@@ -300,6 +303,7 @@ final class FoldRotationHold {
    if(lock==null)return;
    if(!journal.exists()){unlock();return;}
    JSONObject j=new JSONObject(new String(java.nio.file.Files.readAllBytes(journal.toPath()),java.nio.charset.StandardCharsets.UTF_8));
+   if(reconcileFixed&&!j.optBoolean("reconcileFixedOnRelease",false)){j.put("reconcileFixedOnRelease",true);save(j);}
    // Every release phase is attempted even if a different setting fails. Never
    // skip thaw on a retry, and never discard the original fixed-policy snapshots.
    java.util.List<RotationRelease.Step> steps=new java.util.ArrayList<>();
@@ -314,11 +318,13 @@ final class FoldRotationHold {
    });
    steps.add(()->put(Settings.System.class,"user_rotation",value(j,"userRotation")));
    RotationRelease.all(steps);
+   boolean reconcile=reconcileFixed||j.optBoolean("reconcileFixedOnRelease",false);
+   if(reconcile)restoreFixed(j,null);
    // Require consecutive readbacks after Samsung's asynchronous setting callbacks.
    int consecutive=0;Exception last=null;
    for(int i=0;i<10&&consecutive<2;i++){
     SystemClock.sleep(100);
-    try{verifyRelease(j);consecutive++;}catch(Exception e){consecutive=0;last=e;}
+    try{verifyRelease(j);consecutive++;}catch(Exception e){consecutive=0;last=e;if(reconcile){try{restoreFixed(j,null);}catch(Exception retry){last=retry;}}}
    }
    if(consecutive<2)throw new IOException("Rotation release not verified; original settings retained: "+(last==null?"unknown":root(last)),last);
    if(!journal.delete())throw new IOException("Could not clear rotation recovery journal");

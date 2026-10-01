@@ -28,6 +28,7 @@ final class ConcurrentController {
   else endpointPower.arm(event+route);
  }
 
+ private int destinationWidth,destinationHeight;private String endpointObservation="";
  private boolean endpointReturnWaiting;private long endpointReturnDeadline;private String endpointTarget="";
  private boolean routeCheckpoint;private String routeObservation="";
  private boolean cameraSession;private String fixedPrimary="";
@@ -97,7 +98,7 @@ final class ConcurrentController {
   Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
   if(!current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Existing display override; stop other test apps first");
-  if(cameraSession){taskRequested=false;taskVerified=false;routeCheckpoint=false;routeObservation="";panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
+  if(cameraSession){taskRequested=false;taskVerified=false;routeCheckpoint=false;routeObservation="";panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);captureDestinationSize();capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
   if(cameraSession&&powerOverrideEnabled){if(powerOverride==null)powerOverride=new HandoffPowerOverride();powerOverrideArmed=false;powerCancellationSent=false;powerOverride.newSession();}
   setConcurrent(inner,now); // Captured outgoing panel becomes the secondary Presentation.
  }
@@ -126,12 +127,25 @@ final class ConcurrentController {
    if(!physical.equals(id==0?fixedPrimary:fixedSecondary))return false;
    int w=c.getField("logicalWidth").getInt(d),h=c.getField("logicalHeight").getInt(d);
    if(w<=0||h<=0||(Math.min(w,h)/(float)Math.max(w,h)>.7f)!=(id==0?primaryInner:!primaryInner))return false;
+   if(id==1){destinationWidth=w;destinationHeight=h;}
   }return true;
  }
- private boolean primaryOn(String physical)throws Exception{
+ private void captureDestinationSize()throws Exception{
+  Object dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
+  Object d=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,1);
+  if(d==null)throw new IllegalStateException("Destination display missing");
+  destinationWidth=d.getClass().getField("logicalWidth").getInt(d);destinationHeight=d.getClass().getField("logicalHeight").getInt(d);
+  if(destinationWidth<=0||destinationHeight<=0)throw new IllegalStateException("Destination dimensions unavailable");
+ }
+ private boolean primaryReady(String physical)throws Exception{
   Object dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
   Object d=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,0);if(d==null)return false;
-  return physical.equals(String.valueOf(d.getClass().getField("uniqueId").get(d)))&&d.getClass().getField("state").getInt(d)==2;
+  Class<?> c=d.getClass();String actual=String.valueOf(c.getField("uniqueId").get(d));
+  int state=c.getField("state").getInt(d),w=c.getField("logicalWidth").getInt(d),h=c.getField("logicalHeight").getInt(d);
+  boolean ready=EndpointReturnPolicy.ready(physical,actual,state,destinationWidth,destinationHeight,w,h);
+  String observation="ENDPOINT readiness: physical="+actual+" state="+state+" size="+w+"x"+h+" expected="+destinationWidth+"x"+destinationHeight+" ready="+ready;
+  if(!observation.equals(endpointObservation)){endpointObservation=observation;log(observation);}
+  return ready;
  }
  private void returnTask(){
   if(fixedRoute==null||!fixedRoute.pending())return;
@@ -149,12 +163,12 @@ final class ConcurrentController {
    if(endpointReturnWaiting){
     if(owned!=null){releaseInternal();return;}
     boolean mapped=false;
-    try{mapped=primaryOn(endpointTarget);}catch(Exception e){log("Endpoint mapping observation unavailable: "+e.getClass().getSimpleName());}
+    try{mapped=primaryReady(endpointTarget);}catch(Exception e){log("Endpoint mapping observation unavailable: "+e.getClass().getSimpleName());}
     if(EndpointReturnPolicy.shouldWait(now,endpointReturnDeadline,unlocked&&cameraStartup,mapped)){
-     status="Endpoint: waiting for incoming physical panel on D0 before task return";return;
+     status="Endpoint: waiting for incoming panel ON with destination dimensions before task return";return;
     }
     endpointReturnWaiting=false;
-    log(mapped?"ENDPOINT: incoming physical panel is D0 and ON; return exact app":"ENDPOINT: mapping wait ended; recover exact app");
+    log(mapped?"ENDPOINT: incoming physical panel is D0, ON and destination-sized; return exact app":"ENDPOINT: mapping wait ended; recover exact app");
     returnTask();
     status=mapped?"Endpoint complete — normal display control restored":"Endpoint mapping wait ended — recovery attempted";
    }
@@ -183,7 +197,7 @@ final class ConcurrentController {
     if(angle>=FoldThreshold.sanitize(openThreshold) || now-endpointSince>=350){if(cameraSession&&owned!=null){
       log("RELEASE: endpoint angle="+angle);endpointPower.arm("Endpoint release angle="+angle);samplePanels(angle,windowPrepared,secondaryReady,true);
       if(!primaryInner&&angle>=FoldThreshold.sanitize(openThreshold)&&fixedRoute!=null&&fixedRoute.pending()){
-       endpointReturnWaiting=true;endpointTarget=fixedSecondary;endpointReturnDeadline=now+1800;
+       endpointReturnWaiting=true;endpointTarget=fixedSecondary;endpointObservation="";endpointReturnDeadline=now+1800;
        log("ENDPOINT: retain app on D1 while canceling concurrency; target primary="+endpointTarget);
       }
      }releaseInternal();blocked=false;}return;

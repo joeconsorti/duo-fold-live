@@ -57,6 +57,7 @@ public class AngleReader extends Binder {
    boolean mirrorMode=AnimationModePolicy.mirrors(mode);
    appEnabled=appEnabled&&effectAllowed;
    if(rotation==null)rotation=new FoldRotationHold(caller/100000,recoveryApk);
+   rotation.screenshotRelease(dual&&screenshotStartup);
    rotation.update(appEnabled&&unlocked,last>0&&heartbeat-last<750,effectiveAngle,openThreshold);
    if(fade==null)fade=new HandoffFade();
    fade.settings(fadeSmoothing,fadeGradualness,mirrorMode&&!debug,openThreshold,handoffAngle);
