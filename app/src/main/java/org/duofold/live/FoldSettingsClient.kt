@@ -24,17 +24,22 @@ internal object FoldSettingsClient {
   var finished=false
   lateinit var connection:ServiceConnection
   lateinit var timeout:Runnable
+  var binding:HelperBinding?=null
+  var phase="waiting for service connection"
   fun finish(result:Bundle){
    if(finished)return
    finished=true;lane.busy=false;main.removeCallbacks(timeout)
-   runCatching{Shizuku.unbindUserService(args,connection,true)}
+   binding?.close()
    done(result)
   }
   fun error(message:String)=Bundle().apply{putString("error",message)}
-  timeout=Runnable{finish(error("$label timed out; will retry"))}
+  timeout=Runnable{binding?.stage("transaction timeout: $action");finish(error("$label timed out during $phase; will retry"))}
   connection=object:ServiceConnection{
    override fun onServiceConnected(name:ComponentName,binder:IBinder){main.post{
     if(finished)return@post
+    phase="transaction $action"
+    binding?.stage(phase)
+    main.postDelayed(timeout,10000)
     if(!lane.inFlight.compareAndSet(false,true)){finish(error("$label previous transaction still running"));return@post}
     lane.worker.execute{
      val p=Parcel.obtain();val r=Parcel.obtain()
@@ -43,12 +48,12 @@ internal object FoldSettingsClient {
       check(binder.transact(1,p,r,0)){"$label unavailable"};r.readException()
       r.readBundle(FoldSettingsClient::class.java.classLoader)?:error("Empty response")
      }catch(e:Exception){error(e.toString())}finally{p.recycle();r.recycle();lane.inFlight.set(false)}
-     main.post{finish(result)}
+     main.post{if(!finished)binding?.stage(if(result.getBoolean("ok"))"completed: $action" else "failed: $action: ${result.getString("error")}");finish(result)}
     }
    }}
    override fun onServiceDisconnected(name:ComponentName){main.post{finish(error("$label disconnected"))}}
   }
-  main.postDelayed(timeout,10000)
-  try{Shizuku.bindUserService(args,connection)}catch(e:Exception){finish(error(e.toString()))}
+  binding=HelperBinding(args,label,connection){message->finish(error(message))}
+  binding?.start()
  }}
 }

@@ -80,10 +80,10 @@ public final class LiveAngles {
  });}
 
  public boolean stalled(){return running && reader!=null && SystemClock.elapsedRealtime()-lastPoll>6000;}
- private boolean bound; private String action; private int count;
+ private HelperBinding binding; private String action; private int count;
  public LiveAngles(Context c){context=c;}
  private final ServiceConnection connection=new ServiceConnection(){
-  public void onServiceConnected(ComponentName n,IBinder binder){main.post(()->{if(!running)return;reader=binder;lastPoll=SystemClock.elapsedRealtime();RecoveryLog.add("Angle reader connected");worker.post(()->{try{call(1);main.post(poll);}catch(Exception e){fail(e);}});});}
+  public void onServiceConnected(ComponentName n,IBinder binder){main.post(()->{if(!running)return;reader=binder;lastPoll=SystemClock.elapsedRealtime();RecoveryLog.add("Angle reader connected");readerDiagnostics="Helper connected; initializing wallpaper reader";worker.post(()->{try{call(1);main.post(()->{if(running){readerDiagnostics="Helper initialized; polling wallpaper angles";if(binding!=null)binding.stage("initialized; polling");main.post(poll);}});}catch(Exception e){fail(e);}});});}
   public void onServiceDisconnected(ComponentName n){main.post(()->{if(running){RecoveryLog.add("Angle reader Binder disconnected");status="Angle reader disconnected — reconnecting automatically";stop();}});}
  };
  public boolean isRunning(){return running;}
@@ -96,8 +96,9 @@ public final class LiveAngles {
    ensureAnchors();
    thread=new HandlerThread("duofold-angle-ipc");thread.start();worker=new Handler(thread.getLooper());
    args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(BuildConfig.VERSION_CODE);
-   bound=true;Shizuku.bindUserService(args,connection);status="Connecting to Shizuku…";
-   main.postDelayed(()->{if(running&&reader==null){status="Connection timed out — reconnect in app";stop();}},12000);
+   status="Connecting to angle helper…";readerDiagnostics="Waiting for helper connection callback";
+   binding=new HelperBinding(args,"Angle helper",connection,message->{status=message;readerDiagnostics=message;stop();});
+   binding.start();
   }catch(Exception e){status=e.getMessage();stop();}
  }
  private String key(Display d){return d.getDisplayId()+":"+d.getMode().getPhysicalWidth()+"x"+d.getMode().getPhysicalHeight();}
@@ -185,7 +186,7 @@ public final class LiveAngles {
  }};
  private void fail(Exception e){main.post(()->{if(running){RecoveryLog.add("Reader error: "+e.getClass().getSimpleName());status="Reader error: "+e.getMessage();stop();}});}
  public void stop(){continuityRequest=0;HandoffFrames.clear();if(current==this)current=null;nativeInner=false;continuityNative=false;coverPreview=false;running=false;pollInFlight=false;urgentPoll=false;dualActive=false;last=0;if(status.startsWith("LIVE")||status.startsWith("Waiting")||status.startsWith("Connecting"))status="Angle reader stopped";main.removeCallbacksAndMessages(null);
-  if(bound){try{Shizuku.unbindUserService(args,connection,true);}catch(Exception ignored){}bound=false;}
+  if(binding!=null){binding.close();binding=null;}
   reader=null;if(thread!=null){thread.quitSafely();thread=null;}
   if(secondaryAnchor!=null){try{secondaryWm.removeViewImmediate(secondaryAnchor);}catch(Exception ignored){}secondaryAnchor=null;}
   if(anchor!=null){try{wm.removeViewImmediate(anchor);}catch(Exception ignored){}anchor=null;}

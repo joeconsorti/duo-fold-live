@@ -22,6 +22,7 @@ object ShizukuAccess {
   append("${Build.MODEL} / Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}\n")
   append("Firmware: ${Build.DISPLAY}\n")
   append("Angle reader: ${LiveAngles.status}\n")
+  append("${HelperBinding.report()}\n")
   append("Reader diagnostics: ${LiveAngles.readerDiagnostics}\n")
   append("Package: ${context.packageName}\n")
   append("Official Shizuku installed in this profile: "+runCatching{context.packageManager.getPackageInfo("moe.shizuku.privileged.api",0);true}.getOrDefault(false)+"\n")

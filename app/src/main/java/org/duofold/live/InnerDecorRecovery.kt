@@ -17,6 +17,7 @@ internal object InnerDecorRecovery {
  @JvmField var apiStatus="Available display APIs: awaiting helper"
  private var retryAt=0L
  @JvmField var status="Inner system UI test idle"
+ @JvmStatic fun reconnect(){apiRetryAt=0L;retryAt=0L}
  @JvmStatic fun tick(context:Context){
   val prefs=context.getSharedPreferences("standalone",0)
   val active=LiveAngles.continuityNative

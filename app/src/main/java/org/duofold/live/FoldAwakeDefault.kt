@@ -17,7 +17,7 @@ internal object FoldAwakeDefault {
    if(!prefs.edit().putBoolean("auto_keep_cover_awake",true).commit())RecoveryLog.add("Keep-awake ON; preference save needs retry")
   }
  }
- @JvmStatic fun reconnect(){epoch++;nextAttempt=0L;status="Keep-awake ON; rechecking connection / setting"}
+ @JvmStatic fun reconnect(){epoch++;failures=0;nextAttempt=0L;status="Keep-awake ON; rechecking connection / setting"}
  @JvmStatic fun tick(context:Context){
   persist(context)
   if(!context.getSystemService(android.os.PowerManager::class.java).isInteractive)return

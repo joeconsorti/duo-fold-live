@@ -13,17 +13,25 @@ public class FoldBackgroundService extends Service {
  private long asleepSince=-1,nextReaderAttempt;
  private String lastNotice="";
  private boolean lastReachable=false;
- private final rikka.shizuku.Shizuku.OnBinderReceivedListener binderReady=()->main.post(()->{RecoveryLog.add("Shizuku Binder received");FoldAwakeDefault.reconnect();kick();});
- private final rikka.shizuku.Shizuku.OnBinderDeadListener binderDead=()->main.post(()->{RecoveryLog.add("Shizuku Binder death notification");clearEffect();FoldAwakeDefault.reconnect();kick();});
+ private final rikka.shizuku.Shizuku.OnBinderReceivedListener binderReady=()->main.post(()->{RecoveryLog.add("Shizuku Binder received");resetHelpers("Shizuku connection refreshed");kick();});
+ private final rikka.shizuku.Shizuku.OnBinderDeadListener binderDead=()->main.post(()->{RecoveryLog.add("Shizuku Binder death notification");resetHelpers("Shizuku disconnected");kick();});
  private final BroadcastReceiver screen=new BroadcastReceiver(){public void onReceive(Context c,Intent i){RecoveryLog.add("Background received "+i.getAction());if(Intent.ACTION_SCREEN_OFF.equals(i.getAction()))clearEffect();else nextReaderAttempt=0;FoldAwakeDefault.reconnect();kick();}};
  private final android.database.ContentObserver foldSettingObserver=new android.database.ContentObserver(main){
   @Override public void onChange(boolean selfChange){FoldAwakeDefault.reconnect();kick();}
  };
  private final Shizuku.OnRequestPermissionResultListener permissionResult=(requestCode,grantResult)->main.post(()->{FoldAwakeDefault.reconnect();kick();});
+ private void resetHelpers(String reason){
+  clearEffect();
+  if(angles!=null){angles.stop();angles=null;}
+  HelperBinding.reset(reason);nextReaderAttempt=0;
+  org.duofold.live.wallpaperlayer.WallpaperRestore.reconnect();
+  FoldAwakeDefault.reconnect();InnerDecorRecovery.reconnect();
+ }
  private void clearEffect(){StandaloneService service=StandaloneService.Companion.getInstance();if(service!=null)service.clearUnavailableEffect();}
  private void kick(){if(!running)return;main.removeCallbacks(supervise);main.post(supervise);}
+ public static void reconnectHelpers(Context c){c.startForegroundService(new Intent(c,FoldBackgroundService.class).setAction("RECONNECT_HELPERS"));}
  public static String connectionReport(){
-  try{return "Shizuku binder: "+(Shizuku.getBinder()==null?"absent":("alive="+Shizuku.getBinder().isBinderAlive()+", ping="+Shizuku.pingBinder()))+"; permission="+(Shizuku.pingBinder()?Shizuku.checkSelfPermission():"unavailable");}
+  try{return "Shizuku binder: "+(Shizuku.getBinder()==null?"absent":("alive="+Shizuku.getBinder().isBinderAlive()+", ping="+Shizuku.pingBinder()))+"; permission="+(Shizuku.pingBinder()?Shizuku.checkSelfPermission():"unavailable")+"; server="+Shizuku.getVersion()+"; UID="+Shizuku.getUid()+"\n"+HelperBinding.report();}
   catch(Exception e){return "Shizuku check: "+e.getClass().getSimpleName();}
  }
  public IBinder onBind(Intent i){return null;}
@@ -41,6 +49,7 @@ getSystemService(NotificationManager.class).createNotificationChannel(new Notifi
  public int onStartCommand(Intent i,int flags,int id){
   // Must promote even when restoring a now-disabled service, then stop cleanly.
   startForeground(112,notification("Connecting to the live angle reader"));lastNotice="";
+  if(i!=null&&"RECONNECT_HELPERS".equals(i.getAction()))resetHelpers("Manual helper reconnect");
   if(i!=null&&"STOP".equals(i.getAction())){
    getSharedPreferences("standalone",0).edit().putBoolean("enabled",false).apply();
    try{org.duofold.live.wallpaperlayer.WallpaperRestore.setEnabled(this,false);}catch(java.io.IOException e){RecoveryLog.add("Could not save wallpaper stop: "+e.getClass().getSimpleName());}
@@ -48,7 +57,7 @@ getSystemService(NotificationManager.class).createNotificationChannel(new Notifi
    if(!wanted()){stopSelf();return START_NOT_STICKY;}
   }
   if(!wanted()){stopSelf();return START_NOT_STICKY;}
-  if(!running){running=true;main.post(supervise);}
+  if(!running){running=true;main.post(supervise);}else if(i!=null&&"RECONNECT_HELPERS".equals(i.getAction()))kick();
   return START_STICKY;
  }
  private final Runnable supervise=new Runnable(){public void run(){

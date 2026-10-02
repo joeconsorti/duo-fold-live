@@ -14,6 +14,10 @@ public final class WallpaperRestore {
  private static final Handler main=new Handler(Looper.getMainLooper());
  private static final java.util.concurrent.ExecutorService worker=Executors.newSingleThreadExecutor();
  private static IBinder remote;private static boolean connecting,pending;private static long retryAt;
+ private static int generation;
+ private static Shizuku.UserServiceArgs boundArgs;
+ private static ServiceConnection connection;
+ private static Runnable connectionTimeout;
  public static volatile String status="Wallpaper recovery idle";
  private WallpaperRestore(){}
  public static synchronized boolean enabled(Context c){
@@ -35,6 +39,14 @@ public final class WallpaperRestore {
   retryAt=0;status=value?"Saved enabled wallpaper; reconnecting":"Custom wallpaper disabled; photo retained";
  }
  public static Shizuku.UserServiceArgs args(Context c){return new Shizuku.UserServiceArgs(new ComponentName(c,HostLauncher.class)).daemon(true).processNameSuffix("wallpaper_layer").version(BuildConfig.VERSION_CODE);}
+ // Detach the observer only: the daemon may be hosting the user's active wallpaper.
+ public static void reconnect(){
+  generation++;
+  if(connectionTimeout!=null){main.removeCallbacks(connectionTimeout);connectionTimeout=null;}
+  if(boundArgs!=null&&connection!=null)try{Shizuku.unbindUserService(boundArgs,connection,false);}catch(Exception e){org.duofold.live.RecoveryLog.add("Wallpaper callback detach: "+e.getClass().getSimpleName());}
+  boundArgs=null;connection=null;remote=null;connecting=false;retryAt=0;
+  // An already-running transaction retains 'pending' until its worker returns.
+ }
  public static void resume(Context context){
   Context c=context.getApplicationContext();
   org.duofold.live.FoldAwakeDefault.persist(c);
@@ -50,11 +62,25 @@ public final class WallpaperRestore {
    if(!Shizuku.pingBinder()||Shizuku.checkSelfPermission()!=0){status="Wallpaper saved; waiting for authorized Shizuku";return;}
    if(remote==null||!remote.isBinderAlive()){
     connecting=true;retryAt=SystemClock.elapsedRealtime()+15000;
-    Shizuku.bindUserService(args(c),connection);
-    main.postDelayed(()->{if(connecting){connecting=false;status="Wallpaper connection timed out; retrying";}},12000);
+    final int attempt=++generation;final long started=SystemClock.elapsedRealtime();
+    status="Connecting to wallpaper helper";
+    org.duofold.live.RecoveryLog.add("Wallpaper helper: bind requested");
+    boundArgs=args(c);
+    connection=new ServiceConnection(){
+     public void onServiceConnected(ComponentName n,IBinder binder){main.post(()->{
+      if(attempt!=generation||!connecting)return;
+      if(connectionTimeout!=null)main.removeCallbacks(connectionTimeout);
+      remote=binder;connecting=false;retryAt=0;status="Wallpaper helper connected";
+      org.duofold.live.RecoveryLog.add("Wallpaper helper: connected after "+(SystemClock.elapsedRealtime()-started)+" ms");
+     });}
+     public void onServiceDisconnected(ComponentName n){main.post(()->{if(attempt!=generation)return;reconnect();status="Wallpaper helper disconnected; retrying";});}
+    };
+    connectionTimeout=()->{if(attempt!=generation||!connecting)return;reconnect();retryAt=SystemClock.elapsedRealtime()+15000;status="Wallpaper helper: no service connection callback after 35 s; retrying";org.duofold.live.RecoveryLog.add(status);};
+    main.postDelayed(connectionTimeout,org.duofold.live.HelperAttempt.START_TIMEOUT_MS);
+    Shizuku.bindUserService(boundArgs,connection);
     return;
    }
-   pending=true;retryAt=SystemClock.elapsedRealtime()+15000;IBinder binder=remote;
+   pending=true;retryAt=SystemClock.elapsedRealtime()+15000;IBinder binder=remote;final int requestGeneration=generation;
    worker.execute(()->{
     String result;
     try{
@@ -69,12 +95,8 @@ public final class WallpaperRestore {
       }else result="Wallpaper host active / starting";
      }
     }catch(Exception e){result="Wallpaper recovery retry: "+e;}
-    String next=result;main.post(()->{pending=false;status=next;});
+    String next=result;main.post(()->{pending=false;if(requestGeneration==generation)status=next;});
    });
-  }catch(Exception e){connecting=false;pending=false;retryAt=SystemClock.elapsedRealtime()+15000;status="Wallpaper recovery waiting: "+e;}
+  }catch(Exception e){reconnect();retryAt=SystemClock.elapsedRealtime()+15000;status="Wallpaper recovery waiting: "+e;}
  }
- private static final ServiceConnection connection=new ServiceConnection(){
-  public void onServiceConnected(ComponentName n,IBinder binder){main.post(()->{remote=binder;connecting=false;retryAt=0;});}
-  public void onServiceDisconnected(ComponentName n){main.post(()->{remote=null;connecting=false;pending=false;retryAt=0;});}
- };
 }
