@@ -55,6 +55,7 @@ public final class LiveAngles {
  }
  public static String handoffStatus="Normal display control";
  public static String status="Angle reader off";
+ public static String closedHingeReport="Closed-hinge jitter protection: awaiting helper";
  public static long ageMs(){return last==0?-1:SystemClock.elapsedRealtime()-last;}
  public static boolean fresh(){return last>0 && SystemClock.elapsedRealtime()-last<750;}
  public static void add(Listener l){listeners.add(l);if(fresh())l.angle(angle,last*1000000L);}
@@ -134,7 +135,7 @@ public final class LiveAngles {
     p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("dual",false)?1:0);
     android.view.Display display=context.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
     android.view.Display.Mode mode=display.getMode();p.writeInt(Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight())/(float)Math.max(mode.getPhysicalWidth(),mode.getPhysicalHeight())>.7f?1:0);
-    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("enabled",false)?1:0);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("closed_threshold",2f));p.writeLong(continuityRequest);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING));p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS));p.writeString(context.getSharedPreferences("standalone",0).getString("animation_mode",AnimationModePolicy.DEFAULT));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("debug_mode",false)?1:0);p.writeFloat(HandoffSettings.angle(context.getSharedPreferences("standalone",0).getFloat("handoff_angle",HandoffSettings.DEFAULT)));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("screenshot_camera_startup",false)?1:0);p.writeInt(host!=null&&host.screenshotWindowReady()&&host.screenshotFrameReady()?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("handoff_power_override",false)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("closing_direct_power",false)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("closing_app_return",false)?1:0);
+    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("enabled",false)?1:0);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("closed_threshold",2f));p.writeLong(continuityRequest);p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING));p.writeFloat(context.getSharedPreferences("standalone",0).getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS));p.writeString(context.getSharedPreferences("standalone",0).getString("animation_mode",AnimationModePolicy.DEFAULT));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("debug_mode",false)?1:0);p.writeFloat(HandoffSettings.angle(context.getSharedPreferences("standalone",0).getFloat("handoff_angle",HandoffSettings.DEFAULT)));p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("screenshot_camera_startup",false)?1:0);p.writeInt(host!=null&&host.screenshotWindowReady()&&host.screenshotFrameReady()?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("handoff_power_override",false)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("closing_direct_power",false)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("closing_app_return",false)?1:0);p.writeInt(context.getSharedPreferences("standalone",0).getBoolean("closed_hinge_jitter_protection",true)?1:0);
    }
    if(!b.transact(code,p,r,0))throw new IllegalStateException("Unsupported reader");r.readException();return code==2?r.readBundle(getClass().getClassLoader()):null;
   }finally{p.recycle();r.recycle();}
@@ -158,6 +159,7 @@ public final class LiveAngles {
    StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null&&SystemClock.elapsedRealtime()>=secondaryRefreshAt){secondaryRefreshAt=SystemClock.elapsedRealtime()+8;host.refreshSecondary();}
    lastPoll=SystemClock.elapsedRealtime();
    readerDiagnostics=b.getString("readerDiagnostics",b.getString("state","Unknown"));
+   closedHingeReport=b.getString("closedHingeGate","Closed-hinge jitter protection: helper status unavailable");
    long stamp=b.getLong("last");int received=b.getInt("count");
    ratePolls++;
    if(received>rateReceived){rateReplies+=received-rateReceived;if(Float.compare(angle,b.getFloat("angle"))!=0)rateChanges++;}
@@ -185,7 +187,7 @@ public final class LiveAngles {
   });}catch(Exception e){fail(e);}});
  }};
  private void fail(Exception e){main.post(()->{if(running){RecoveryLog.add("Reader error: "+e.getClass().getSimpleName());status="Reader error: "+e.getMessage();stop();}});}
- public void stop(){continuityRequest=0;HandoffFrames.clear();if(current==this)current=null;nativeInner=false;continuityNative=false;coverPreview=false;running=false;pollInFlight=false;urgentPoll=false;dualActive=false;last=0;if(status.startsWith("LIVE")||status.startsWith("Waiting")||status.startsWith("Connecting"))status="Angle reader stopped";main.removeCallbacksAndMessages(null);
+ public void stop(){closedHingeReport="Closed-hinge jitter protection: reader stopped";continuityRequest=0;HandoffFrames.clear();if(current==this)current=null;nativeInner=false;continuityNative=false;coverPreview=false;running=false;pollInFlight=false;urgentPoll=false;dualActive=false;last=0;if(status.startsWith("LIVE")||status.startsWith("Waiting")||status.startsWith("Connecting"))status="Angle reader stopped";main.removeCallbacksAndMessages(null);
   if(binding!=null){binding.close();binding=null;}
   reader=null;if(thread!=null){thread.quitSafely();thread=null;}
   if(secondaryAnchor!=null){try{secondaryWm.removeViewImmediate(secondaryAnchor);}catch(Exception ignored){}secondaryAnchor=null;}

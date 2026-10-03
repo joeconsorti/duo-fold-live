@@ -67,6 +67,7 @@ class MainActivity:ComponentActivity(){
     var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
     var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
     var dual by remember{mutableStateOf(prefs.getBoolean("dual",false))}
+    var jitterProtection by remember{mutableStateOf(prefs.getBoolean("closed_hinge_jitter_protection",true))}
     var closingAppReturn by remember{mutableStateOf(prefs.getBoolean("closing_app_return",false))}
     var closingPower by remember{mutableStateOf(prefs.getBoolean("closing_direct_power",false))}
     var powerOverride by remember{mutableStateOf(prefs.getBoolean("handoff_power_override",false))}
@@ -311,6 +312,9 @@ class MainActivity:ComponentActivity(){
         Text("Shortcut: tap with four fingers anywhere in the app.",style=MaterialTheme.typography.bodySmall)
         if(developer){
          SettingsCard("Developer settings","Diagnostics and experimental controls. Normal use does not require these."){
+        Toggle("Closed-hinge jitter protection",jitterProtection){jitterProtection=it;booleanSetting("closed_hinge_jitter_protection",it)}
+        Text("On by default. Starts at ${(ClosedHingeGate.startAngle(closedThreshold)).roundToInt()}°; once started, follows the hinge until it returns to ${closedThreshold.roundToInt()}° or less. Filters tiny closed-phone readings before the animation and cover preview start. Turn off to restore the original threshold behavior.",style=MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
         TextButton(onClick={legacy=!legacy}){Text(if(legacy)"Hide legacy & experimental visuals" else "Legacy & experimental visuals")}
         if(legacy){
          Text("Older visuals · optional",style=MaterialTheme.typography.titleSmall)
