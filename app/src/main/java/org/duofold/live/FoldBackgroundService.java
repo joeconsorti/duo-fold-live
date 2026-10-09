@@ -2,7 +2,7 @@ package org.duofold.live;
 import android.app.*;
 import android.content.*;
 import android.os.*;
-import rikka.shizuku.Shizuku;
+import org.duofold.live.root.Shizuku;
 /** User-enabled lifetime independent of the settings Activity. */
 public class FoldBackgroundService extends Service {
  public static boolean running=false;
@@ -13,8 +13,8 @@ public class FoldBackgroundService extends Service {
  private long asleepSince=-1,nextReaderAttempt;
  private String lastNotice="";
  private boolean lastReachable=false;
- private final rikka.shizuku.Shizuku.OnBinderReceivedListener binderReady=()->main.post(()->{RecoveryLog.add("Shizuku Binder received");resetHelpers("Shizuku connection refreshed");kick();});
- private final rikka.shizuku.Shizuku.OnBinderDeadListener binderDead=()->main.post(()->{RecoveryLog.add("Shizuku Binder death notification");resetHelpers("Shizuku disconnected");kick();});
+ private final org.duofold.live.root.Shizuku.OnBinderReceivedListener binderReady=()->main.post(()->{RecoveryLog.add("Shizuku Binder received");resetHelpers("Shizuku connection refreshed");kick();});
+ private final org.duofold.live.root.Shizuku.OnBinderDeadListener binderDead=()->main.post(()->{RecoveryLog.add("Shizuku Binder death notification");resetHelpers("Shizuku disconnected");kick();});
  private final BroadcastReceiver screen=new BroadcastReceiver(){public void onReceive(Context c,Intent i){RecoveryLog.add("Background received "+i.getAction());if(Intent.ACTION_SCREEN_OFF.equals(i.getAction()))clearEffect();else nextReaderAttempt=0;FoldAwakeDefault.reconnect();kick();}};
  private final android.database.ContentObserver foldSettingObserver=new android.database.ContentObserver(main){
   @Override public void onChange(boolean selfChange){FoldAwakeDefault.reconnect();kick();}
@@ -31,11 +31,11 @@ public class FoldBackgroundService extends Service {
  private void kick(){if(!running)return;main.removeCallbacks(supervise);main.post(supervise);}
  public static void reconnectHelpers(Context c){c.startForegroundService(new Intent(c,FoldBackgroundService.class).setAction("RECONNECT_HELPERS"));}
  public static String connectionReport(){
-  try{return "Shizuku binder: "+(Shizuku.getBinder()==null?"absent":("alive="+Shizuku.getBinder().isBinderAlive()+", ping="+Shizuku.pingBinder()))+"; permission="+(Shizuku.pingBinder()?Shizuku.checkSelfPermission():"unavailable")+"; server="+Shizuku.getVersion()+"; UID="+Shizuku.getUid()+"\n"+HelperBinding.report();}
-  catch(Exception e){return "Shizuku check: "+e.getClass().getSimpleName();}
+  try{return "Root layer: "+(Shizuku.getBinder()==null?"absent":("alive="+Shizuku.getBinder().isBinderAlive()+", ping="+Shizuku.pingBinder()))+"; permission="+(Shizuku.pingBinder()?Shizuku.checkSelfPermission():"unavailable")+"; server="+Shizuku.getVersion()+"; UID="+Shizuku.getUid()+"\n"+HelperBinding.report();}
+  catch(Exception e){return "Root check: "+e.getClass().getSimpleName();}
  }
  public IBinder onBind(Intent i){return null;}
- public void onCreate(){super.onCreate();RecoveryLog.init(this);RecoveryLog.add("Background service created, PID "+android.os.Process.myPid());
+ public void onCreate(){super.onCreate();RecoveryLog.init(this);StandaloneService.start(this);RecoveryLog.add("Background service created, PID "+android.os.Process.myPid());
   FoldAwakeDefault.persist(this);awakeGuard=new FoldAwakeGuard(this);awakeGuard.start();
   Shizuku.addBinderReceivedListenerSticky(binderReady);Shizuku.addBinderDeadListener(binderDead);Shizuku.addRequestPermissionResultListener(permissionResult);
   try{getContentResolver().registerContentObserver(android.provider.Settings.System.getUriFor("fold_lock_behavior"),false,foldSettingObserver);}catch(Exception e){RecoveryLog.add("Fold setting observer unavailable; periodic verification active");}
@@ -91,21 +91,21 @@ createNotificationChannel(this);}
   try{
    if(!foldEnabled){if(angles!=null){angles.stop();angles=null;}LiveAngles.status="Fold animation disabled";}else{
    boolean reachable=Shizuku.pingBinder();
-   if(reachable!=lastReachable){lastReachable=reachable;RecoveryLog.add("Shizuku reachability="+reachable);}
+   if(reachable!=lastReachable){lastReachable=reachable;RecoveryLog.add("Root reachability="+reachable);}
    if(!reachable){
     clearEffect();
     if(angles!=null){angles.stop();angles=null;}
-    LiveAngles.status="Shizuku connection unavailable — check whether Shizuku says Running";
+    LiveAngles.status="Root not available — allow Duo Fold Live in KernelSU Manager";
    }else if(Shizuku.checkSelfPermission()!=0){
     if(angles!=null){angles.stop();angles=null;}
-    LiveAngles.status="Shizuku authorization needed — authorize Duo once";
+    LiveAngles.status="Root authorization needed — approve Duo in KernelSU Manager";
    }else if(now>=nextReaderAttempt&&(angles==null||!angles.isRunning()||angles.stalled())){
     nextReaderAttempt=now+30000;
     if(angles!=null)angles.stop();
     angles=new LiveAngles(FoldBackgroundService.this);angles.start();
    }
    }
-  }catch(Exception e){LiveAngles.status="Waiting for Shizuku: "+e.getClass().getSimpleName();}
+  }catch(Exception e){LiveAngles.status="Waiting for root: "+e.getClass().getSimpleName();}
   FoldAwakeDefault.tick(FoldBackgroundService.this);
   InnerDecorRecovery.tick(FoldBackgroundService.this);
   String notice=!foldEnabled?FoldAwakeDefault.status:LiveAngles.fresh()?"Live hinge control active":LiveAngles.status;

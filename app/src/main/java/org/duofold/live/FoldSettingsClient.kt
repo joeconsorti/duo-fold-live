@@ -1,7 +1,7 @@
 package org.duofold.live
 import android.content.*
 import android.os.*
-import rikka.shizuku.Shizuku
+import org.duofold.live.root.Shizuku
 import java.util.concurrent.Executors
 /** Short-lived independent Binder connection with a UI-side deadline. */
 internal object FoldSettingsClient {

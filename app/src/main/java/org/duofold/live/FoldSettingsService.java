@@ -11,7 +11,7 @@ public class FoldSettingsService extends Binder {
  public FoldSettingsService(){attachInterface(null,TOKEN);}
  @Override protected synchronized boolean onTransact(int code,Parcel data,Parcel reply,int flags)throws RemoteException{
   if(code==INTERFACE_TRANSACTION){reply.writeString(TOKEN);return true;}
-  if(code==16777115){System.exit(0);return true;}
+  if(code==16777115){org.duofold.live.root.PrivRuntime.exit(0);return true;}
   if(code!=1)return super.onTransact(code,data,reply,flags);
   data.enforceInterface(TOKEN);int caller=Binder.getCallingUid();if(owner<0)owner=caller;if(owner!=caller)throw new SecurityException("Wrong caller");
   String action=data.readString(),original=data.readString();int user=caller/100000;

@@ -22,7 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
-import rikka.shizuku.Shizuku
+import org.duofold.live.root.Shizuku
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -37,7 +37,7 @@ class SetupActivity : ComponentActivity() {
  private var bound=false
  private val args by lazy { Shizuku.UserServiceArgs(ComponentName(this,WallpaperSetupService::class.java)).daemon(false).processNameSuffix("wallpaper_setup").version(BuildConfig.VERSION_CODE) }
  private val listener=Shizuku.OnRequestPermissionResultListener { _, result ->
-  runOnUiThread { message=if(result==PackageManager.PERMISSION_GRANTED)"Shizuku authorized. Continue with wallpaper setup below." else "Shizuku access was declined. Tap Authorize to try again." }
+  runOnUiThread { message=if(result==PackageManager.PERMISSION_GRANTED)"Root granted. Continue with wallpaper setup below." else "Root access was declined. Tap Authorize to try again." }
  }
  private val connection=object:ServiceConnection {
   override fun onServiceConnected(name:ComponentName,binder:IBinder){
@@ -60,7 +60,7 @@ class SetupActivity : ComponentActivity() {
     }
    }.start()
   }
-  override fun onServiceDisconnected(name:ComponentName){bound=false;applying=false;message="Setup helper disconnected. Restart Shizuku if needed, then retry."}
+  override fun onServiceDisconnected(name:ComponentName){bound=false;applying=false;message="Setup helper disconnected. Check root access, then retry."}
  }
  private fun releaseHelper(){if(bound){runCatching{Shizuku.unbindUserService(args,connection,true)};bound=false}}
  private fun go(step:Int){stage=step;prefs.edit().putInt("step",step).apply()}
@@ -68,10 +68,10 @@ class SetupActivity : ComponentActivity() {
  private fun startApply(){
   if(applying)return
   try{WallpaperProfile.resolve(Build.MODEL,prefs.getString("wallpaper_profile",""))}catch(e:IllegalArgumentException){message=e.message ?: "Choose your Fold model above";return}
-  if(runCatching{Shizuku.getUid()}.getOrDefault(-1)!=2000){message="Wallpaper setup requires Shizuku started with wireless or USB debugging (ADB mode), not root mode.";return}
+  if(!Shizuku.pingBinder()||Shizuku.checkSelfPermission()!=0){message="Grant root to Duo Fold Live first (KernelSU Manager).";return}
   val generation=++applyGeneration
   attempted=true;prefs.edit().putBoolean("wallpaper_verified",false).apply();applying=true;message="Applying the required fold wallpaper to both home screens…"
-  try {bound=true;Shizuku.bindUserService(args,connection);android.os.Handler(mainLooper).postDelayed({if(applying&&generation==applyGeneration){applying=false;message="Wallpaper setup timed out. Check Shizuku, then tap Retry wallpaper setup.";releaseHelper()}},15000)}
+  try {bound=true;Shizuku.bindUserService(args,connection);android.os.Handler(mainLooper).postDelayed({if(applying&&generation==applyGeneration){applying=false;message="Wallpaper setup timed out. Check root access, then tap Retry wallpaper setup.";releaseHelper()}},40000)}
   catch(e:Exception){bound=false;applying=false;message="Could not start setup: ${e.message}. Tap Retry."}
  }
  private fun open(intent:Intent){runCatching{startActivity(intent)}.onFailure{Toast.makeText(this,"This screen is unavailable. Open it in Settings.",Toast.LENGTH_LONG).show()}}
@@ -94,8 +94,8 @@ class SetupActivity : ComponentActivity() {
     LaunchedEffect(Unit){while(true){
      shizuku=runCatching{Shizuku.pingBinder()}.getOrDefault(false)
      authorized=shizuku && runCatching{Shizuku.checkSelfPermission()==PackageManager.PERMISSION_GRANTED}.getOrDefault(false)
-     overlay=Settings.canDrawOverlays(this@SetupActivity)
-     accessibility=StandaloneService.instance!=null
+     overlay=true
+     accessibility=true
 
      delay(500)
     }}
@@ -130,7 +130,7 @@ class SetupActivity : ComponentActivity() {
         Text("The wallpaper that powers the fold",style=MaterialTheme.typography.headlineSmall)
         Text("Duo uses Samsung’s interactive fold wallpaper to read the hinge angle. Setup will apply it to BOTH the inner and cover home screens, including the cover-screen option Samsung normally hides.")
         Text("This replaces your current home wallpapers and remains applied if you disable Duo. You can change them later in Samsung wallpaper settings. Your lock-screen wallpaper is not changed by this setup.")
-        Text("Next, choose whether to cover it with your own photo. Then we’ll connect Shizuku and apply the required wallpaper automatically. No root is needed.")
+        Text("Next, choose whether to cover it with your own photo. Then we’ll use root access to apply the required wallpaper automatically.")
         Text("Regional SM-F971, SM-F976, and SM-F966 model numbers are recognized. Other models may also proceed with a warning. Android 17 is still required; Samsung wallpaper components and APIs are checked separately. Only SM-F971U has been tested.",style=MaterialTheme.typography.bodySmall)
         Button(onClick={go(1)}){Text("Continue")}
        }
@@ -143,52 +143,28 @@ class SetupActivity : ComponentActivity() {
          OutlinedButton(onClick={picker.launch(arrayOf("image/*"))},enabled=!loading){Text(if(hasPhoto)"Change selected photo" else "Choose photo")}
          Text("The custom photo can briefly reveal Samsung’s wallpaper when unlocking. This existing limitation is still being worked on.",style=MaterialTheme.typography.bodySmall)
         }
-        Button(onClick={message="";go(2)},enabled=!loading&&(!custom||hasPhoto)){Text("Continue to Shizuku")}
+        Button(onClick={message="";go(2)},enabled=!loading&&(!custom||hasPhoto)){Text("Continue to root access")}
        }
        2->{
-        Text("Connect Shizuku",style=MaterialTheme.typography.headlineSmall)
+        Text("Grant root",style=MaterialTheme.typography.headlineSmall)
         Text("FoldInteractive is part of Samsung’s built-in wallpaper system, not a separate download. Duo needs its interactive fold wallpaper on both HOME screens. Other models may not contain a compatible profile.")
-        Text("Shizuku gives Duo the access needed to install the fold wallpaper on both screens and read live hinge angles. After authorization, tap Apply required wallpapers below. Wallpaper compatibility is checked separately.")
-        Text(if(authorized)"Shizuku connected and authorized" else if(shizuku)"Shizuku connected · authorization needed" else "Duo has not received a Shizuku connection")
-        Button(onClick={link("https://github.com/thejaustin/ShizukuPlus/releases")}){Text("Download Shizuku+ (Recommended)")}
-        Text("If you installed Shizuku, uninstall it first to avoid conflicts. Install Shizuku+ from the link above, start it using wireless or USB debugging (ADB mode), then authorize Duo again.",style=MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick={val intent=packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api");if(intent!=null)open(intent)else link("https://github.com/thejaustin/ShizukuPlus/releases")}){Text("Open installed Shizuku")}
-        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-         FilterChip(selected=!usb,onClick={usb=false},label={Text("Wireless")})
-         FilterChip(selected=usb,onClick={usb=true},label={Text("USB / computer")})
-        }
-        Text("In Samsung Settings → About phone → Software information, tap Build number seven times. Then open Developer options.")
-        if(!usb){
-         Text("Connect to Wi-Fi. Enable USB debugging and Wireless debugging. In Shizuku, tap Pairing; open Wireless debugging → Pair device with pairing code, and enter that code in Shizuku’s notification. Return to Shizuku and tap Start.")
-        }else{
-         Text("Enable USB debugging and connect to your computer. Download and extract Google’s platform-tools. Open PowerShell inside that extracted folder, run .\\adb.exe devices, and accept the phone’s debugging prompt. Then run the start command below, or copy the current command shown in Shizuku.")
-         OutlinedButton(onClick={link("https://developer.android.com/tools/releases/platform-tools")}){Text("Download platform-tools")}
-         OutlinedButton(onClick={
-          (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Start Shizuku",".\\adb.exe shell sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh"))
-          Toast.makeText(this@SetupActivity,"Windows command copied",Toast.LENGTH_SHORT).show()
-         }){Text("Copy Windows start command")}
-         Text("Mac / Linux: use ./adb instead of .\\adb.exe.",style=MaterialTheme.typography.bodySmall)
-        }
-        OutlinedButton(onClick={open(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))}){Text("Open Developer options")}
-        Button(onClick={message=ShizukuAccess.request(this@SetupActivity,74)},enabled=!applying){Text(if(authorized)"Check Shizuku authorization" else "Authorize / check connection")}
+        Text("Duo uses root (KernelSU) to install the fold wallpaper on both screens and read live hinge angles. Approve the KernelSU prompt, then tap Apply required wallpapers below. Wallpaper compatibility is checked separately.")
+        Text(if(authorized)"Root granted" else "Root not granted yet")
+        Button(onClick={message=ShizukuAccess.request(this@SetupActivity,74)},enabled=!applying){Text(if(authorized)"Check root access" else "Authorize root")}
         OutlinedButton(onClick={ShizukuAccess.copy(this@SetupActivity)}){Text("Copy connection report")}
         if(applying)CircularProgressIndicator()
         if(!applying&&authorized&&prefs.getBoolean("wallpaper_verified",false))Button(onClick={go(3)}){Text("Continue") }
         if(!applying&&authorized)Button(onClick={startApply()}){Text(if(attempted)"Retry wallpaper setup" else "Apply required wallpapers")}
-        Text("After reboot, start Shizuku again. Allow Shizuku and Duo to run in the background; keep Developer options enabled.",style=MaterialTheme.typography.bodySmall)
-        TextButton(onClick={link("https://shizuku.rikka.app/guide/setup/")}){Text("Official Shizuku setup guide")}
+        Text("Root is requested again automatically after a reboot; nothing needs to be started manually.",style=MaterialTheme.typography.bodySmall)
        }
        3->{
         Text("Ready for the animation",style=MaterialTheme.typography.headlineSmall)
-        Text("The required Samsung fold wallpaper is configured on both home screens. Finish these Android permissions so the animation can run over other apps.")
-        OutlinedButton(onClick={open(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))}){Text(if(overlay)"Overlay access granted" else "Allow display over other apps")}
-        OutlinedButton(onClick={open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))}){Text(if(accessibility)"Accessibility connected" else "Enable Duo accessibility")}
-        Text("1. Settings → Accessibility → Installed apps → Duo Fold Live: try enabling it. 2. If Restricted setting appears: Settings → Apps → Duo Fold Live → ⋮ → Allow restricted settings; confirm. 3. Return to Accessibility and enable Duo. If the ⋮ menu is missing, report the exact warning and your Android/One UI version. Overlay permission is separate. Enable accessibility only if you trust the app.",style=MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick={open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))}){Text("Open app info")}
+        Text("The required Samsung fold wallpaper is configured on both home screens. Allow notifications so the background service can show its status.")
+        Text("No overlay permission or accessibility service is needed: the animation is drawn by a root-launched host process.",style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={if(checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),75)}){Text("Allow service notifications")}
         Text("Default: Windowed Glass, inspired by iPhone Duo with even more windowed glass. Choose styles in Folding animation styles. Keep-awake is always on and checked in the background.")
         Button(onClick={
-         if(!authorized){message="Start Shizuku again before finishing.";attempted=false;go(2);return@Button}
+         if(!authorized){message="Grant root again before finishing.";attempted=false;go(2);return@Button}
          prefs.edit().putInt("state",2).commit()
          getSharedPreferences("standalone",0).edit().putBoolean("enabled",true).putBoolean("auto_keep_cover_awake",true).apply()
          startForegroundService(Intent(this@SetupActivity,FoldBackgroundService::class.java))

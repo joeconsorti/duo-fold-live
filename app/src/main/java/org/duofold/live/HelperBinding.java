@@ -3,7 +3,7 @@ import android.content.*;
 import android.os.*;
 import java.util.*;
 import java.util.function.Consumer;
-import rikka.shizuku.Shizuku;
+import org.duofold.live.root.Shizuku;
 /** Main-thread lifecycle for exclusively owned background UserServices. */
 public final class HelperBinding implements ServiceConnection {
  private static final Handler main=new Handler(Looper.getMainLooper());

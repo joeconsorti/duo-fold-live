@@ -28,7 +28,7 @@ public final class UnlockTrace {
  public UnlockTrace(Context c,UiAutomation a){context=c.getApplicationContext();automation=a;host=this;}
  public static String status(){return status;}
  public static boolean capturing(){UnlockTrace h=host;return h!=null&&h.session!=null;}
- public static String start(){UnlockTrace h=host;return h==null?"Enable custom wallpaper and authorize Shizuku first.":h.begin();}
+ public static String start(){UnlockTrace h=host;return h==null?"Enable custom wallpaper and grant root first.":h.begin();}
  private synchronized String begin(){
   if(closed)return "Wallpaper host stopped; enable it again.";
   if(session!=null)return status;

@@ -1,10 +1,10 @@
 package org.duofold.live.wallpaperlayer;
-import android.app.*;import android.os.*;import android.content.*;import android.graphics.*;import android.widget.*;import rikka.shizuku.Shizuku;import java.io.*;
+import android.app.*;import android.os.*;import android.content.*;import android.graphics.*;import android.widget.*;import org.duofold.live.root.Shizuku;import java.io.*;
 public class WallpaperActivity extends Activity {
  ImageView coverPreview,innerPreview; Bitmap previewBitmap; long previewStamp=-1;
  TextView status,backgroundStatus; Handler h=new Handler(); IBinder remote; boolean connecting=false,startOnConnect=false; File photo; Shizuku.UserServiceArgs args;
  final ServiceConnection connection=new ServiceConnection(){public void onServiceConnected(ComponentName n,IBinder b){remote=b;connecting=false;if(startOnConnect){startOnConnect=false;startRemote();}else{h.removeCallbacks(poll);h.post(poll);}}public void onServiceDisconnected(ComponentName n){remote=null;status.setText("Shizuku connection ended. Reopen Shizuku if needed; Disable wallpaper still removes the photo layer.");}};
- final Shizuku.OnRequestPermissionResultListener permission=(a,b)->runOnUiThread(()->{String message=b==0?"Authorized. Choose a photo and enable wallpaper.":"Shizuku permission denied.";status.setText(message);Toast.makeText(this,message,Toast.LENGTH_LONG).show();});
+ final Shizuku.OnRequestPermissionResultListener permission=(a,b)->runOnUiThread(()->{String message=b==0?"Authorized. Choose a photo and enable wallpaper.":"Root permission denied.";status.setText(message);Toast.makeText(this,message,Toast.LENGTH_LONG).show();});
  public void onCreate(Bundle s){super.onCreate(s);photo=new File(getFilesDir(),"photo.jpg");if(!photo.exists()){File staged=new File(getFilesDir(),"chosen-home-background.jpg");if(staged.exists())try{java.nio.file.Files.copy(staged.toPath(),photo.toPath());}catch(Exception ignored){}}LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(20),dp(18),dp(20),dp(24));root.setBackgroundColor(0xff080a0e);
  button(root,"‹ Back",this::finish);
  text(root,"Custom wallpaper",28,0xffffffff);
@@ -14,7 +14,7 @@ public class WallpaperActivity extends Activity {
  text(steps,"1. Choose a photo\n2. Enable your wallpaper\n3. Fold and unfold to enjoy it",16,0xffccd1e0);
  status=new TextView(this);status.setTextColor(0xffb8d4ff);status.setTextSize(14);status.setPadding(0,dp(12),0,dp(12));
  button(steps,"Choose / change photo",()->startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE),2));
- button(steps,"Enable custom wallpaper",()->{try{if(!photo.exists()){status.setText("Choose a photo first.");return;}if(!Shizuku.pingBinder()||Shizuku.checkSelfPermission()!=0){status.setText("Authorize Shizuku first.");return;}if(remote!=null&&remote.isBinderAlive()){startRemote();return;}if(connecting)return;startOnConnect=true;connecting=true;args=WallpaperRestore.args(this);Shizuku.bindUserService(args,connection);status.setText("Connecting…");}catch(Exception e){connecting=false;status.setText(e.toString());}});
+ button(steps,"Enable custom wallpaper",()->{try{if(!photo.exists()){status.setText("Choose a photo first.");return;}if(!Shizuku.pingBinder()||Shizuku.checkSelfPermission()!=0){status.setText("Grant root first.");return;}if(remote!=null&&remote.isBinderAlive()){startRemote();return;}if(connecting)return;startOnConnect=true;connecting=true;args=WallpaperRestore.args(this);Shizuku.bindUserService(args,connection);status.setText("Connecting…");}catch(Exception e){connecting=false;status.setText(e.toString());}});
  button(steps,"Disable custom wallpaper",()->{try{WallpaperRestore.setEnabled(this,false);status.setText("Stop requested; removing photo layer.");h.removeCallbacks(poll);h.postDelayed(poll,200);}catch(Exception e){status.setText(e.toString());}});
  steps.addView(status);
  text(steps,"Your selection stays saved across updates. Choose a new photo any time. Disabling shows Samsung’s wallpaper again.",14,0xffb8c7d9);
@@ -24,8 +24,8 @@ public class WallpaperActivity extends Activity {
  coverPreview=preview(pair,"Folded",1248f/1972f);innerPreview=preview(pair,"Unfolded",2448f/1848f);
  backgroundStatus=new TextView(this);backgroundStatus.setTextColor(0xffb8c7d9);root.addView(backgroundStatus);
  LinearLayout connectionCard=card(root);text(connectionCard,"Connection",22,0xffffffff);
- text(connectionCard,"Shizuku keeps your custom background and fold animation working together. Authorize it here if needed.",14,0xffb8c7d9);
- button(connectionCard,"Authorize Shizuku",()->{String result=org.duofold.live.ShizukuAccess.INSTANCE.request(this,1);org.duofold.live.ShizukuAccess.INSTANCE.show(this,result);});
+ text(connectionCard,"Root access keeps your custom background and fold animation working together. Authorize it here if needed.",14,0xffb8c7d9);
+ button(connectionCard,"Authorize root",()->{String result=org.duofold.live.ShizukuAccess.INSTANCE.request(this,1);org.duofold.live.ShizukuAccess.INSTANCE.show(this,result);});
  LinearLayout lockCard=card(root);text(lockCard,"Lock screens",22,0xffffffff);
  text(lockCard,"Optional: apply this photo to both lock screens too. This remains until you change your lock-screen wallpaper in Samsung settings.",14,0xffb8c7d9);
  button(lockCard,"Apply this photo to both lock screens",()->{if(!photo.exists()){status.setText("Choose a photo first.");return;}h.removeCallbacks(poll);status.setText("Applying lock-screen photos…");new Thread(()->{String result;try{result=LockPhotoApplier.apply(this,photo);java.nio.file.Files.write(new File(getFilesDir(),"lock-photo-status.txt").toPath(),result.getBytes(java.nio.charset.StandardCharsets.UTF_8));}catch(Exception e){result="Lock photo action failed: "+e;}final String message=result;runOnUiThread(()->{status.setText(brief(message));Toast.makeText(this,"Lock-screen action finished; see status",Toast.LENGTH_LONG).show();h.postDelayed(poll,10000);});},"Apply lock photos").start();});
@@ -46,7 +46,7 @@ public class WallpaperActivity extends Activity {
  if(getIntent().getBooleanExtra("auto_enable",false)){
   getIntent().removeExtra("auto_enable");
   h.post(()->{try{
-   if(!photo.exists()||!Shizuku.pingBinder()||Shizuku.checkSelfPermission()!=0){status.setText("Choose a photo and authorize Shizuku, then enable wallpaper.");return;}
+   if(!photo.exists()||!Shizuku.pingBinder()||Shizuku.checkSelfPermission()!=0){status.setText("Choose a photo and grant root, then enable wallpaper.");return;}
    startOnConnect=true;connecting=true;args=WallpaperRestore.args(this);Shizuku.bindUserService(args,connection);
   }catch(Exception e){connecting=false;status.setText("Could not start custom wallpaper: "+e);}});
  }

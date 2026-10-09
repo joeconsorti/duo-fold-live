@@ -29,7 +29,8 @@ val wallpaperStubJar by tasks.registering(Jar::class) {
 dependencies {
  compileOnly(files(wallpaperStubJar))
  implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
- implementation(fileTree("libs") { include("*.jar") })
+ implementation("com.github.topjohnwu.libsu:core:6.0.0")
+ implementation("com.github.topjohnwu.libsu:service:6.0.0")
  implementation("androidx.window:window:1.5.1")
  implementation("androidx.profileinstaller:profileinstaller:1.4.1")
  implementation(platform("androidx.compose:compose-bom:2025.06.01"))

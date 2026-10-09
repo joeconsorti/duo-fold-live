@@ -421,9 +421,13 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
      // Honest, live black-fade fallback; never leave stale captured content visible.
      val horizontal=rotation==Surface.ROTATION_90||rotation==Surface.ROTATION_270
      val reversed=rotation==Surface.ROTATION_90||rotation==Surface.ROTATION_180
-     val colors=IntArray(65){i->var x=i/64f;if(reversed)x=1f-x;val edge=if(inner)1f-2*x else x;Color.argb((255*DuoShadeCurve.alpha(amount,edge,intensity)).toInt(),0,0,0)}
-     paint.shader=LinearGradient(0f,0f,if(horizontal)0f else width.toFloat(),if(horizontal)height.toFloat() else 0f,colors,null,Shader.TileMode.CLAMP)
-     canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint)
+     // "glass_fallback": black = original (opaque black fade), soft = 40 % of it, clear = show the real screen until the frame arrives.
+     val fallbackStrength=when(context.getSharedPreferences("standalone",0).getString("glass_fallback","black")){"clear"->0f;"soft"->0.4f;else->1f}
+     if(fallbackStrength>0f){
+      val colors=IntArray(65){i->var x=i/64f;if(reversed)x=1f-x;val edge=if(inner)1f-2*x else x;Color.argb((255*fallbackStrength*DuoShadeCurve.alpha(amount,edge,intensity)).toInt(),0,0,0)}
+      paint.shader=LinearGradient(0f,0f,if(horizontal)0f else width.toFloat(),if(horizontal)height.toFloat() else 0f,colors,null,Shader.TileMode.CLAMP)
+      canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),paint)
+     }
     }
    }finally{
     // Only successful glass rendering or a deliberate fully-open clear qualifies.

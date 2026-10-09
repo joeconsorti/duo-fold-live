@@ -67,7 +67,7 @@ public final class CameraContinuityService extends Binder {
  private synchronized void stop(String reason){
   mirror.close();if(capture!=null){capture.close();capture=null;}
   if(request!=null)try{manager.getClass().getMethod("cancelStateRequest").invoke(manager);}
-   catch(Exception e){System.exit(0);}
+   catch(Exception e){org.duofold.live.root.PrivRuntime.exit(0);}
   request=null;unlink();status=reason;
  }
  // Read-only task diagnostics: never resumes, focuses, or reparents a task.
@@ -91,7 +91,7 @@ public final class CameraContinuityService extends Binder {
  }
  @Override protected synchronized boolean onTransact(int code,Parcel p,Parcel r,int flags)throws RemoteException{
   if(code==INTERFACE_TRANSACTION){r.writeString(TOKEN);return true;}
-  if(code==16777115){stop("Helper stopped");System.exit(0);return true;}
+  if(code==16777115){stop("Helper stopped");org.duofold.live.root.PrivRuntime.exit(0);return true;}
   p.enforceInterface(TOKEN);int uid=Binder.getCallingUid();if(owner<0)owner=uid;if(owner!=uid)throw new SecurityException("Wrong caller");
   long identity=Binder.clearCallingIdentity();Bundle out=new Bundle();
   try{

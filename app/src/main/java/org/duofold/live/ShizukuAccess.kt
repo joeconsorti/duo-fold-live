@@ -4,49 +4,45 @@ import android.app.AlertDialog
 import android.content.*
 import android.os.Build
 import android.widget.Toast
-import rikka.shizuku.Shizuku
+import org.duofold.live.root.Shizuku
 
-/** Authorization is independent of wallpaper compatibility and ADB transport. */
+/** Root authorization (KernelSU / Magisk). The name is kept so existing call sites are unchanged. */
 object ShizukuAccess {
  fun request(context: Context, code: Int): String = try {
   when {
-   !Shizuku.pingBinder() -> "Duo has not received Shizuku’s connection. Check that Shizuku says Running (pairing alone is not enough). Keep both apps in the same Android profile. If it is already running, restart Shizuku, then reopen Duo."
-   Shizuku.isPreV11() -> "This Shizuku version is unsupported. Update official Shizuku."
-   Shizuku.checkSelfPermission()==0 -> "Shizuku permission is granted. This does not verify the angle reader or required wallpaper."
-   Shizuku.shouldShowRequestPermissionRationale() -> "Authorization was previously denied. Open Shizuku → Authorized applications and enable Duo Fold Live, then return here."
-   else -> {Shizuku.requestPermission(code); "Permission requested. Select Allow in Shizuku’s dialog. If no dialog appears, open Shizuku → Authorized applications and enable Duo Fold Live."}
+   Shizuku.checkSelfPermission()==0 -> "Root access is granted. This does not verify the angle reader or required wallpaper."
+   else -> {Shizuku.requestPermission(code); "Permission requested. Approve Duo Fold Live in the KernelSU Manager prompt. If no prompt appears, open KernelSU Manager → Superuser and allow Duo Fold Live, then tap again."}
   }
- } catch(e: Exception){"Shizuku request failed: ${e.javaClass.simpleName}: ${e.message}"}
+ } catch(e: Exception){"Root request failed: ${e.javaClass.simpleName}: ${e.message}"}
  fun report(context: Context): String = buildString {
-  append("Duo Fold Live ${BuildConfig.VERSION_NAME} · connection report\n")
+  append("Duo Fold Live ${BuildConfig.VERSION_NAME} · connection report (root build)\n")
   append("${Build.MODEL} / Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}\n")
   append("Firmware: ${Build.DISPLAY}\n")
   append("Angle reader: ${LiveAngles.status}\n")
   append("${HelperBinding.report()}\n")
   append("Reader diagnostics: ${LiveAngles.readerDiagnostics}\n")
   append("Package: ${context.packageName}\n")
-  append("Official Shizuku installed in this profile: "+runCatching{context.packageManager.getPackageInfo("moe.shizuku.privileged.api",0);true}.getOrDefault(false)+"\n")
-  val alive=runCatching{Shizuku.pingBinder()}.getOrDefault(false)
-  append("Binder received and alive: $alive\n")
-  if(alive) runCatching {
-   append("Server version: ${Shizuku.getVersion()}\n")
-   append("Server UID: ${Shizuku.getUid()} (ADB expects 2000)\n")
-   append("Permission: ${Shizuku.checkSelfPermission()} (0 = authorized)\n")
-   append("Previously denied: ${Shizuku.shouldShowRequestPermissionRationale()}\n")
-  }.onFailure{append("Connection check failed: ${it.javaClass.simpleName}: ${it.message}\n")}
+  append("Root granted: ${Shizuku.pingBinder()} (permission=${Shizuku.checkSelfPermission()}, 0 = granted)\n")
   append("Wallpaper profile: ${runCatching{WallpaperProfile.resolve(Build.MODEL,context.getSharedPreferences("first_run",0).getString("wallpaper_profile",""))}.getOrDefault("Selection required")}\n")
   append("Wallpaper setup model/OS eligible: ${DeviceCompatibility.isEligible(Build.MODEL, Build.VERSION.SDK_INT)}\n")
   append("Wallpaper setup verified: ${context.getSharedPreferences("first_run",0).getBoolean("wallpaper_verified",false)}\n")
-  append("Wireless and USB start the same Shizuku ADB service. An unsupported wallpaper profile is not an authorization failure.")
+  append("Display handoff: ${LiveAngles.handoffStatus}\n")
+  append("Cover preview active: ${LiveAngles.coverPreview}; native inner: ${LiveAngles.nativeInner}; continuity native: ${LiveAngles.continuityNative}\n")
+  append("Angle trigger: ${LiveAngles.pokeStatus}\n")
+  append("Glass capture: ${GlassFrames.status}\n")
+  append("Mirror: ${LiveAngles.mirrorStatus}\n")
+  append("Expansion: ${LiveAngles.expansionStatus}\n")
+  append("Handoff fade: ${LiveAngles.handoffFade}\n")
+  append("Rotation hold: ${LiveAngles.rotationHold}\n")
+  append("Bridge: ${LiveAngles.bridgeTrace}\n")
+  append("Continuity: ${LiveAngles.continuityStatus}\n")
+  append("Effect allowed: ${LiveAngles.effectAllowed}\n")
+  append("Recent events:\n${RecoveryLog.report().lines().takeLast(40).joinToString("\n")}\n")
+  append("Window host ready: ${UiHost.ready()}; overlay object: ${StandaloneService.instance!=null}; status: ${StandaloneService.instance?.status}")
  }
  fun show(context: Context, message: String) {
-  AlertDialog.Builder(context).setTitle("Shizuku connection").setMessage(message)
-   .setPositiveButton("OK",null).setNeutralButton("Copy report"){_,_->copy(context)}
-   .setNegativeButton("Open Shizuku"){_,_->
-    val intent=context.packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
-    if(intent!=null)runCatching{context.startActivity(intent)}.onFailure{Toast.makeText(context,"Could not open Shizuku. Open your Shizuku app manually.",Toast.LENGTH_LONG).show()}
-    else Toast.makeText(context,"Shizuku app shortcut unavailable. Open Shizuku or your installed fork manually.",Toast.LENGTH_LONG).show()
-   }.show()
+  AlertDialog.Builder(context).setTitle("Root connection").setMessage(message)
+   .setPositiveButton("OK",null).setNeutralButton("Copy report"){_,_->copy(context)}.show()
  }
  fun copy(context: Context){
   (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Duo connection report",report(context)))

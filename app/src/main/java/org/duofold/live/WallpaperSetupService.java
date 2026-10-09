@@ -12,7 +12,7 @@ public final class WallpaperSetupService extends Binder {
  public WallpaperSetupService(){attachInterface(null,TOKEN);}
  @Override protected synchronized boolean onTransact(int code,Parcel in,Parcel out,int flags)throws RemoteException {
   if(code==INTERFACE_TRANSACTION){out.writeString(TOKEN);return true;}
-  if(code==16777115){System.exit(0);return true;}
+  if(code==16777115){org.duofold.live.root.PrivRuntime.exit(0);return true;}
   in.enforceInterface(TOKEN);
   int caller=Binder.getCallingUid();if(owner<0)owner=caller;
   if(owner!=caller)throw new SecurityException("Wrong caller");
@@ -30,7 +30,7 @@ public final class WallpaperSetupService extends Binder {
   return true;
  }
  private static String apply(boolean repair,String profile)throws Exception {
-  if(android.os.Process.myUid()!=2000)throw new IllegalStateException("Start Shizuku using wireless or USB debugging (ADB mode)");
+  if(android.os.Process.myUid()!=2000)throw new IllegalStateException("Wallpaper setup must run with the shell identity (uid 2000); it is started that way by the root helper");
   // Regional variants share eligibility; verify Samsung components and methods before writing.
   DeviceCompatibility.requireEligible(Build.MODEL, Build.VERSION.SDK_INT);
   String video=WallpaperProfile.video(profile);

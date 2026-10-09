@@ -5,7 +5,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.Executors;
-import rikka.shizuku.Shizuku;
+import org.duofold.live.root.Shizuku;
 import org.duofold.live.BuildConfig;
 import org.duofold.live.FoldBackgroundService;
 /** Saved user intent survives package updates. Disable never deletes the selected photo. */
@@ -54,12 +54,13 @@ public final class WallpaperRestore {
  }
  public static void tick(Context context){
   Context c=context.getApplicationContext();
-  if(!enabled(c)){status="Custom wallpaper disabled; photo retained";return;}
-  if(PhotoInstrumentation.running){status="Saved custom wallpaper running";return;}
+  boolean photoOn=enabled(c),overlayOn=org.duofold.live.OverlayPolicy.wanted(c);
+  if(!photoOn&&!overlayOn){status="Custom wallpaper disabled; photo retained";return;}
+  if(PhotoInstrumentation.running){status=photoOn?"Saved custom wallpaper running":"Root window host running";return;}
   if(connecting||pending||SystemClock.elapsedRealtime()<retryAt)return;
   try{
-   if(!new File(c.getFilesDir(),"photo.jpg").exists()){status="Saved wallpaper photo missing; choose a replacement";return;}
-   if(!Shizuku.pingBinder()||Shizuku.checkSelfPermission()!=0){status="Wallpaper saved; waiting for authorized Shizuku";return;}
+   if(photoOn&&!overlayOn&&!new File(c.getFilesDir(),"photo.jpg").exists()){status="Saved wallpaper photo missing; choose a replacement";return;}
+   if(!Shizuku.pingBinder()||Shizuku.checkSelfPermission()!=0){status="Wallpaper saved; waiting for root access";return;}
    if(remote==null||!remote.isBinderAlive()){
     connecting=true;retryAt=SystemClock.elapsedRealtime()+15000;
     final int attempt=++generation;final long started=SystemClock.elapsedRealtime();
@@ -84,12 +85,12 @@ public final class WallpaperRestore {
    worker.execute(()->{
     String result;
     try{
-     if(!enabled(c)){result="Custom wallpaper disabled";}
+     if(!enabled(c)&&!org.duofold.live.OverlayPolicy.wanted(c)){result="Custom wallpaper disabled";}
      else{
-      File stop=new File(c.getFilesDir(),"stop-layer");if(stop.exists()&&!stop.delete())throw new IOException("Wallpaper stop request pending");
+      File stop=new File(c.getFilesDir(),"stop-layer");if(enabled(c)&&stop.exists()&&!stop.delete())throw new IOException("Wallpaper stop request pending");
       Parcel p=Parcel.obtain(),r=Parcel.obtain();int active;
       try{p.writeInterfaceToken(HostLauncher.TOKEN);if(!binder.transact(4,p,r,0))throw new IOException("Wallpaper observer unavailable");r.readException();active=r.readInt();}finally{p.recycle();r.recycle();}
-      if(active==0&&enabled(c)){
+      if(active==0&&(enabled(c)||org.duofold.live.OverlayPolicy.wanted(c))){
        p=Parcel.obtain();r=Parcel.obtain();
        try{p.writeInterfaceToken(HostLauncher.TOKEN);p.writeTypedObject((ParcelFileDescriptor)null,0);binder.transact(1,p,r,0);r.readException();result=r.readString();}finally{p.recycle();r.recycle();}
       }else result="Wallpaper host active / starting";

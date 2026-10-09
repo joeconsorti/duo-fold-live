@@ -6,7 +6,7 @@ import android.hardware.display.DisplayManager
 import android.os.*
 import android.view.*
 import android.widget.*
-import rikka.shizuku.Shizuku
+import org.duofold.live.root.Shizuku
 import java.util.concurrent.Executors
 
 /** Opt-in Camera window-first test with live compositor content or an in-memory snapshot. */
@@ -194,7 +194,7 @@ class CameraContinuityActivity:Activity(){
     p.writeInterfaceToken(GlassCapture.TOKEN);p.writeInt(1);p.writeTypedObject(view.surfaceControl,0);p.writeInt(primaryDisplay)
     check(remote.transact(3,p,r,0));r.readException();r.readBundle(Bitmap::class.java.classLoader)?:Bundle()
    }catch(e:Exception){Bundle().apply{putString("error",e.toString())}}finally{p.recycle();r.recycle()}
-   val bitmap=out.getParcelable("bitmap",Bitmap::class.java)
+   val bitmap=GlassFrames.decode(out)
    main.post{
     if(!running||epoch!=generation){bitmap?.recycle();return@post}
     if(out.getBoolean("ok")&&bitmap!=null){

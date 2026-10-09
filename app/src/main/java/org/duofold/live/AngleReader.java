@@ -19,11 +19,33 @@ public class AngleReader extends Binder {
  private long screenshotTraceSentAt;
  private long heartbeat=SystemClock.elapsedRealtime();
  private int logLines,matchingResponses,staleResponses;
+ // Root build: the READ_n wallpaper command is sent from here through Samsung's slot API instead of from
+ // 1x1 overlay windows in the app, so no overlay permission is needed.
+ private static final boolean POKE_ENABLED=false; // slot command did not elicit angle responses on the Fold 8
+ private volatile String pokeAction;private Object pokeRemote;private java.lang.reflect.Method pokeMethod;
+ private volatile boolean pokeFailed;private volatile int pokes;private volatile String pokeStatus="Wallpaper command idle";
+ private void poke(){
+  String action=pokeAction;if(!POKE_ENABLED||action==null||pokeFailed)return;
+  long identity=Binder.clearCallingIdentity();
+  try{
+   if(pokeMethod==null){
+    IBinder b=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"wallpaper");
+    if(b==null)throw new IllegalStateException("wallpaper service unavailable");
+    pokeRemote=Class.forName("android.app.IWallpaperManager$Stub").getMethod("asInterface",IBinder.class).invoke(null,b);
+    pokeMethod=Class.forName("android.app.IWallpaperManager").getMethod("semSendWallpaperCommand",int.class,String.class,Bundle.class);
+   }
+   for(int which:new int[]{5,17})pokeMethod.invoke(pokeRemote,which,action,new Bundle());
+   pokes++;pokeStatus="Wallpaper command sent by root helper ("+pokes+" polls)";
+  }catch(Throwable t){
+   Throwable c=t;while(c.getCause()!=null)c=c.getCause();
+   pokeFailed=true;pokeStatus="Wallpaper command unavailable: "+c.getClass().getSimpleName()+": "+c.getMessage();
+  }finally{Binder.restoreCallingIdentity(identity);}
+ }
  private int owner=-1,generation=0,count=0; private float angle=Float.NaN,min=180,max=0; private long last=0; private String state="Idle",raw=""; private java.lang.Process process; private final Set<Float> unique=new HashSet<>();
  public AngleReader(){attachInterface(null,DESCRIPTOR);}
  protected synchronized boolean onTransact(int code,Parcel data,Parcel reply,int flags)throws RemoteException {
   if(code==INTERFACE_TRANSACTION){reply.writeString(DESCRIPTOR);return true;}
-  if(code==16777115){FoldRotationHold pending=rotation;stop();if(pending!=null)pending.awaitRelease();System.exit(0);return true;}
+  if(code==16777115){FoldRotationHold pending=rotation;stop();if(pending!=null)pending.awaitRelease();org.duofold.live.root.PrivRuntime.exit(0);return true;}
   data.enforceInterface(DESCRIPTOR);
   int caller=Binder.getCallingUid();if(owner<0)owner=caller;if(caller!=owner)throw new SecurityException("Wrong caller");
   if(code==7){
@@ -45,7 +67,7 @@ public class AngleReader extends Binder {
   if(code==4){int id=data.readInt();android.view.SurfaceControl parent=data.readTypedObject(android.view.SurfaceControl.CREATOR);int w=data.readInt(),h=data.readInt();Bundle result=mirror.attach(id,parent,w,h,previewAllowed);if(result.getBoolean("ok")&&fade!=null)fade.mirrorSubmitted();reply.writeNoException();reply.writeBundle(result);return true;}
   if(code==5){mirror.detach(data.readInt());reply.writeNoException();return true;}
   if(code==1){String action=data.readString();if(action==null||!action.matches("org\\.duofold\\.live\\.wallpaperprobe\\.READ_[0-9]+"))throw new IllegalArgumentException("Invalid action");recoveryApk=data.readString();start(action);reply.writeNoException();return true;}
-  if(code==2){heartbeat=SystemClock.elapsedRealtime();boolean unlocked=data.readInt()!=0,dual=data.readInt()!=0,primaryInner=data.readInt()!=0,secondaryReady=data.readInt()!=0;int frozenSource=data.readInt();float openThreshold=data.readFloat();boolean live=data.readInt()!=0;boolean appEnabled=data.readInt()!=0;float closedThreshold=FoldThreshold.sanitizeClosed(data.readFloat());long probeRequest=data.dataAvail()>=8?data.readLong():0;
+  if(code==2){heartbeat=SystemClock.elapsedRealtime();poke();boolean unlocked=data.readInt()!=0,dual=data.readInt()!=0,primaryInner=data.readInt()!=0,secondaryReady=data.readInt()!=0;int frozenSource=data.readInt();float openThreshold=data.readFloat();boolean live=data.readInt()!=0;boolean appEnabled=data.readInt()!=0;float closedThreshold=FoldThreshold.sanitizeClosed(data.readFloat());long probeRequest=data.dataAvail()>=8?data.readLong():0;
    float fadeSmoothing=data.dataAvail()>=4?data.readFloat():FadeSettings.DEFAULT_SMOOTHING;
    float fadeGradualness=data.dataAvail()>=4?data.readFloat():FadeSettings.DEFAULT_GRADUALNESS;
    String mode=data.dataAvail()>0?AnimationModePolicy.sanitize(data.readString()):AnimationModePolicy.DEFAULT;
@@ -81,12 +103,12 @@ public class AngleReader extends Binder {
    previewAllowed=mirrorMode&&effectAllowed&&!handoff.probeNative()&&CoverPreviewPolicy.allowed(live,dual,primaryInner,unlocked,handoff.active());
    if(!previewAllowed)mirror.close();
    continuity.sample(handoff.probeHolding(),handoff.probeStatus());
-   Bundle b=new Bundle();b.putBundle("incomingHold",concurrent.incomingHoldInfo());b.putString("closedHingeGate",closedHingeGate.report());if(SystemClock.elapsedRealtime()-screenshotTraceSentAt>=500){b.putString("screenshotTrace",concurrent.trace()+"\n"+handoff.trace());screenshotTraceSentAt=SystemClock.elapsedRealtime();}b.putString("rotationHold",rotation==null?"Rotation hold idle":rotation.status);b.putBoolean("effectAllowed",effectAllowed);b.putString("handoffFade",fade==null?"Handoff fade idle":fade.status);b.putString("continuityProbe",handoff.probeStatus());b.putString("continuityTrace",continuity.report());b.putString("bridgeTrace",expansion==null?"No bridge":expansion.trace);b.putString("expansion",expansion==null?"Expansion idle":expansion.status);b.putBoolean("coverPreview",previewAllowed);b.putString("state",state);b.putString("readerDiagnostics",state+"; wallpaper log lines="+logLines+"; parsed responses="+matchingResponses+"; rejected timestamps="+staleResponses);b.putString("mirror",mirror.status);b.putBoolean("continuityNative",handoff.probeNative());b.putBoolean("nativeInner",concurrent.secondaryHasNativeContent()||handoff.probeNative());b.putBoolean("dualActive",dual&&concurrent.active());b.putString("handoff",dual?concurrent.status:handoff.status);b.putInt("uid",android.os.Process.myUid());b.putInt("count",count);b.putInt("unique",unique.size());b.putFloat("rawAngle",angle);b.putFloat("angle",effectiveAngle);b.putFloat("min",min);b.putFloat("max",max);b.putLong("last",last);b.putString("raw",raw);reply.writeNoException();reply.writeBundle(b);return true;}
+   Bundle b=new Bundle();b.putBoolean("pokeOk",pokes>0&&!pokeFailed);b.putBoolean("pokeFailed",pokeFailed);b.putString("pokeStatus",pokeStatus);b.putBundle("incomingHold",concurrent.incomingHoldInfo());b.putString("closedHingeGate",closedHingeGate.report());if(SystemClock.elapsedRealtime()-screenshotTraceSentAt>=500){b.putString("screenshotTrace",concurrent.trace()+"\n"+handoff.trace());screenshotTraceSentAt=SystemClock.elapsedRealtime();}b.putString("rotationHold",rotation==null?"Rotation hold idle":rotation.status);b.putBoolean("effectAllowed",effectAllowed);b.putString("handoffFade",fade==null?"Handoff fade idle":fade.status);b.putString("continuityProbe",handoff.probeStatus());b.putString("continuityTrace",continuity.report());b.putString("bridgeTrace",expansion==null?"No bridge":expansion.trace);b.putString("expansion",expansion==null?"Expansion idle":expansion.status);b.putBoolean("coverPreview",previewAllowed);b.putString("state",state);b.putString("readerDiagnostics",state+"; wallpaper log lines="+logLines+"; parsed responses="+matchingResponses+"; rejected timestamps="+staleResponses);b.putString("mirror",mirror.status);b.putBoolean("continuityNative",handoff.probeNative());b.putBoolean("nativeInner",concurrent.secondaryHasNativeContent()||handoff.probeNative());b.putBoolean("dualActive",dual&&concurrent.active());b.putString("handoff",dual?concurrent.status:handoff.status);b.putInt("uid",android.os.Process.myUid());b.putInt("count",count);b.putInt("unique",unique.size());b.putFloat("rawAngle",angle);b.putFloat("angle",effectiveAngle);b.putFloat("min",min);b.putFloat("max",max);b.putLong("last",last);b.putString("raw",raw);reply.writeNoException();reply.writeBundle(b);return true;}
   if(code==3){stop();reply.writeNoException();return true;}return super.onTransact(code,data,reply,flags);
  }
  private synchronized void stop(){closedHingeGate.reset();previewAllowed=false;if(rotation!=null){rotation.close();rotation=null;}if(fade!=null){fade.close();fade=null;}if(expansion!=null){expansion.close();expansion=null;}if(capture!=null){capture.close();capture=null;}mirror.close();concurrent.release();handoff.release();generation++;if(process!=null){process.destroy();process=null;}state="Stopped";}
  private synchronized void start(String action){
-  stop();logLines=matchingResponses=staleResponses=0;count=0;unique.clear();angle=Float.NaN;min=180;max=0;last=0;raw="";state="Starting log reader";final int gen=generation;
+  stop();pokeAction=action;pokeFailed=false;pokes=0;logLines=matchingResponses=staleResponses=0;count=0;unique.clear();angle=Float.NaN;min=180;max=0;last=0;raw="";state="Starting log reader";final int gen=generation;
   Thread reader=new Thread(()->{
    java.lang.Process child=null;
    try{

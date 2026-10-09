@@ -23,7 +23,7 @@ class DuoTileService:TileService(),SharedPreferences.OnSharedPreferenceChangeLis
  override fun onClick(){super.onClick();if(isLocked)unlockAndRun{toggle()}else toggle()}
  private fun toggle(){
   val wasEnabled=prefs.getBoolean("enabled",false)
-  if(!wasEnabled && (FirstRun.required(this)||!Settings.canDrawOverlays(this)||StandaloneService.instance==null)){
+  if(!wasEnabled && (FirstRun.required(this)||!org.duofold.live.root.Shizuku.pingBinder())){
    val intent=Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
    startActivityAndCollapse(PendingIntent.getActivity(this,35,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
    Toast.makeText(this,"Complete Duo Fold Live setup to enable animation",Toast.LENGTH_LONG).show()

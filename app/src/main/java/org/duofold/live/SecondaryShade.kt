@@ -1,7 +1,7 @@
 package org.duofold.live
 import androidx.compose.runtime.*
-import android.app.Presentation
-import android.accessibilityservice.AccessibilityService
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.unit.sp
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -24,8 +24,22 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.lifecycle.*
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 
-/** The outgoing panel shows only its own pre-switch frame; incoming content stays native. */
-internal class SecondaryShade(private val service:AccessibilityService,display:Display,private val intensity:Float,private val preview:Boolean=false,private val nativeContent:Boolean=false,private val blackOnly:Boolean=false,private val event:(String)->Unit):Presentation(service,display,android.R.style.Theme_Material_NoActionBar){
+/**
+ * The outgoing panel shows only its own pre-switch frame; incoming content stays native.
+ * Root build: drawn into a compositor layer on the second display (LayerOverlay), not a Presentation window. A
+ * Presentation was created and drew but did not end up on top of the panel's own content.
+ */
+internal class SecondaryShade(private val service:Context,val display:Display,private val intensity:Float,private val preview:Boolean=false,private val nativeContent:Boolean=false,private val blackOnly:Boolean=false,private val event:(String)->Unit){
+ private companion object{
+  /** Diagnostic build: purple background + label, so it is obvious whether this layer and its Compose content are visible. */
+  const val DEBUG_SECOND_PANEL=false
+ }
+ private val surface=LayerOverlay(service,display,"Duo secondary panel")
+ private val context:Context get()=surface.context
+ var isShowing=false;private set
+ private var closed=false
+ private var dismissListener:(()->Unit)?=null
+ fun setOnDismissListener(listener:()->Unit){dismissListener=listener}
  private val life=OverlayOwner()
  private var compose:ComposeView?=null
  private var coverAspect=.63f
@@ -39,19 +53,25 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
  val layer:String get()=if(blackOnly) "Plain Fade opaque inner hold" else if(nativeContent) "Transparent native inner animation" else if(preview) "Live cover preview; ready=$mirrorReady; ${LiveAngles.mirrorStatus}" else "Frozen outgoing ${if(inner) "inner" else "cover"}; own frame=${HandoffFrames.forPanel(inner)!=null}"
  val ready:Boolean get()=isShowing && draws>0 && (if(blackOnly||nativeContent)true else if(preview)mirrorReady else HandoffFrames.forPanel(inner)!=null) && display.state==Display.STATE_ON
  fun refresh(){compose?.invalidate()}
- override fun onCreate(saved:Bundle?){
-  super.onCreate(saved);life.registry.currentState=Lifecycle.State.CREATED
+ fun relayout(){if(isShowing)surface.resize()}
+ fun show(){
+  closed=false
+  try{build();surface.show(compose!!);isShowing=true;life.registry.currentState=Lifecycle.State.RESUMED}
+  catch(e:Exception){dismiss();throw e}
+ }
+ private fun build(){
+  life.registry.currentState=Lifecycle.State.CREATED
   service.getSystemService(android.hardware.display.DisplayManager::class.java).getDisplay(0)?.mode?.let{coverAspect=it.physicalWidth.toFloat()/it.physicalHeight}
   val mode=display.mode
   inner=minOf(mode.physicalWidth,mode.physicalHeight).toFloat()/maxOf(mode.physicalWidth,mode.physicalHeight)>.7f
   val view=ComposeView(context);compose=view
   view.setViewTreeLifecycleOwner(life);view.setViewTreeSavedStateRegistryOwner(life)
   view.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-  view.viewTreeObserver.addOnDrawListener{draws++;if(draws==1)event("Frozen ${if(inner) "inner" else "cover"} first draw on display ${display.displayId}")}
+  view.viewTreeObserver.addOnDrawListener{draws++;if(draws==1){event("Frozen ${if(inner) "inner" else "cover"} first draw on display ${display.displayId}");HandoffFrames.forPanel(inner)?.bitmap?.let{b->event("Second-panel frozen frame ${b.width}x${b.height} centre pixel #${Integer.toHexString(b.getPixel(b.width/2,b.height/2))}")}?:event("Second-panel frozen frame: none")}}
   view.setContent {
    CompositionLocalProvider(LocalConfiguration provides context.resources.configuration,LocalHinge provides null){
     val frozen=HandoffFrames.forPanel(inner)
-    Box(Modifier.fillMaxSize().background(if(nativeContent)androidx.compose.ui.graphics.Color.Transparent else androidx.compose.ui.graphics.Color.Black)){
+    Box(Modifier.fillMaxSize().background(if(nativeContent)androidx.compose.ui.graphics.Color.Transparent else if(DEBUG_SECOND_PANEL)androidx.compose.ui.graphics.Color(0xFF6A00B8) else androidx.compose.ui.graphics.Color.Black)){
      if(blackOnly){
       // Opaque black only: no wallpaper, frozen frame, or mirrored content.
      }else if(nativeContent){
@@ -80,17 +100,18 @@ internal class SecondaryShade(private val service:AccessibilityService,display:D
        override fun onFrame(active:Boolean,strength:Float){this@SecondaryShade.strength=strength}
       },intensity,inner,frozen)
      }
+     if(DEBUG_SECOND_PANEL&&!nativeContent)BasicText("Duo second panel · ${if(preview)"preview" else "frozen"} · ${if(inner)"inner" else "cover"} · frame=${frozen!=null}",style=androidx.compose.ui.text.TextStyle(color=androidx.compose.ui.graphics.Color.White,fontSize=26.sp))
     }
    }
   }
-  setContentView(view)
-  window?.apply{
-   setBackgroundDrawable(ColorDrawable(if(nativeContent)Color.TRANSPARENT else Color.BLACK));if(nativeContent)setFormat(android.graphics.PixelFormat.TRANSLUCENT) else if(!blackOnly)addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-   addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
-   attributes=attributes.apply{setFitInsetsTypes(0);layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;title=if(nativeContent)"Duo native inner animation" else if(preview)"Duo live cover preview" else "Duo outgoing frozen panel"}
-  }
  }
- override fun onStart(){super.onStart();window?.setLayout(-1,-1);life.registry.currentState=Lifecycle.State.RESUMED}
- override fun onStop(){if(life.registry.currentState!=Lifecycle.State.DESTROYED)life.registry.currentState=Lifecycle.State.CREATED;super.onStop()}
- override fun dismiss(){leftStarted=false;mirrorView?.close();mirrorView=null;mirrorReady=false;life.registry.currentState=Lifecycle.State.DESTROYED;compose?.disposeComposition();compose=null;super.dismiss()}
+ fun dismiss(){
+  if(closed)return
+  closed=true
+  leftStarted=false;mirrorView?.close();mirrorView=null;mirrorReady=false
+  life.registry.currentState=Lifecycle.State.DESTROYED
+  compose?.disposeComposition();compose=null
+  surface.close();isShowing=false
+  dismissListener?.invoke()
+ }
 }

@@ -1,7 +1,7 @@
 package org.duofold.live
 import android.content.Context
 import android.os.SystemClock
-import rikka.shizuku.Shizuku
+import org.duofold.live.root.Shizuku
 
 /** Runs only through the background supervisor, with the angle reader stopped. */
 internal object RotationMigration {
@@ -27,7 +27,7 @@ internal object RotationMigration {
   if(pauseAt<0){pauseAt=now;status="Automatic rotation repair: waiting for previous hold to release";return}
   if(pending || now-pauseAt<1500 || now<nextAttempt)return
   if(!runCatching{Shizuku.pingBinder()&&Shizuku.checkSelfPermission()==0}.getOrDefault(false)){
-   status="Automatic rotation repair: waiting for authorized Shizuku";return
+   status="Automatic rotation repair: waiting for root access";return
   }
   val app=context.applicationContext
   val install=app.packageManager.getPackageInfo(app.packageName,0).firstInstallTime.toString()

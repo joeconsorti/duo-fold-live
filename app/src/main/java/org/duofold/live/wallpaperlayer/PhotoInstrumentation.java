@@ -36,7 +36,9 @@ public class PhotoInstrumentation extends Instrumentation {
  public void onCreate(Bundle args){super.onCreate(args);start();}
  public void onStart(){
   File stop=new File(getTargetContext().getFilesDir(),"stop-layer");
-  if(!WallpaperRestore.enabled(getTargetContext())||stop.exists()){finish(0,new Bundle());return;}
+  boolean photoWanted=photoWanted(getTargetContext());
+  boolean overlayWanted=org.duofold.live.OverlayPolicy.wanted(getTargetContext());
+  if(!photoWanted&&!overlayWanted){finish(0,new Bundle());return;}
   running=true;
   try {
    // No-restart instrumentation preserves the app process. Restrict exemptions
@@ -54,6 +56,13 @@ public class PhotoInstrumentation extends Instrumentation {
    // These three actions are protected system broadcasts. USER_PRESENT may be sent
    // by SystemUI, which a NOT_EXPORTED receiver cannot receive on some firmware.
    getTargetContext().registerReceiver(screenEvents,filter,Context.RECEIVER_EXPORTED);
+   org.duofold.live.UiHost.setAutomation(automation);
+   org.duofold.live.UiHost.connected();
+   if(!photoWanted){
+    // Fold animation only: keep this registered process (and its adopted compositor permissions) alive.
+    while(org.duofold.live.OverlayPolicy.wanted(getTargetContext())&&!photoWanted(getTargetContext()))Thread.sleep(500);
+    return;
+   }
    runOnMainSync(()->{
     host=new LayerHost(getTargetContext());host.transitionSink=this::transition;
     try {host.start(ParcelFileDescriptor.open(new File(getTargetContext().getFilesDir(),"photo.jpg"),ParcelFileDescriptor.MODE_READ_ONLY));}
@@ -102,6 +111,7 @@ public class PhotoInstrumentation extends Instrumentation {
     HomePhotoLayer homeLayer=host.homePhoto;if(homeLayer!=null)homeLayer.requestRefresh();
     Thread.sleep(500);
    }
+   while(org.duofold.live.OverlayPolicy.wanted(getTargetContext())&&!photoWanted(getTargetContext()))Thread.sleep(500);
   }catch(Throwable e){StringWriter trace=new StringWriter();e.printStackTrace(new PrintWriter(trace));publish("Duo Wallpaper Layer 0.13\nRegistered host failed:\n"+trace);}
   finally{
    if(automation!=null)try{automation.setOnAccessibilityEventListener(null);}catch(Exception ignored){}
@@ -110,8 +120,14 @@ public class PhotoInstrumentation extends Instrumentation {
    if(screenEvents!=null)try{getTargetContext().unregisterReceiver(screenEvents);}catch(Exception ignored){}
    try {if(host!=null)runOnMainSync(()->host.stop("Registered host finished; layer removed"));}catch(Throwable ignored){}
    if(automation!=null)try{automation.dropShellPermissionIdentity();}catch(Throwable ignored){}
+   org.duofold.live.UiHost.setAutomation(null);
+   org.duofold.live.UiHost.disconnected();
    running=false;finish(0,new Bundle());
   }
+ }
+ /** Custom photo requested, not stopped, and a photo exists. */
+ static boolean photoWanted(Context c){
+  return WallpaperRestore.enabled(c)&&!new File(c.getFilesDir(),"stop-layer").exists()&&new File(c.getFilesDir(),"photo.jpg").exists();
  }
  void publish(String report){
   report="Report sequence: "+(++reportNumber)+"; captured elapsed ms: "+SystemClock.elapsedRealtime()+"\n"+report+"\nUnlock capture: "+UnlockTrace.status()+traceReport();

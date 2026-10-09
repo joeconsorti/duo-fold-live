@@ -14,3 +14,5 @@ This repository preserves the upstream notices in `app/src/main/assets/licenses/
 `reference/iphone-duo/main.js` preserves the MIT reference source used for the shader adaptation. No Samsung wallpaper APKs or videos, Apple device imagery, user photos, device logs, or signing keys are included. The application uses the Samsung engine already installed on the user's phone.
 
 The upstream Folio notices describe Folio as it existed upstream. This standalone app uses only the included subset and adds Shizuku capture, custom wallpaper, and onboarding code. The current iPhone Duo adaptation is code-derived, rather than inspiration alone.
+
+- **libsu** (topjohnwu/libsu): Apache-2.0, used by the root build in place of the Shizuku client API.

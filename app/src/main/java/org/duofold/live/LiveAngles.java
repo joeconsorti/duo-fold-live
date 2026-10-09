@@ -5,7 +5,7 @@ import android.graphics.PixelFormat;
 import android.os.*;
 import android.view.*;
 import java.util.*;
-import rikka.shizuku.Shizuku;
+import org.duofold.live.root.Shizuku;
 /** Session-scoped wallpaper commands; Binder reads run off the UI thread. */
 public final class LiveAngles {
  public interface Listener { void angle(float value,long nanos); }
@@ -15,6 +15,7 @@ public final class LiveAngles {
  public static boolean dualActive=false;
  public static String screenshotTrace="Screenshot trace idle";
  public static boolean coverPreview=false;
+ public static volatile String pokeStatus="Wallpaper command idle";
  private static volatile long continuityRequest;
  public static String continuityStatus="Continuity test idle",continuityTrace="No continuity samples";
  public static void startContinuityProbe(){continuityRequest=SystemClock.elapsedRealtime();handoffReady();}
@@ -50,7 +51,7 @@ public final class LiveAngles {
  }
  public static IBinder captureBinder()throws Exception{
   LiveAngles self=current;IBinder remote=self==null?null:self.reader;
-  if(remote==null)throw new IllegalStateException("Shizuku reader unavailable");
+  if(remote==null)throw new IllegalStateException("Root reader unavailable");
   Parcel p=Parcel.obtain(),r=Parcel.obtain();try{p.writeInterfaceToken(AngleReader.DESCRIPTOR);remote.transact(6,p,r,0);r.readException();return r.readStrongBinder();}finally{p.recycle();r.recycle();}
  }
  public static String handoffStatus="Normal display control";
@@ -63,6 +64,9 @@ public final class LiveAngles {
  private final Context context; private final Handler main=new Handler(Looper.getMainLooper());
  private HandlerThread thread; private Handler worker; private volatile boolean running; private volatile IBinder reader;
  private WindowManager wm; private View anchor;
+ private boolean pokeOk,pokeFailed;private long startedAt,anchorRetryAt;
+ /** Samsung's engine answers the window-based wallpaper command, so the 1x1 anchors are the trigger; retry on failure. */
+ private boolean useAnchors(){return SystemClock.elapsedRealtime()>=anchorRetryAt;}
  private WindowManager secondaryWm;private View secondaryAnchor;private String anchorKey="",secondaryKey=""; private Shizuku.UserServiceArgs args;
  private volatile long lastPoll;
  private long secondaryRefreshAt,statusFormatAt;
@@ -91,10 +95,9 @@ public final class LiveAngles {
  public void start(){
   if(running)return;
   try{
-   if(!Shizuku.pingBinder()||Shizuku.checkSelfPermission()!=0)throw new IllegalStateException("Authorize Shizuku, then reconnect");
-   if(!android.provider.Settings.canDrawOverlays(context))throw new IllegalStateException("Allow display over other apps, then reconnect");
-   running=true;current=this;last=0;count=0;action="org.duofold.live.wallpaperprobe.READ_"+SystemClock.elapsedRealtime();
-   ensureAnchors();
+   if(!Shizuku.pingBinder()||Shizuku.checkSelfPermission()!=0)throw new IllegalStateException("Grant root, then reconnect");
+   running=true;current=this;last=0;count=0;pokeOk=false;pokeFailed=false;anchorRetryAt=0;startedAt=SystemClock.elapsedRealtime();action="org.duofold.live.wallpaperprobe.READ_"+SystemClock.elapsedRealtime();
+   // Anchors are created lazily in the poll loop (ensureAnchors) and retried every 5 s if the system refuses them.
    thread=new HandlerThread("duofold-angle-ipc");thread.start();worker=new Handler(thread.getLooper());
    args=new Shizuku.UserServiceArgs(new ComponentName(context,AngleReader.class)).daemon(false).processNameSuffix("fold_angles").version(BuildConfig.VERSION_CODE);
    status="Connecting to angle helper…";readerDiagnostics="Waiting for helper connection callback";
@@ -144,8 +147,8 @@ public final class LiveAngles {
   if(!running||pollInFlight)return;
   pollInFlight=true;pollStarted=SystemClock.elapsedRealtime();
   boolean on=context.getSystemService(PowerManager.class).isInteractive();
-  try{if(on){ensureAnchors();sendAngleCommand(anchor);sendAngleCommand(secondaryAnchor);}}
-  catch(Exception e){fail(e);return;}
+  try{if(on&&useAnchors()){ensureAnchors();sendAngleCommand(anchor);sendAngleCommand(secondaryAnchor);}}
+  catch(Exception e){anchorRetryAt=SystemClock.elapsedRealtime()+5000;RecoveryLog.add("Angle anchor window unavailable: "+e.getClass().getSimpleName()+": "+e.getMessage());}
   worker.post(()->{try{Bundle b=call(2);
    if(ReaderRecovery.needsRestart(b.getString("state"))){main.post(()->{if(running){RecoveryLog.add("Expired wallpaper reader lease; paced recovery");stop();status="Reader lease expired — awaiting recovery";}});return;}
    main.post(()->{
@@ -158,7 +161,7 @@ public final class LiveAngles {
    mirrorStatus=b.getString("mirror","Inner mirror status unavailable");nativeInner=b.getBoolean("nativeInner");continuityNative=b.getBoolean("continuityNative");
    StandaloneService host=StandaloneService.Companion.getInstance();if(host!=null&&SystemClock.elapsedRealtime()>=secondaryRefreshAt){secondaryRefreshAt=SystemClock.elapsedRealtime()+8;host.refreshSecondary();}
    lastPoll=SystemClock.elapsedRealtime();
-   readerDiagnostics=b.getString("readerDiagnostics",b.getString("state","Unknown"));
+   readerDiagnostics=b.getString("readerDiagnostics",b.getString("state","Unknown"));pokeOk=b.getBoolean("pokeOk");pokeFailed=b.getBoolean("pokeFailed");pokeStatus=b.getString("pokeStatus","Wallpaper command idle");
    closedHingeReport=b.getString("closedHingeGate","Closed-hinge jitter protection: helper status unavailable");
    long stamp=b.getLong("last");int received=b.getInt("count");
    ratePolls++;

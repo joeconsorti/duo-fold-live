@@ -2,7 +2,7 @@ package org.duofold.live
 
 import android.content.Context
 import android.os.SystemClock
-import rikka.shizuku.Shizuku
+import org.duofold.live.root.Shizuku
 
 /** Always-on fold policy. Does not override lock/power-button sleep or wake a locked phone. */
 internal object FoldAwakeDefault {
@@ -23,7 +23,7 @@ internal object FoldAwakeDefault {
   if(!context.getSystemService(android.os.PowerManager::class.java).isInteractive)return
   if(pending || SystemClock.elapsedRealtime()<nextAttempt)return
   if(!runCatching{Shizuku.pingBinder() && Shizuku.checkSelfPermission()==0}.getOrDefault(false)){
-   status="Keep-awake ON saved; waiting for authorized Shizuku; automatic retry active";return
+   status="Keep-awake ON saved; waiting for root access; automatic retry active";return
   }
   pending=true
   val requestEpoch=epoch
