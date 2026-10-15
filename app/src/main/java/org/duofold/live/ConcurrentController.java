@@ -13,6 +13,21 @@ final class ConcurrentController {
  private TaskDisplayRouter router;
  private String nativeFailure="";
  private boolean nativeRetried;
+ // The outer (cover, state 5) session is the same override CoverHandoff gates: releasing it before the base
+ // state is CLOSED goes 5->2->0 (sleep). Inner (4) sessions end at open/endpoint and stay ungated.
+ private volatile boolean screenOn=true;private final ReleaseDeferral deferral=new ReleaseDeferral();
+ void screen(boolean on){screenOn=on;}
+ /** The configured handoff angle; at or above it the release gate treats the hinge as reopening. */
+ private volatile float handoffAngle=HandoffSettings.DEFAULT;
+ void handoff(float value){handoffAngle=HandoffSettings.angle(value);}
+ private boolean deferOuter(float angle,boolean fresh){
+  boolean hasSession=owned!=null;
+  // Only a FRESH sample proves reopening: a stale 100 deg reading says nothing about a hinge still closing.
+  boolean reopening=fresh&&Float.isFinite(angle)&&angle>=handoffAngle;
+  if(!deferral.keep(SystemClock.elapsedRealtime(),hasSession,screenOn,reopening,BaseDeviceState::closed))return false;
+  status="Waiting for the hinge to report closed before releasing the display session";
+  return true;
+ }
  synchronized boolean canMirrorSecondary(){return false;}
  synchronized boolean secondaryHasNativeContent(){return owned!=null && !primaryInner && contentInner;}
  private FixedTaskRoute fixedRoute;private boolean taskRequested,taskVerified,routeUnlocked;private long routePollAt,restoreAt,panelsReadySince;private String fixedSecondary="";
@@ -101,9 +116,7 @@ final class ConcurrentController {
  private void begin(boolean inner,long now)throws Exception{
   init();
   if(cameraSession){afterReleaseAt=0;if(fixedRoute==null)fixedRoute=new FixedTaskRoute();log(fixedRoute.prepare());logNativeTasks();windows.capture("before request");}
-  IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"device_state");
-  Object service=Class.forName("android.hardware.devicestate.IDeviceStateManager$Stub").getMethod("asInterface",IBinder.class).invoke(null,binder);
-  Object info=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo").invoke(service);
+  Object info=BaseDeviceState.info();
   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
   if(!current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Existing display override; stop other test apps first");
   if(cameraSession){readinessLostAt=0;closingAppReturnAttempted=false;taskRequested=false;taskVerified=false;routeCheckpoint=false;routeObservation="";panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);captureDestinationSize();capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
@@ -199,9 +212,10 @@ final class ConcurrentController {
     }
    }
    if(owned!=null && cameraSession!=cameraStartup){if(cameraSession)log("RELEASE: screenshot mode changed");releaseInternal();blocked=true;return;}
-   if(!unlocked){if(cameraSession&&owned!=null)log("RELEASE: locked, screen off, or host disabled");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;return;}
+   if(!unlocked){if(deferOuter(angle,fresh))return;if(cameraSession&&owned!=null)log("RELEASE: locked, screen off, or host disabled");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;return;}
    if(!fresh){
     if(bootstrapping && owned!=null && now-started<3500)return;
+    if(deferOuter(angle,false))return;
     if(cameraSession&&owned!=null)log("RELEASE: stale hinge angle");releaseInternal();bootstrapping=false;
     status="Waiting for fresh angle and outgoing capture";
     return;
@@ -209,7 +223,7 @@ final class ConcurrentController {
    bootstrapping=false;
    if(FoldThreshold.endpoint(angle,openThreshold)){
     if(endpointSince==0)endpointSince=now;
-    if(angle>=FoldThreshold.sanitize(openThreshold) || now-endpointSince>=350){if(cameraSession&&owned!=null){
+    if(angle>=FoldThreshold.sanitize(openThreshold) || now-endpointSince>=350){if(deferOuter(angle,true))return;if(cameraSession&&owned!=null){
       log("RELEASE: endpoint angle="+angle);endpointPower.arm("Endpoint release angle="+angle);samplePanels(angle,windowPrepared,secondaryReady,true);
       if(!primaryInner&&angle>=FoldThreshold.sanitize(openThreshold)&&fixedRoute!=null&&fixedRoute.pending()){
        endpointReturnWaiting=true;endpointTarget=fixedSecondary;endpointObservation="";endpointReturnDeadline=now+1800;
@@ -217,7 +231,7 @@ final class ConcurrentController {
       }
      }releaseInternal();blocked=false;}return;
    }
-   endpointSince=0;
+   endpointSince=0;deferral.reset();
    if(owned==null){
     if(!blocked&&(cameraStartup?ScreenshotStartupPolicy.mayStart(primaryIsInner,angle,openThreshold):FoldThreshold.canStart(angle,openThreshold))){
      if(cameraStartup){
@@ -275,4 +289,14 @@ final class ConcurrentController {
   if(owned!=null){try{if(cameraSession){logNativeTasks();windows.capture("before release");afterReleaseAt=SystemClock.elapsedRealtime();afterReleaseStage=0;}cancel.invoke(manager);owned=null;status="Normal display control restored";}catch(Exception e){status="Display release pending";}}
  }
  synchronized void release(){if(powerOverride!=null)powerOverride.cancel("controller stopped");endpointReturnWaiting=false;long token=Binder.clearCallingIdentity();try{if(cameraSession&&owned!=null)log("RELEASE: controller disabled or stopped");releaseInternal();blocked=false;bootstrapUsed=false;bootstrapping=false;}finally{Binder.restoreCallingIdentity(token);}}
+ /** External release (effect disallowed, dual mode turned off): the outer session waits for CLOSED. */
+ synchronized void releaseGated(float angle,boolean fresh){if(deferOuter(angle,fresh))return;release();}
+ /** Teardown: bounded wait for CLOSED before cancelling an outer session. */
+ synchronized void releaseForTeardown(){
+  long start=SystemClock.elapsedRealtime();
+  while(CloseReleaseGate.waitBeforeTeardown(owned!=null,BaseDeviceState.closed(),screenOn,SystemClock.elapsedRealtime()-start)){
+   try{Thread.sleep(BaseDeviceState.CACHE_MS);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+  }
+  release();
+ }
 }

@@ -31,7 +31,11 @@ final class HandoffFade {
  private long statusAt;
  private final Choreographer.FrameCallback frame=when->this.tick.run();
  void settings(float smoothing,float gradualness,boolean requireGlass,float open,float handoff){handoffAngle=HandoffSettings.angle(handoff);this.smoothing=smoothing;this.gradualness=gradualness;requireInnerGlass=requireGlass;openThreshold=open;}
+ private volatile boolean idle;private volatile long lastMovedAt;
+ private long keyguardAt=-1;private boolean keyguardLocked;
  private void schedule(){
+  // Idle (no switch, fully clear, hinge at rest): no per-vsync work. A new angle wakes the tick at once (update()).
+  if(idle){handler.postDelayed(tick,HandoffFadePolicy.IDLE_TICK_MS);return;}
   if(frames==null)frames=Choreographer.getInstance();
   frames.postFrameCallback(frame);
   // Display VSYNC can stop during the physical OFF interval. Keep lease and
@@ -45,10 +49,13 @@ final class HandoffFade {
  volatile String status="Handoff fade idle";
  HandoffFade(){thread.start();handler=new Handler(thread.getLooper());}
  void update(boolean enabled,float angle,boolean fresh){
-  long now=SystemClock.elapsedRealtime();if(fresh){this.angle=angle;lastFresh=now;}
-  this.enabled=enabled;lease=now;if((!ticking||!enabled)&&wakePending.compareAndSet(false,true))handler.post(start);
+  long now=SystemClock.elapsedRealtime();boolean moved=fresh&&Float.compare(angle,this.angle)!=0;if(fresh){this.angle=angle;lastFresh=now;}
+  if(moved)lastMovedAt=now;
+  // Wake on every real angle change: reading `idle` from this Binder thread could miss the tick that just
+  // turned idle; wakePending already drops duplicate posts.
+  this.enabled=enabled;lease=now;if((!ticking||!enabled||moved)&&wakePending.compareAndSet(false,true))handler.post(start);
  }
- private final Runnable start=()->{wakePending.set(false);if(!enabled){clear();return;}if(!ticking&&!closed){ticking=true;this.tick.run();}};
+ private final Runnable start=()->{wakePending.set(false);if(!enabled){clear();return;}if(closed)return;if(!ticking){ticking=true;this.tick.run();}else if(idle)this.tick.run();};
  private final Runnable readinessTick=()->{if(ticking&&!closed&&enabled)this.tick.run();};
  void drawn(boolean inner,long when,int kind,long captured){
   lastDraw=new Draw(inner,when,kind,captured);
@@ -74,7 +81,10 @@ final class HandoffFade {
   try{
    long now=SystemClock.elapsedRealtime();
    if(closed||!enabled||now-lease>1500||now-lastFresh>1500){clear();return;}
-   init();if((boolean)keyguard.invoke(wm)){clear();return;}
+   init();
+   // Keyguard is a Binder call; once per 200 ms is plenty for a lock that takes far longer to engage.
+   if(keyguardAt<0||now-keyguardAt>=200){keyguardLocked=(boolean)keyguard.invoke(wm);keyguardAt=now;}
+   if(keyguardLocked){clear();return;}
    Object p=info.invoke(dm,0);
    if(p==null){
     if(now-lastPrimary>500){clear();return;}
@@ -114,13 +124,15 @@ final class HandoffFade {
     }
     if(changed)t.apply();
    }
+   // Idle only when nothing fades and the hinge is at rest (not resting-in-band within PollCadence's hold).
+   idle=!policy.transitioning()&&alpha<=0f&&mirrorAlpha<=0f&&!PollCadence.fast(now-lastMovedAt,angle);
    if(now>=statusAt){statusAt=now+250;status="Handoff fade: "+Math.round(alpha*100)+"%; primary="+(inner?"inner":"cover")+"; "+(policy.transitioning()?"destination black/reveal":"angle fade")+"; "+policy.readiness+"; glass commit settle 2 ms; legacy ON settle 32 ms; reveal "+FadeSettings.reveal(gradualness)+" ms";}
    schedule();
   }catch(Exception e){clear();status="Handoff fade unavailable: "+e.getClass().getSimpleName()+": "+e.getMessage();}
  }};
  private void clear(){
   handler.removeCallbacks(readinessTick);handler.removeCallbacks(tick);if(frames!=null)frames.removeFrameCallback(frame);
-  java.util.Arrays.fill(alphas,-1);java.util.Arrays.fill(stacks,-1);java.util.Arrays.fill(extents,-1);ticking=false;policy.reset();closingMirror.reset();mirrorSubmitted=-1;
+  java.util.Arrays.fill(alphas,-1);java.util.Arrays.fill(stacks,-1);java.util.Arrays.fill(extents,-1);ticking=false;idle=false;keyguardAt=-1;policy.reset();closingMirror.reset();mirrorSubmitted=-1;
   for(int i=0;i<layers.length;i++)if(layers[i]!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(layers[i],false).reparent(layers[i],null).apply();}catch(Exception ignored){}layers[i].release();layers[i]=null;}
   status="Handoff fade idle";
  }

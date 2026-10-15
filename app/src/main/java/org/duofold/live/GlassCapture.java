@@ -7,9 +7,10 @@ import java.io.*;
 /** Shell-side isolated layer capture. Never requests secure/protected capture. */
 final class GlassCapture extends Binder {
  static final String TOKEN="org.duofold.live.capture.GlassCapture";
- private final int owner;private boolean closed;private DisplayCaptureApi captureApi;
+ private final int owner;private volatile boolean closed;private DisplayCaptureApi captureApi;
  GlassCapture(int uid){owner=uid;}
- synchronized void close(){closed=true;}
+ // Not synchronized: AngleReader.stop() must not queue behind an in-flight capture; onTransact checks `closed`.
+ void close(){closed=true;}
  private Object service(String name,String stub)throws Exception{
   IBinder b=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,name);
   return Class.forName(stub).getMethod("asInterface",IBinder.class).invoke(null,b);
@@ -103,8 +104,14 @@ final class GlassCapture extends Binder {
   try{HardwareBuffer b=(HardwareBuffer)shot.getClass().getMethod("getHardwareBuffer").invoke(shot);if(b!=null)b.close();}catch(Exception ignored){}
  }
  private String command(String...args)throws Exception{
+  // Bounded like FoldRotationHold: a hung `settings` process used to hold this object's monitor forever, so
+  // AngleReader.stop() (capture.close()) and with it every later angle poll blocked for good. The output is a
+  // few bytes, well under the pipe buffer, so waiting before reading cannot deadlock.
   java.lang.Process process=new ProcessBuilder(args).redirectErrorStream(true).start();
-  String output=new String(process.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
-  if(process.waitFor()!=0)throw new IOException(output);return output;
+  try{
+   if(!process.waitFor(2,java.util.concurrent.TimeUnit.SECONDS))throw new IOException("Settings command timed out: "+String.join(" ",args));
+   String output=new String(process.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+   if(process.exitValue()!=0)throw new IOException(output);return output;
+  }finally{if(process.isAlive())process.destroyForcibly();}
  }
 }

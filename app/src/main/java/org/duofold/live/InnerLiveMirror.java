@@ -4,14 +4,21 @@ import android.graphics.Rect;
 import android.view.SurfaceControl;
 /** Live inner-to-cover compositor mirror; no bitmap capture, saved screenshots or protected-content overrides. */
 final class InnerLiveMirror {
- private SurfaceControl mirror;private int owner;
+ private volatile SurfaceControl mirror;private int owner;
  String status="Cover live mirror idle";
+ // A lock instead of the monitor so revoke() can tryLock and never wait out a 250 ms attach commit.
+ private final java.util.concurrent.locks.ReentrantLock lock=new java.util.concurrent.locks.ReentrantLock();
+ private final MirrorAttachGate gate=new MirrorAttachGate();
+ /** Take before reading "preview allowed" (AngleReader code 4). */
+ int ticket(){return gate.ticket();}
  private Object service(String name,String stub)throws Exception{
   IBinder b=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,name);
   return Class.forName(stub).getMethod("asInterface",IBinder.class).invoke(null,b);
  }
- Bundle attach(int id,SurfaceControl parent,int width,int height,boolean allowed){
-  long identity=Binder.clearCallingIdentity();Bundle result=new Bundle();
+ Bundle attach(int id,SurfaceControl parent,int width,int height,boolean allowed){return attach(id,parent,width,height,allowed,gate.ticket());}
+ Bundle attach(int id,SurfaceControl parent,int width,int height,boolean allowed,int ticket){
+  lock.lock();
+  long identity=Binder.clearCallingIdentity();Bundle result=new Bundle();SurfaceControl built=null;
   try{
    close();
    if(!allowed||parent==null||!parent.isValid())throw new IllegalStateException("Cover mirror not currently eligible");
@@ -38,14 +45,31 @@ final class InnerLiveMirror {
     t.reparent(mirror,parent).setLayer(mirror,1).setCrop(mirror,new Rect(0,0,sw,sh)).setPosition(mirror,matrix[4],matrix[5]).setVisibility(mirror,true).apply();
    }
    if(!committed.await(250,java.util.concurrent.TimeUnit.MILLISECONDS))throw new IllegalStateException("Right preview commit not yet confirmed; retrying");
-   owner=id;status="Live cover → inner preview; source="+sw+"x"+sh+" r="+sr+" destination="+width+"x"+height+" r="+dr+" matrix="+java.util.Arrays.toString(matrix);result.putBoolean("ok",true);
+   // Revoked (preview no longer allowed, or reader stopped) while this attach was in flight: close what it built.
+   if(!gate.valid(ticket))throw new IllegalStateException("Preview revoked during attach");
+   built=mirror;owner=id;status="Live cover → inner preview; source="+sw+"x"+sh+" r="+sr+" destination="+width+"x"+height+" r="+dr+" matrix="+java.util.Arrays.toString(matrix);result.putBoolean("ok",true);
   }catch(Exception e){close();Throwable cause=e;while(cause.getCause()!=null)cause=cause.getCause();status="Cover mirror unavailable: "+cause.getClass().getSimpleName()+": "+cause.getMessage();}
-  finally{if(parent!=null)parent.release();Binder.restoreCallingIdentity(identity);}
+  finally{if(parent!=null)parent.release();Binder.restoreCallingIdentity(identity);lock.unlock();}
+  // A revoke between the check above and the unlock finds the lock held, so its tryLock skips the close. Re-check
+  // after unlocking: either revoke saw the lock free and closed, or the bumped generation is visible here.
+  if(built!=null&&!gate.valid(ticket)){
+   lock.lock();try{if(mirror==built){close();status="Preview revoked during attach";result.putBoolean("ok",false);}}finally{lock.unlock();}
+  }
   result.putString("status",status);return result;
  }
- void detach(int id){if(owner==id)close();}
+ void detach(int id){lock.lock();try{if(owner==id)close();}finally{lock.unlock();}}
+ /** From the angle poll: never blocks. An attach in flight sees the bumped generation and closes itself. */
+ void revoke(){
+  gate.revoke();
+  if(lock.tryLock()){try{if(mirror!=null)close();}finally{lock.unlock();}}
+ }
+ /** Reader stop: invalidate any attach in flight, then close (may wait for it; teardown only). */
+ void shutdown(){gate.revoke();lock.lock();try{close();}finally{lock.unlock();}}
  void close(){
-  if(mirror!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(mirror,false).reparent(mirror,null).apply();}catch(Exception ignored){}mirror.release();mirror=null;status="Cover live mirror released";}
-  owner=0;
+  lock.lock();
+  try{
+   if(mirror!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(mirror,false).reparent(mirror,null).apply();}catch(Exception ignored){}mirror.release();mirror=null;status="Cover live mirror released";}
+   owner=0;
+  }finally{lock.unlock();}
  }
 }

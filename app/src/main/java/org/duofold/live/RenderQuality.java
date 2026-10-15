@@ -9,5 +9,11 @@ final class RenderQuality {
  // The location moves the end of the blur; the feather stays 5% of panel width.
  static float seamBlend(float distance,float offset){float end=seam(offset);if(end<=0)return 0;float t=Math.max(0,Math.min(1,(end-distance)/Math.min(.05f,end)));return t*t*(3-2*t);}
  static float motion(float angle,float open){if(!Float.isFinite(angle))return 0;float t=Math.max(0,Math.min(1,(open-angle)/Math.max(1,open-90)));return t*t*(3-2*t);}
+ /** Glass content capture rate once the hinge has been still for STILL_AFTER_MS. */
+ static final int STILL_FPS=10;static final long STILL_AFTER_MS=1000;
+ /** Full configured rate while the hinge moves or right after a panel switch; STILL_FPS (never above the setting) at rest. */
+ static int adaptiveFps(int target,long sinceAngleChangeMs,boolean postSwitch){
+  return postSwitch||sinceAngleChangeMs<STILL_AFTER_MS?target:Math.min(target,STILL_FPS);
+ }
  static long delay(int fps,long elapsedNanos){return Math.max(0,(long)Math.ceil((1_000_000_000.0/Math.max(1,Math.min(120,fps))-Math.max(0,elapsedNanos))/1_000_000.0));}
 }

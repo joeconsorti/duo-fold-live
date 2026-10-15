@@ -1,3 +1,51 @@
+## Unreleased — device-state, concurrency and idle-cost fixes (all models)
+
+No setting, default or version changes. Every item applies to all supported models.
+
+Display overrides (cover blanking on close)
+
+- Releasing a concurrent display override (cover state 5 or inner state 4) while the hinge's base device state is still HALF_OPENED goes 5->2->0 (or 4->2->0), and Samsung treats 2->0 as a sleep transition: the cover blanks. Duo's 2° closed threshold fires before the base state reports CLOSED, so every release of a held override now waits for CLOSED (`CloseReleaseGate`), bounded at 3 s and lifted at once when reopening (at or above the handoff angle) or with the display off.
+- Gated paths: the direct-mode release at closed, stale-angle/locked releases, the hold policy's own release, the continuity probe's finish, Fold-Only/Unfold-Only turning the effect off mid-fold, dual mode's outer (cover) session and toggling dual mode. Reader teardown waits up to 3 s for CLOSED before cancelling.
+- The gate's "display off" escape uses `PowerManager.isInteractive()` alone, sent as a new trailing field of the angle poll (older clients fall back to the previous flag). Locking, a service restart or disabling Duo mid-close no longer releases with the screen on.
+- A system cancel of the cover request resets the hold policy, so the cover is requested again on the next sample. A direct-mode inner hold that reaches closed without passing the closing angle (handoff angle − 4°) hands over to the gated cover hold.
+- The base-state query is cached (reflection resolved once, at most one system call per 16 ms) and made only after the cheap escapes.
+- The closing-mirror black mask deactivates 1.8 s after the secondary panel is gone; it stayed active for as long as the phone was closed and could start the next opening masked.
+
+Android 17 hidden-API access
+
+- Android 17 denies app-process reflection on `ViewRootImpl.getSurfaceControl()` (`hiddenapi: ... api=blocked ... using reflection: denied`). With the cover preview on, `PreviewTransition.markAnimation` failed for Duo's main overlay window, so that window was never excluded from the live preview mirror, and the call was retried every 500 ms for as long as the preview ran. The two screenshot-mode root lookups failed in the same way. All three now resolve the window surface through HiddenApiBypass (`WindowSurface`), which the app already ships. Verified on Android 17 / One UI 9.0: no denials, no retry loop, and every mirror attach succeeded.
+
+Service concurrency
+
+- Live mirror attach (which waits up to 250 ms for its commit) runs outside the angle reader's lock and on its own IPC thread in the app, so the 4 ms poll that drives the fade and the cover hold no longer stalls behind it. An attach that races a revoke or reader stop closes what it built instead of leaving the mirror attached; the poll's revoke never blocks.
+- The fold-setting `settings` subprocess is bounded at 2 s, and the capture helper's close no longer waits behind an in-flight capture; a hung process used to block reader teardown and every later poll.
+- After a reader restart the new rotation hold is created once the previous one has restored rotation, instead of failing and leaving about 2 s without a hold. The Shizuku destroy path waits for that restore outside the reader's lock.
+- Handoff-hold requests that race the helper's shutdown free their bitmaps and skip the wait.
+
+Idle cost
+
+- Angle polling: 4 ms while the hinge moves (and within 2 s of motion inside the 80-115° switch band), 33 ms when still, 500 ms with the screen off. The secondary-panel refresh follows (8 ms / 100 ms). The wallpaper angle command is sent from the IPC thread instead of the main thread.
+- The poll reply carries its diagnostic status strings at most every 250 ms; functional fields still go out on every poll.
+- The fade engine stops per-vsync ticks while nothing fades and the hinge is at rest (50 ms re-check; any angle change wakes it), and checks the keyguard every 200 ms. The overlay and the handoff hold cache the keyguard state for 200 ms; the hold reads display info through the cached `DisplayManagerGlobal` and the poll no longer waits on it once the hold has started.
+- The live shade stops its per-vsync loop once the smoothed angle settles. Glass content capture drops to 10 fps after the hinge has been still for 1 s (full rate while moving and right after a switch). Frozen frames build their mip levels off the main thread. The continuity probe's task checks run at most every 50 ms. The angle parser compiles its pattern once.
+
+Glass frames
+
+- Only the primary live glass resets the shared capture; frozen snapshots and secondary-display surfaces wiped the primary frame at the switch in dual and continuity-native modes.
+- Each frame records its capture display and is accepted only by surfaces drawing that display; continuity-native display-1 frames were checked against display 0 and never rendered.
+- A failed capture keeps the last good frame while it is still renderable (the 350 ms render age is unchanged) and retries in 32 ms, instead of dropping the glass to its fallback.
+
+Review fixes
+
+- The angle parser publishes its per-action tokens as one immutable snapshot; two reader threads overlapping after a restart could pair one action's name with another action's tokens and reject every sample.
+- A direct-mode state change resets the release deferral, so a new cover hold never inherits an expired window from an earlier close.
+- The dual-mode cover session's reopening escape requires a fresh sample, as the cover hold's already did.
+- When dual mode is toggled, the incoming controller starts only after the outgoing override has actually released.
+- A live-mirror attach re-checks its ticket after unlocking, so a revoke that found the lock held cannot leave the mirror attached.
+- The glass source-size lookup clears its reused output first, so an absent display cannot leave stale dimensions.
+
+Tests: `CloseReleaseGateTest`, `ReleaseDeferralTest`, `MirrorAttachGateTest`, `AngleParserTest`, `DiagnosticsCadenceTest`, `AdaptiveCaptureRateTest`, `GlassFrameRetentionTest`, and additions to `HandoffPolicyTest`, `DirectHandoffPolicyTest`, `ClosingMirrorFadePolicyTest` and `PollCadenceTest`.
+
 # 3.5.4 — Cover-close continuity and motion presets
 
 - Promote the user-tested alpha.7 normal-mode closure behavior: let Android release the cover request at full closure, with the same 1000 ms fallback and cancellation safeguards. User testing on SM-F971U reported that the full-close blackout disappeared. The separate mid-fold display-switch blackout remains.

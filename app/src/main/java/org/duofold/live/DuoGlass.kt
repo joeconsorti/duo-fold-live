@@ -319,10 +319,18 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
   val selected=ScreenshotRenderPolicy.classic(context.getSharedPreferences("standalone",0).getString("animation_style","duo"),context.getSharedPreferences("standalone",0).getString("animation_mode","windowed"),context.getSharedPreferences("standalone",0).getBoolean("dual",false))
   if(selected!=classic){classic=selected;bitmap=null;program=runCatching{RuntimeShader(if(classic)ClassicGlassShader.source else DuoGlassShader.source)}.getOrElse{RecoveryLog.add("Glass shader compilation failed: ${it.message}");null}}
   requestDraw()}
+ // Only the primary live glass may reset the shared capture (GlassFrames.frame is global): frozen outgoing
+ // snapshots, the reflected strip and secondary-display surfaces wiped the primary frame at the switch.
+ private fun ownsLiveCapture()=!reflectedCover && !frozen && (display?.displayId ?: 0)==0
+ // Live frames come from one display (GlassFrames captures display 1 in continuity-native mode). The reflected
+ // strip mirrors the cover (display 0); every other surface draws the panel it is on.
+ private fun sourceDisplay()=if(reflectedCover)0 else (display?.displayId ?: 0)
+ private val scratchSize=Point()
+ private fun sourceSize(out:Point):Point{out.set(0,0);context.getSystemService(DisplayManager::class.java).getDisplay(sourceDisplay())?.getRealSize(out);return out}
  override fun surfaceCreated(h:SurfaceHolder){
   if(!preview){
    GlassFrames.surface(this,surfaceControl)
-   if(!reflectedCover)GlassFrames.requestFreshCapture()
+   if(ownsLiveCapture())GlassFrames.requestFreshCapture()
    if(!reflectedCover && context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true) && !context.getSharedPreferences("standalone",0).getBoolean("dual",false))PreviewTransition.markAnimation(surfaceControl)
    smoothingMs=FrameSmoothing.sanitize(context.getSharedPreferences("standalone",0).getFloat("smoothing_ms",FrameSmoothing.DEFAULT_MS))
   openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
@@ -331,7 +339,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
   updateBufferSize();preferFastRefresh();requestDraw()
   if(!preview){removeCallbacks(clearGuard);postDelayed(clearGuard,100)}
  }
- override fun surfaceChanged(h:SurfaceHolder,format:Int,w:Int,height:Int){readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(!preview){GlassFrames.surface(this,surfaceControl);if(!reflectedCover)GlassFrames.requestFreshCapture();if(!reflectedCover && context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true))PreviewTransition.markAnimation(surfaceControl)};preferFastRefresh();requestDraw()}
+ override fun surfaceChanged(h:SurfaceHolder,format:Int,w:Int,height:Int){readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(!preview){GlassFrames.surface(this,surfaceControl);if(ownsLiveCapture())GlassFrames.requestFreshCapture();if(!reflectedCover && context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true))PreviewTransition.markAnimation(surfaceControl)};preferFastRefresh();requestDraw()}
  override fun surfaceDestroyed(h:SurfaceHolder){removeCallbacks(clearGuard);paintedEffect=false;fallback("");readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(angleListening){LiveAngles.remove(angleListener);angleListening=false};targetAngle=Float.NaN;renderedAngle=Float.NaN;lastFrameNanos=0L;choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview){PreviewTransition.forgetAnimation(surfaceControl);GlassFrames.surface(this,null)};bitmap=null;frame=null;paint.shader=null;aaNode.discardDisplayList();aaNode.setRenderEffect(null);edgeEffectKey=""}
  /** Reuse the exact shader painter in a normal window View, without attaching this SurfaceView. */
  fun drawEmbedded(canvas:Canvas){drawFrame(canvas)}
@@ -355,17 +363,17 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
      paintedEffect=false;fallback("")
      endpoint=!preview && inner && LiveAngles.fresh() && LiveAngles.effectAllowed && targetAngle.isFinite() && targetAngle>=FoldThreshold.sanitize(openThreshold)
      if(endpoint){
-      val current=Point();display?.getRealSize(current)
+      val current=sourceSize(scratchSize)
       val content=frame
-      if(content!=null && GlassFramePolicy.usable(content.stamp,SystemClock.elapsedRealtime(),content.width,content.height,current.x,current.y))rendered=content else endpoint=false
+      if(content!=null && (content.displayId<0||content.displayId==sourceDisplay()) && GlassFramePolicy.usable(content.stamp,SystemClock.elapsedRealtime(),content.width,content.height,current.x,current.y))rendered=content else endpoint=false
      }
      return@runCatching
     }
     paintedEffect=true
     val f=frame
-    val size=Point()
-    if(!preview && !frozen)display?.getRealSize(size)
-    val fresh=f!=null && (preview || frozen || ((f.displayId<0||f.displayId==display?.displayId)&&GlassFramePolicy.usable(f.stamp,SystemClock.elapsedRealtime(),f.width,f.height,size.x,size.y)))
+    val size=scratchSize.apply{set(0,0)}
+    if(!preview && !frozen)sourceSize(size)
+    val fresh=f!=null && (preview || frozen || ((f.displayId<0||f.displayId==sourceDisplay()) && GlassFramePolicy.usable(f.stamp,SystemClock.elapsedRealtime(),f.width,f.height,size.x,size.y)))
     val shader=program
     if(fresh && shader!=null && f!=null){
      fallback("")

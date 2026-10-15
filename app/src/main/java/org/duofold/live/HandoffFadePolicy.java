@@ -4,6 +4,8 @@ final class HandoffFadePolicy {
  static final long REVEAL_MS=180,READY_TIMEOUT_MS=900,ON_SETTLE_MS=32;
  static final int UI_DRAW=0,GLASS_COMMITTED=1,ENDPOINT_COMMITTED=2;
  static final long COMMIT_SETTLE_MS=2;
+ /** Re-check cadence when nothing is fading; fresh angles wake the tick immediately. */
+ static final long IDLE_TICK_MS=50;
  private boolean requireInnerGlass;
  private float openThreshold=172;
  private float handoff=HandoffSettings.DEFAULT;

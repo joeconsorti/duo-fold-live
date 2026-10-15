@@ -41,8 +41,7 @@ internal object PreviewTransition {
   view.post(object:Runnable{override fun run(){
    if(!view.isAttachedToWindow)return
    try{
-    val root=View::class.java.getDeclaredMethod("getViewRootImpl").invoke(view) ?: throw IllegalStateException("Overlay root not ready")
-    val surface=root.javaClass.getMethod("getSurfaceControl").invoke(root) as SurfaceControl
+    val surface=WindowSurface.of(view) ?: throw IllegalStateException("Overlay root not ready")
     if(!surface.isValid)throw IllegalStateException("Overlay surface not ready")
     markAnimation(surface)
    }catch(e:Exception){view.postDelayed(this,500)}

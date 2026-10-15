@@ -23,8 +23,16 @@ public class DirectHandoffPolicyTest {
    assertEquals(0,FoldThreshold.effectiveAngle(closed,closed),0);
    assertEquals(closed+1,FoldThreshold.effectiveAngle(closed+1,closed),0);
    assertEquals(98,FoldThreshold.effectiveAngle(98,closed),0);
-   assertEquals(3,DirectHandoffPolicy.next(true,FoldThreshold.effectiveAngle(closed,closed),true,true,true,172,98));
+   // An inner hold that reaches closed without passing 94 deg hands over to the cover hold (whose release is
+   // gated) instead of releasing 4 while the base state may still be HALF_OPENED.
+   assertEquals(2,DirectHandoffPolicy.next(true,FoldThreshold.effectiveAngle(closed,closed),true,true,true,172,98));
   }
  }
  @Test public void invalidClosedSettingsAreBounded(){assertEquals(2,FoldThreshold.sanitizeClosed(Float.NaN),0);assertEquals(1,FoldThreshold.sanitizeClosed(-1),0);assertEquals(10,FoldThreshold.sanitizeClosed(180),0);}
+ @Test public void innerHoldAtClosedHandsOverToCoverOnlyWhenLive(){
+  assertEquals(2,DirectHandoffPolicy.next(true,0,true,true,true,172));
+  assertEquals(3,DirectHandoffPolicy.next(true,0,false,true,true,172));   // stale: nothing to hand over to
+  assertEquals(3,DirectHandoffPolicy.next(true,0,true,false,true,172));   // not interactive
+  assertEquals(3,DirectHandoffPolicy.next(false,0,true,true,true,172));   // cover hold at 0 still RELEASE (gated)
+ }
 }

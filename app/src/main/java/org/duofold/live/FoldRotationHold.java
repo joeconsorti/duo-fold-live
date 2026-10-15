@@ -32,6 +32,8 @@ final class FoldRotationHold {
  void update(boolean enabled,boolean fresh,float angle,float open){this.enabled=enabled;this.fresh=fresh;this.angle=angle;this.open=open;heartbeat=SystemClock.elapsedRealtime();}
  void close(){closed=true;handler.post(tick);}
  void awaitRelease(){try{released.await(8,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+ /** Non-blocking: the closed hold has restored rotation and dropped its file lock. */
+ boolean released(){return released.getCount()==0;}
  private final Runnable tick=new Runnable(){public void run(){
   handler.removeCallbacks(this);
   long identity=Binder.clearCallingIdentity();

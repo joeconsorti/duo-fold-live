@@ -12,7 +12,7 @@ final class PreviewExpansion extends Binder {
  private final int owner;
  private final HandlerThread thread=new HandlerThread("duo-preview-expansion");
  private final Handler handler;
- private Object dm,wm;private java.lang.reflect.Method displayInfo,keyguard;
+ private Object dm,wm;private java.lang.reflect.Method displayInfo,keyguard;private long keyguardAt=-1;private boolean keyguardLocked;
  private SurfaceControl layer,backdrop,seam;private Bitmap seamHardware;private HardwareBuffer seamBuffer;private int seamPixels;private Bitmap hardware,cleanHardware;private HardwareBuffer buffer,cleanBuffer;
  private boolean frostedLeft,rightPreviewReady;
  private String innerId;private int bw,bh,sourceRotation;private boolean landscape;private String lastGeometry="";
@@ -64,7 +64,8 @@ final class PreviewExpansion extends Binder {
    boolean frosted=data.dataAvail()>=4&&data.readInt()!=0;boolean rightReady=data.dataAvail()>=4&&data.readInt()!=0;
    int rotation=data.dataAvail()>=4?data.readInt():0;
    if(bitmap==null || clean==null)throw new IllegalArgumentException("No prepared frame");
-   handler.post(()->{try{prepare(bitmap,clean,captured,seamOffset,frosted,rightReady,rotation);}catch(Exception e){clear("Expansion prepare failed: "+root(e));}finally{bitmap.recycle();clean.recycle();}});
+   // A post after close() lands on a quit looper and returns false; free the parcelled bitmaps then.
+   if(!handler.post(()->{try{prepare(bitmap,clean,captured,seamOffset,frosted,rightReady,rotation);}catch(Exception e){clear("Expansion prepare failed: "+root(e));}finally{bitmap.recycle();clean.recycle();}})){bitmap.recycle();clean.recycle();}
   }else if(code==2){boolean endpoint=data.dataAvail()>=4&&data.readInt()!=0;handler.post(()->{if(layer!=null){pendingReady=true;event(endpoint?"Fully-open clear frame committed":"Fresh inner glass frame committed");if(start>0 && ready<0){ready=SystemClock.elapsedRealtime()-start;status=endpoint?"Fully open; expansion fading":"Inner glass committed; expansion fading";}}});}
   else if(code==3){handler.post(()->{completed=false;clear("Expansion reset");});}
   else throw new IllegalArgumentException("Unknown bridge operation");
@@ -95,8 +96,10 @@ final class PreviewExpansion extends Binder {
  }
  private void init()throws Exception{
   if(dm!=null)return;
-  dm=service("display","android.hardware.display.IDisplayManager$Stub");
-  displayInfo=Class.forName("android.hardware.display.IDisplayManager").getMethod("getDisplayInfo",int.class);
+  // DisplayManagerGlobal caches DisplayInfo and invalidates it on display changes; the raw IDisplayManager
+  // stub made two uncached system_server calls every 8 ms tick.
+  dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
+  displayInfo=dm.getClass().getMethod("getDisplayInfo",int.class);
   wm=service("window","android.view.IWindowManager$Stub");keyguard=Class.forName("android.view.IWindowManager").getMethod("isKeyguardLocked");
  }
  private int number(Object info,String field)throws Exception{return info.getClass().getField(field).getInt(info);}
@@ -167,7 +170,9 @@ final class PreviewExpansion extends Binder {
  private final Runnable tick=new Runnable(){public void run(){
   try{
    long now=SystemClock.elapsedRealtime();
-   if(!enabled || now-lastLease>1000 || layer==null || (boolean)keyguard.invoke(wm)){clear("Expansion paused");return;}
+   // Keyguard is a Binder call: every 200 ms instead of every 8 ms tick.
+   if(keyguardAt<0||now-keyguardAt>=200){keyguardLocked=(boolean)keyguard.invoke(wm);keyguardAt=now;}
+   if(!enabled || now-lastLease>1000 || layer==null || keyguardLocked){clear("Expansion paused");return;}
    if(start==0 && !PreviewExpansionPolicy.fresh(stamp,now)){clear("Expansion waiting for fresh cover frame");return;}
    Object primary=displayInfo.invoke(dm,0),secondary=displayInfo.invoke(dm,1);
    Object target=primary!=null && innerId.equals(id(primary))?primary:secondary!=null && innerId.equals(id(secondary))?secondary:null;
@@ -229,7 +234,7 @@ final class PreviewExpansion extends Binder {
    if(offSince>=0)event("OFF interval still open at cleanup");if(missingSince>=0)event("Missing mapping interval still open at cleanup");}
   diagnosticStart=0;if(coverCommit!=null){coverCommit.abort(message);coverCommit=null;}
   if(releaseGate!=null)releaseGate.abort(message);
-  handler.removeCallbacks(tick);polling=false;start=0;ready=-1;pendingReady=false;
+  handler.removeCallbacks(tick);polling=false;start=0;ready=-1;pendingReady=false;keyguardAt=-1;
   if(layer!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(layer,false).reparent(layer,null).apply();}catch(Exception ignored){}layer.release();layer=null;}
   if(backdrop!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(backdrop,false).reparent(backdrop,null).apply();}catch(Exception ignored){}backdrop.release();backdrop=null;}
   if(seam!=null){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(seam,false).reparent(seam,null).apply();}catch(Exception ignored){}seam.release();seam=null;}
