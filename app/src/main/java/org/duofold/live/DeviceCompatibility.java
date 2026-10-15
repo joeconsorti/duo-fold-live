@@ -13,11 +13,15 @@ public final class DeviceCompatibility {
   return isRecognized(model) ? "" : "Unrecognized device: " + String.valueOf(model)
    + ". You can continue, but compatibility is unverified and features may not work. Samsung wallpaper and API checks still apply.";
  }
+ public static boolean isFold7(String model) {
+  return model != null && model.matches("SM-F966[A-Z0-9]+(?:/DS)?");
+ }
+ /** Android 17 everywhere; Android 16 only on the Fold7, the one device the SDK 36 port is verified on. */
  public static boolean isEligible(String model, int sdk) {
-  return sdk == 37;
+  return sdk == 37 || (sdk == 36 && isFold7(model));
  }
  public static void requireEligible(String model, int sdk) {
   if (!isEligible(model, sdk)) throw new IllegalStateException(
-   "This Samsung profile requires Android 17; received " + model + " / SDK " + sdk);
+   "This Samsung profile requires Android 17 (Android 16 on the Fold7); received " + model + " / SDK " + sdk);
  }
 }

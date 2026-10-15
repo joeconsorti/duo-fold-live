@@ -15,6 +15,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.exp
 
 /** Screenshot-free reference darkening over the live wallpaper and apps; no blur or 3D projection. */
@@ -44,6 +46,13 @@ internal fun DuoLiveShade(host: StandaloneFoldHost, intensity: Float, innerPanel
         while(true){
             val fresh=LiveAngles.fresh() && angle.isFinite()
             if(!fresh || !LiveAngles.effectAllowed){amount=0f;visualAngle=Float.NaN;previous=0L;delay(30);continue}
+            // Settled (FrameSmoothing snaps to the target): stop requesting a frame every vsync and wait for the next
+            // angle; re-check freshness every 250 ms (plan C2). Unchanged state writes do not recompose.
+            if(visualAngle==angle){
+                val settled=angle to latestExpanded;previous=0L
+                withTimeoutOrNull(250){snapshotFlow{angle to latestExpanded}.first{it!=settled}}
+                continue
+            }
             withFrameNanos { now ->
                 val dt=if(previous==0L)8.33f else ((now-previous)/1_000_000f).coerceIn(1f,50f)
                 previous=now

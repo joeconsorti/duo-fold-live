@@ -41,8 +41,7 @@ internal object PreviewTransition {
   view.post(object:Runnable{override fun run(){
    if(!view.isAttachedToWindow)return
    try{
-    val root=View::class.java.getDeclaredMethod("getViewRootImpl").invoke(view) ?: throw IllegalStateException("Overlay root not ready")
-    val surface=root.javaClass.getMethod("getSurfaceControl").invoke(root) as SurfaceControl
+    val surface=WindowSurface.of(view) ?: throw IllegalStateException("Overlay root not ready")
     if(!surface.isValid)throw IllegalStateException("Overlay surface not ready")
     markAnimation(surface)
    }catch(e:Exception){view.postDelayed(this,500)}
@@ -79,7 +78,7 @@ internal object PreviewTransition {
   val p=Parcel.obtain();val r=Parcel.obtain();var blurred:Bitmap?=null
   try{
    p.writeInterfaceToken(PreviewExpansion.TOKEN)
-   if(code==2)p.writeInt(if(endpoint)1 else 0)
+   if(code==2)p.writeInt(if(endpoint)1 else 0);if(code==2&&BuildConfig.DIAGNOSTICS)android.util.Log.i("DuoReady","readiness sent to hold endpoint="+endpoint)
    if(frame!=null){blurred=frost(frame.bitmap);p.writeTypedObject(blurred,0);p.writeTypedObject(frame.bitmap,0);p.writeLong(frame.stamp);p.writeFloat(seamOffset);p.writeInt(if(frostedReflection)1 else 0);p.writeInt(if(rightPreviewReady)1 else 0);p.writeInt(frame.rotation)}
    binder().transact(code,p,r,0);r.readException();return r.readString()?:"Expansion ready"
   }catch(e:Exception){remote=null;throw e}finally{blurred?.recycle();p.recycle();r.recycle()}
@@ -100,10 +99,12 @@ internal object PreviewTransition {
    main.post{pending=false;if(gen==serial)status=note}
   }
  }
+ // Same window HandoffFadePolicy uses to start the reveal on this frame; the pre-switch preparation keeps 500 ms.
+ private val readyWindow=HandoffFadePolicy.freshWindowFor(Build.MODEL)
  fun innerFrameSubmitted(frame:GlassFrame?){
   if(!active || wasCover || readySent || frame==null)return
   if(minOf(frame.width,frame.height).toFloat()/maxOf(frame.width,frame.height)<=.7f ||
-     !PreviewExpansionPolicy.fresh(frame.stamp,SystemClock.elapsedRealtime()))return
+     !PreviewExpansionPolicy.fresh(frame.stamp,SystemClock.elapsedRealtime(),readyWindow))return
   readySent=true
   executor.execute{runCatching{send(2)}.onSuccess{note->main.post{status=note}}.onFailure{main.post{readySent=false}}}
  }

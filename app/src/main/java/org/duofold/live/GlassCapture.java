@@ -7,9 +7,10 @@ import java.io.*;
 /** Shell-side isolated layer capture. Never requests secure/protected capture. */
 final class GlassCapture extends Binder {
  static final String TOKEN="org.duofold.live.capture.GlassCapture";
- private final int owner;private boolean closed;private DisplayCaptureApi captureApi;
+ private final int owner;private volatile boolean closed;private DisplayCaptureApi captureApi;
  GlassCapture(int uid){owner=uid;}
- synchronized void close(){closed=true;}
+ // Not synchronized (plan D2): stop() must not queue behind an in-flight capture; onTransact re-checks `closed`.
+ void close(){closed=true;}
  private Object service(String name,String stub)throws Exception{
   IBinder b=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,name);
   return Class.forName(stub).getMethod("asInterface",IBinder.class).invoke(null,b);
@@ -18,7 +19,7 @@ final class GlassCapture extends Binder {
   data.enforceInterface(TOKEN);if(Binder.getCallingUid()!=owner)throw new SecurityException("Wrong caller");
   if(closed)throw new IllegalStateException("Reader stopped");
   long identity=Binder.clearCallingIdentity();Bundle result=new Bundle();
-  SurfaceControl[] excluded=new SurfaceControl[0];HardwareBuffer buffer=null;
+  SurfaceControl[] excluded=new SurfaceControl[0];HardwareBuffer buffer=null;java.util.List<SurfaceControl> exclusionCopies=new java.util.ArrayList<>();
   try{
    if(code==2){
     String action=data.readString();
@@ -69,7 +70,10 @@ final class GlassCapture extends Binder {
     Class<?> builder=captureApi.builder;Object b=captureApi.constructor.newInstance();
     builder.getMethod("setSourceCrop",Rect.class).invoke(b,new Rect(0,0,w,h));
     builder.getMethod("setFrameScale",float.class).invoke(b,Math.min(1f,(code==1?640f:1440f)/Math.max(w,h)));
-    builder.getMethod("setExcludeLayers",SurfaceControl[].class).invoke(b,(Object)excluded);
+    SurfaceControl[] extra=RecordVisible.exclusionCopies(exclusionCopies);  // own handles (plan D4), released below
+    SurfaceControl[] all=extra.length==0?excluded:java.util.Arrays.copyOf(excluded,excluded.length+extra.length);
+    if(extra.length>0)System.arraycopy(extra,0,all,excluded.length,extra.length);
+    builder.getMethod("setExcludeLayers",SurfaceControl[].class).invoke(b,(Object)all);
     Object args=builder.getMethod("build").invoke(b);
     Object shot;
     try(CaptureCompletion<Object> completion=new CaptureCompletion<>(GlassCapture::releaseShot)){
@@ -96,15 +100,21 @@ final class GlassCapture extends Binder {
     result.putString("physicalId",String.valueOf(info.getClass().getField("uniqueId").get(info)));result.putInt("displayId",displayId);result.putParcelable("bitmap",bitmap);result.putInt("width",w);result.putInt("height",h);result.putInt("rotation",rotation);result.putLong("stamp",captureStarted);result.putBoolean("ok",true);
    }else throw new IllegalArgumentException("Unknown operation");
   }catch(Exception e){Throwable cause=e;while(cause.getCause()!=null)cause=cause.getCause();result.putString("error",cause.getClass().getSimpleName()+": "+cause.getMessage());}
-  finally{if(buffer!=null)buffer.close();for(SurfaceControl sc:excluded)if(sc!=null)sc.release();Binder.restoreCallingIdentity(identity);}
+  finally{if(buffer!=null)buffer.close();for(SurfaceControl sc:excluded)if(sc!=null)sc.release();for(SurfaceControl sc:exclusionCopies)sc.release();Binder.restoreCallingIdentity(identity);}
   reply.writeNoException();reply.writeBundle(result);return true;
  }
  private static void releaseShot(Object shot){
   try{HardwareBuffer b=(HardwareBuffer)shot.getClass().getMethod("getHardwareBuffer").invoke(shot);if(b!=null)b.close();}catch(Exception ignored){}
  }
  private String command(String...args)throws Exception{
+  // Plan D2: bounded like FoldRotationHold. A hung `settings` process held this object's monitor forever, so
+  // AngleReader.stop() (capture.close()) and with it every later angle poll blocked for good. Output is a few
+  // bytes, well under the pipe buffer, so waiting before reading cannot deadlock.
   java.lang.Process process=new ProcessBuilder(args).redirectErrorStream(true).start();
-  String output=new String(process.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
-  if(process.waitFor()!=0)throw new IOException(output);return output;
+  try{
+   if(!process.waitFor(2,java.util.concurrent.TimeUnit.SECONDS))throw new IOException("Settings command timed out: "+String.join(" ",args));
+   String output=new String(process.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+   if(process.exitValue()!=0)throw new IOException(output);return output;
+  }finally{if(process.isAlive())process.destroyForcibly();}
  }
 }

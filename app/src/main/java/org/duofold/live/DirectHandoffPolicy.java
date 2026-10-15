@@ -6,6 +6,9 @@ final class DirectHandoffPolicy {
   return next(innerHeld,angle,fresh,interactive,enabled,open,HandoffSettings.DEFAULT);
  }
  static int next(boolean innerHeld,float angle,boolean fresh,boolean interactive,boolean enabled,float open,float handoff){
+  // An inner hold that reaches closed without passing the closing angle (sample gap) hands over to the cover hold,
+  // whose release CloseReleaseGate defers until the base state is CLOSED; releasing 4 here went 4->2->0.
+  if(innerHeld&&enabled&&fresh&&interactive&&Float.isFinite(angle)&&angle<=0)return COVER;
   if(!fresh||!interactive||!Float.isFinite(angle)||angle<=0||angle>=FoldThreshold.sanitize(open))return RELEASE;
   if(!enabled)return innerHeld?RELEASE:HOLD;
   if(innerHeld)return angle<=HandoffSettings.closing(handoff)?COVER:HOLD;

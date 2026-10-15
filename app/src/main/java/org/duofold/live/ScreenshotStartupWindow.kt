@@ -47,9 +47,8 @@ internal class ScreenshotStartupWindow(context:Context,display:Display){
   incoming=ScreenshotRenderPolicy.incoming(frame?.physicalId,next,LiveAngles.dualActive)
   view.alpha=if((frame!=null&&ScreenshotStartupPolicy.ownsFrame(frame.physicalId,next))||incoming)1f else 0f
   if(!rootRegistered&&view.isAttachedToWindow)runCatching{
-   val root=View::class.java.getDeclaredMethod("getViewRootImpl").invoke(view)
-   val sc=root.javaClass.getMethod("getSurfaceControl").invoke(root) as android.view.SurfaceControl
-   if(sc.isValid){GlassFrames.surface(view,sc);rootRegistered=true}
+   val sc=WindowSurface.of(view)
+   if(sc!=null&&sc.isValid){GlassFrames.surface(view,sc);rootRegistered=true}
   }
   view.invalidate()
  }

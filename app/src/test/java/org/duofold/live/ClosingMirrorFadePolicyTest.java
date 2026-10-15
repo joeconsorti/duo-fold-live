@@ -37,4 +37,13 @@ public class ClosingMirrorFadePolicyTest {
   assertEquals(0,p.opacity(1190,false,true,10,0),0);
   p.reset();assertEquals(0,p.opacity(1200,false,true,10,0),0);
  }
+ // Plan A8: once closed the secondary panel goes away; the mask must not stay active forever.
+ @Test public void absentSecondaryDeactivatesAfterBound(){
+  ClosingMirrorFadePolicy p=new ClosingMirrorFadePolicy();
+  p.opacity(0,true,true,-1,0);
+  assertEquals(1,p.opacity(10,false,false,-1,0),0);
+  assertEquals(1,p.opacity(10+2*HandoffFadePolicy.READY_TIMEOUT_MS-1,false,false,-1,0),0);
+  assertEquals(0,p.opacity(10+2*HandoffFadePolicy.READY_TIMEOUT_MS,false,false,-1,0),0);
+  assertFalse(p.active());
+ }
 }

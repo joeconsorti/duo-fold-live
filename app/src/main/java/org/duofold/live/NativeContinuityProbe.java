@@ -6,6 +6,7 @@ final class NativeContinuityProbe {
  private TaskDisplayRouter router;
  private boolean active,attempted,verified,finished,repaired,focusReported;
  private long requestedAt;private boolean focusSnapshot;
+ static final long CHECK_MS=50;private long lastCheck;
  private String cover,inner;
  private final ArrayDeque<String> events=new ArrayDeque<>();
  boolean nativeVisible(){return active&&verified&&!finished;}
@@ -23,7 +24,7 @@ final class NativeContinuityProbe {
   long identity=Binder.clearCallingIdentity();
   try{
    if(!holding){if(active)finish(interactive);active=false;return;}
-   if(!active){active=true;attempted=false;verified=false;finished=false;repaired=false;focusReported=false;focusSnapshot=false;router=null;cover=null;inner=null;events.clear();note("Fixed mapping hold started; native route waits for 98 degrees");}
+   if(!active){active=true;lastCheck=0;attempted=false;verified=false;finished=false;repaired=false;focusReported=false;focusSnapshot=false;router=null;cover=null;inner=null;events.clear();note("Fixed mapping hold started; native route waits for 98 degrees");}
    if(finished)return;
    if(!attempted&&angle>=98){
     attempted=true;requestedAt=SystemClock.elapsedRealtime();
@@ -31,8 +32,14 @@ final class NativeContinuityProbe {
     router=new TaskDisplayRouter();note(router.beginProbe());note(router.probeSnapshot());requestedAt=SystemClock.elapsedRealtime();
    }
    if(attempted&&router!=null){
-    if(!sameMapping())throw new IllegalStateException("Physical mapping changed during native task test");
     if(angle<=94){finish(interactive);return;}
+    // Plan C6: these are activity-task-manager calls (window manager global lock) made from the 4 ms angle poll
+    // under the AngleReader and CoverHandoff monitors. The milestones below are 350/1000/2000 ms apart, so one
+    // check round per CHECK_MS is enough.
+    long checkNow=SystemClock.elapsedRealtime();
+    if(checkNow-lastCheck<CHECK_MS)return;
+    lastCheck=checkNow;
+    if(!sameMapping())throw new IllegalStateException("Physical mapping changed during native task test");
     boolean placed=router.probePlaced();
     if(placed&&!verified){verified=true;note("Task placement on inner verified; removing cover mirror. Global focus checked separately; no timed rollback of a placed task.");note(router.probeSnapshot());}
     if(!focusReported&&router.probeVerified()){focusReported=true;note("Global focus verified on inner task");}

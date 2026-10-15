@@ -32,6 +32,8 @@ final class FoldRotationHold {
  void update(boolean enabled,boolean fresh,float angle,float open){this.enabled=enabled;this.fresh=fresh;this.angle=angle;this.open=open;heartbeat=SystemClock.elapsedRealtime();}
  void close(){closed=true;handler.post(tick);}
  void awaitRelease(){try{released.await(8,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+ /** Non-blocking: the closed hold has restored rotation and dropped its file lock (plan D6). */
+ boolean released(){return released.getCount()==0;}
  private final Runnable tick=new Runnable(){public void run(){
   handler.removeCallbacks(this);
   long identity=Binder.clearCallingIdentity();
@@ -163,6 +165,7 @@ final class FoldRotationHold {
     Method property=state.getClass().getMethod("hasProperty",int.class);
     // Samsung Android 17 PostureDeviceStateConverter: rear=16, outer-primary=11,
     // inner-primary=12, half-open=2. Match the system's own posture routing.
+    // Android 16 (SM-F966U1, One UI 8.5) DeviceState uses the same property values.
     int posture=(boolean)property.invoke(state,16)?3:(boolean)property.invoke(state,11)?0:(boolean)property.invoke(state,12)?((boolean)property.invoke(state,2)?1:2):-1;
     if(posture>=0)routes.put(Integer.toString(posture),state.getClass().getMethod("getIdentifier").invoke(state));
    }

@@ -22,6 +22,8 @@ An iPhone Duo-inspired folding animation for the **Samsung Galaxy Z Fold 8**, wi
 - **Landscape previews fixed:** clean and reflected cover content follows the physical hinge and fits the current orientation.
 - **Simpler controls:** remove the obsolete closing cover power-pulse experiment.
 
+> **Galaxy Z Fold 7 (SM-F966) on Android 16 and Android 17:** Android 16 is accepted on that family only. Tuned on an SM-F966U1 under One UI 8.5 (Android 16) and verified on the same phone after its update to One UI 9.0 (Android 17). See `CHANGELOG.md` (Unreleased) and `docs/fold7/tuning-reference.md` for every Fold 7 value and debug property.
+
 ## What's new in 3.5.3 — since stable 3.5.2
 
 - **Redesigned Duo Classic:** gentler cover stretch, folding toward the hinge with the reverse motion on unfolding, stronger blur, and both the clean and mirrored inner-display cover previews.
