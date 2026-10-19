@@ -20,6 +20,7 @@ internal object ClassicGlassShader {
  uniform float2 extent;
  uniform float2 sampleScale;
  uniform float2 sampleOffset;
+ uniform float2 motionOffset;
  uniform float progress;
  uniform float classicPreset;
  uniform float verticalCompression;
@@ -68,9 +69,11 @@ internal object ClassicGlassShader {
  // Zero slope at both ends avoids the old late stretch surge.
  float classicCoverScale(float p){return 1.0+0.28*smoothstep(0.0,1.0,p);}
  float classicInnerWidth(float p){return mix(1.0,0.16,smoothstep(0.0,1.0,p));}
+ ${MotionGlassShader.source}
  half4 main(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
+  uv=motionWarp(uv);
   float axis=mix(uv.x,uv.y,horizontal);
   axis=mix(axis,1.0-axis,reverse);
   float edge=inner>0.5 ? (fallback>0.5 ? 1.0-axis : 1.0-2.0*axis) : axis;

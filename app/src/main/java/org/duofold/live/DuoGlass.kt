@@ -32,6 +32,7 @@ internal object DuoGlassShader {
  uniform float2 extent;
  uniform float2 sampleScale;
  uniform float2 sampleOffset;
+ uniform float2 motionOffset;
  uniform float progress;
  uniform float opaqueContent;
  uniform float foldRadians;
@@ -93,9 +94,11 @@ internal object DuoGlassShader {
  float windowShadeAmount(float motion,float edge,float strength){
   return min(1.0,2.0*motion*pow(clamp((edge-0.2)/0.8,0.0,1.0),1.35)*strength);
  }
+ ${MotionGlassShader.source}
  half4 main(float2 p) {
   float2 uv=(p-origin)/extent;
   if(any(lessThan(uv,float2(0))) || any(greaterThan(uv,float2(1)))) return half4(0);
+  uv=motionWarp(uv);
   float axis=mix(uv.x,uv.y,horizontal);
   axis=mix(axis,1.0-axis,reverse);
   // Project the folded physical panel through the reference's fixed eye at z=40.
@@ -250,6 +253,8 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
  private var frozen=false;private var frame:GlassFrame?=null;private var amount=0f;private var intensity=.4f;private var inner=false;private var rotation=0
  private val basePaint=Paint(Paint.FILTER_BITMAP_FLAG)
  private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
+ private val motionOffset=FloatArray(2)
+ private val motionListener:()->Unit={if(!preview && !frozen)requestDraw()}
  private var program:RuntimeShader?=null
  private val aaNode=RenderNode("Duo edge AA layer")
  private var edgeShader:RuntimeShader?=null
@@ -342,12 +347,13 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
     if(!renderedAngle.isFinite() && !inner && targetAngle<=12f && context.getSharedPreferences("standalone",0).getBoolean("window_reveal_v2",true) && context.getSharedPreferences("standalone",0).getBoolean("startup_easing",true))renderedAngle=0f
     renderedAngle=FrameSmoothing.step(renderedAngle,targetAngle,dt,smoothingMs)
     hingeAngle=renderedAngle
-    amount=if(inner && targetAngle>=FoldThreshold.sanitize(openThreshold))0f
-      else DuoShadeCurve.progress(renderedAngle,inner,openThreshold)
+    val normal=DuoShadeCurve.progress(renderedAngle,inner,openThreshold)
+    amount=if(inner && !frozen && !reflectedCover)MotionGlass.innerAmount(normal,targetAngle>=FoldThreshold.sanitize(openThreshold),record=true)
+      else if(inner && targetAngle>=FoldThreshold.sanitize(openThreshold))0f else normal
    }
    lastFrameNanos=now
    drawFrame()
-   if(!preview && LiveAngles.fresh() && targetAngle.isFinite() && kotlin.math.abs(renderedAngle-targetAngle)>=.01f)requestDraw()
+   if(!preview && LiveAngles.fresh() && targetAngle.isFinite() && (kotlin.math.abs(renderedAngle-targetAngle)>=.01f || inner && MotionGlass.returning()))requestDraw()
   }
  }
  private fun requestDraw(){dirty=true;if(!frameQueued && holder.surface.isValid){frameQueued=true;choreographer.postFrameCallback(vsync)}}
@@ -369,6 +375,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
   if(selected!=classic){classic=selected;bitmap=null;program=runCatching{RuntimeShader(if(classic)ClassicGlassShader.source else DuoGlassShader.source)}.getOrElse{RecoveryLog.add("Glass shader compilation failed: ${it.message}");null}}
   requestDraw()}
  override fun surfaceCreated(h:SurfaceHolder){
+  if(!preview)MotionGlass.add(motionListener)
   if(!preview && !reflectedCover && display?.displayId==0)HandoffStartupTrace.event("SURFACE_CREATED","view=${width}x${height}; inner=$inner")
   if(!preview){
    GlassFrames.surface(this,surfaceControl)
@@ -382,7 +389,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
   if(!preview){removeCallbacks(clearGuard);postDelayed(clearGuard,100)}
  }
  override fun surfaceChanged(h:SurfaceHolder,format:Int,w:Int,height:Int){if(!preview && !reflectedCover && display?.displayId==0)HandoffStartupTrace.event("SURFACE_CHANGED","buffer=${w}x${height}; inner=$inner",false);readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(!preview){GlassFrames.surface(this,surfaceControl);if(!reflectedCover)GlassFrames.requestFreshCapture();if(!reflectedCover && context.getSharedPreferences("standalone",0).getBoolean("cover_preview",true) && !context.getSharedPreferences("standalone",0).getBoolean("dual",false))PreviewTransition.markAnimation(surfaceControl)};preferFastRefresh();requestDraw()}
- override fun surfaceDestroyed(h:SurfaceHolder){if(!preview && !reflectedCover && display?.displayId==0)HandoffStartupTrace.event("SURFACE_DESTROYED","inner=$inner",false);removeCallbacks(clearGuard);paintedEffect=false;fallback("");readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(angleListening){LiveAngles.remove(angleListener);angleListening=false};targetAngle=Float.NaN;renderedAngle=Float.NaN;lastFrameNanos=0L;choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview){PreviewTransition.forgetAnimation(surfaceControl);GlassFrames.surface(this,null)};bitmap=null;frame=null;paint.shader=null;aaNode.discardDisplayList();aaNode.setRenderEffect(null);edgeEffectKey=""}
+ override fun surfaceDestroyed(h:SurfaceHolder){MotionGlass.remove(motionListener);if(!preview && !reflectedCover && display?.displayId==0)HandoffStartupTrace.event("SURFACE_DESTROYED","inner=$inner",false);removeCallbacks(clearGuard);paintedEffect=false;fallback("");readinessGeneration++;readinessPending=false;lastReadyCapture=-1;lastReadyEndpoint=-1;if(angleListening){LiveAngles.remove(angleListener);angleListening=false};targetAngle=Float.NaN;renderedAngle=Float.NaN;lastFrameNanos=0L;choreographer.removeFrameCallback(vsync);frameQueued=false;appliedRate=0f;if(!preview){PreviewTransition.forgetAnimation(surfaceControl);GlassFrames.surface(this,null)};bitmap=null;frame=null;paint.shader=null;aaNode.discardDisplayList();aaNode.setRenderEffect(null);edgeEffectKey=""}
  /** Reuse the exact shader painter in a normal window View, without attaching this SurfaceView. */
  fun drawEmbedded(canvas:Canvas){drawFrame(canvas)}
  private fun drawFrame(windowCanvas:Canvas?=null){
@@ -470,6 +477,8 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
      shader.setFloatUniform("texSize",f.bitmap.width.toFloat(),f.bitmap.height.toFloat())
      shader.setFloatUniform("origin",if(fallback)width-ew else 0f,if(fallback)(height-eh)/2f else 0f)
      shader.setFloatUniform("sampleScale",if(projectedCover)width/ew else 1f,if(projectedCover)height/eh else 1f)
+     if(!preview && !frozen)MotionGlass.offset(rotation,motionOffset) else {motionOffset[0]=0f;motionOffset[1]=0f}
+     shader.setFloatUniform("motionOffset",motionOffset[0],motionOffset[1])
      shader.setFloatUniform("sampleOffset",if(fit!=null)-fit[1]/ew else 0f,if(fit!=null)-fit[2]/eh else 0f)
      shader.setFloatUniform("extent",if(projectedCover)width.toFloat() else ew,if(projectedCover)height.toFloat() else eh);shader.setFloatUniform("progress",amount.coerceIn(0f,1f));shader.setFloatUniform("intensity",if(classicPreset)maxOf(1.8f,intensity)*.7f else intensity)
      // Inner progress already includes the user's fully-open threshold (default 172°).

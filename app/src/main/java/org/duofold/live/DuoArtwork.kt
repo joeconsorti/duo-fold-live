@@ -1,5 +1,8 @@
 package org.duofold.live
 
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -26,16 +29,16 @@ import androidx.compose.ui.unit.dp
   Text("MADE FOR THE FOLD",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.secondary)
  }
 }
-@Composable internal fun WallpaperInvitation(){
- Row(Modifier.fillMaxWidth().heightIn(min=112.dp).background(Brush.linearGradient(listOf(Color(0xff253c52),Color(0xff302b49))),RoundedCornerShape(20.dp)).padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(20.dp)){
+@Composable internal fun WallpaperInvitation(onClick:()->Unit){
+ Row(Modifier.fillMaxWidth().heightIn(min=112.dp).clip(RoundedCornerShape(20.dp)).clickable(role=Role.Button,onClick=onClick).background(Brush.linearGradient(listOf(Color(0xff253c52),Color(0xff302b49))),RoundedCornerShape(20.dp)).padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(20.dp)){
   Canvas(Modifier.width(100.dp).height(80.dp)){
    val h=size.height;val w=size.width
    drawRoundRect(Brush.linearGradient(listOf(Color(0xffb8d9ed),Color(0xff718cc1))),Offset.Zero,Size(w*.34f,h),CornerRadius(8.dp.toPx()))
    drawRoundRect(Brush.linearGradient(listOf(Color(0xffafc8bc),Color(0xff7d76b1))),Offset(w*.43f,h*.16f),Size(w*.57f,h*.68f),CornerRadius(8.dp.toPx()))
   }
   Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){
-   Text("A little more you.",style=MaterialTheme.typography.titleMedium)
-   Text("Cover + inner\nIndividually yours.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   Text("Choose custom wallpaper",style=MaterialTheme.typography.titleMedium)
+   Text("Your photos. Each screen. Your way. →",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   }
  }
 }

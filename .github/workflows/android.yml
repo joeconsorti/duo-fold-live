@@ -81,6 +81,7 @@ jobs:
         run: |
           python3 tools/check_inner_stretch.py
           python3 tools/check_window_shading.py
+          python3 tools/check_motion_projection.py
           ./gradlew --no-daemon testGithubReleaseUnitTest lintGithubRelease assembleGithubRelease
 
       - name: Audit release manifests and test counts

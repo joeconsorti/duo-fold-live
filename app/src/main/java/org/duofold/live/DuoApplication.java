@@ -10,6 +10,13 @@ public final class DuoApplication extends Application {
   FoldAwakeDefault.persist(this);
   if(BuildConfig.IS_PLAY)getSystemService(android.app.NotificationManager.class).cancel(220);
   SharedPreferences prefs=getSharedPreferences("standalone",MODE_PRIVATE);
+  // Retune motion once on upgrade; preserve later user adjustments.
+  if(!prefs.getBoolean("motion_defaults_357_alpha4",false))prefs.edit()
+   .putBoolean("motion_glass_invert",true).putFloat("motion_glass_projection_strength",1f)
+   .putBoolean("motion_defaults_357_alpha4",true).commit();
+  // Alpha.6 gives each panel its own facing direction; preserve sensitivity.
+  if(!prefs.getBoolean("motion_direction_357_alpha6",false))prefs.edit()
+   .putBoolean("motion_glass_invert",false).putBoolean("motion_direction_357_alpha6",true).commit();
   if(!prefs.getBoolean("defaults_170_applied",false)){
    prefs.edit().putBoolean("cover_preview",true).putBoolean("dual",false)
     .putBoolean("defaults_170_applied",true).apply();

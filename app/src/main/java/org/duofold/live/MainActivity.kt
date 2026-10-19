@@ -65,6 +65,10 @@ class MainActivity:ComponentActivity(){
     var enabled by remember{mutableStateOf(prefs.getBoolean("enabled",false))}
     var mode by remember{mutableStateOf(AnimationModePolicy.sanitize(prefs.getString("animation_mode",AnimationModePolicy.DEFAULT)))}
     var behavior by remember{mutableStateOf(AnimationModePolicy.behavior(prefs.getString("animation_behavior",AnimationModePolicy.BOTH)))}
+    var motionGlass by remember{mutableStateOf(prefs.getBoolean("motion_glass",false))}
+    var motionInvert by remember{mutableStateOf(prefs.getBoolean("motion_glass_invert",false))}
+    var motionStrength by remember{mutableStateOf(prefs.getFloat("motion_glass_projection_strength",1f))}
+    var motionSmoothing by remember{mutableStateOf(prefs.getFloat("motion_glass_smoothing",90f))}
     var legacy by remember{mutableStateOf(false)}
     var supportBanner by remember{mutableStateOf(false)}
     var developer by remember{mutableStateOf(false)}
@@ -178,6 +182,9 @@ class MainActivity:ComponentActivity(){
         TextButton(onClick={supportBanner=false;SupportPrompts.stop(this@MainActivity)}){Text("Don’t ask again")}
        }
       }
+      SettingsCard("Make it yours",""){
+       WallpaperInvitation{startActivity(Intent(this@MainActivity,WallpaperStudioActivity::class.java))}
+      }
       SettingsCard("Folding Animation Style","Choose how your Fold moves between screens."){
        listOf("windowed" to "Inspired by iPhone Duo with even more windowed glass. Default.","duo_classic" to "1-for-1 recreation of the iPhone Duo animation, with a gentler stretch and stronger blur.","plain_fade" to "").forEach{(id,description)->
         Surface(onClick={selectMode(id)},shape=RoundedCornerShape(20.dp),color=if(mode==id)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,modifier=Modifier.fillMaxWidth()){
@@ -219,11 +226,6 @@ class MainActivity:ComponentActivity(){
       }
       ShizukuHelp()
       if(mode=="plain_fade")PlainFadeControls(prefs){restart()}
-      SettingsCard("Make it yours","Two screens. A world of possibilities."){
-       WallpaperInvitation()
-       Button(onClick={startActivity(Intent(this@MainActivity,WallpaperStudioActivity::class.java))},modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)){Text("Choose Custom Wallpaper")}
-       Text("Choose a photo for each screen. Frame it just right. Keep it across updates.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-      }
       SettingsCard("Fine-tune your animation","Duo Classic uses its own stronger glass and blur preset. Other styles use your saved glass settings."){
 
        InfoLabel("Motion smoothness · ${smoothing.roundToInt()} ms","Higher values smooth hinge motion but add delay. This does not increase FPS. Default: Smooth (120 ms).")
@@ -249,6 +251,16 @@ class MainActivity:ComponentActivity(){
        Slider(value=intensity,onValueChange={intensity=it},valueRange=.3f..1.5f,onValueChangeFinished={prefs.edit().putFloat("intensity",intensity).apply();restart()})
        TextButton(onClick={intensity=.4f;prefs.edit().putFloat("intensity",.4f).apply();restart()}){Text("Reset glass strength")}
        Toggle("Full-resolution glass · higher GPU cost",fullResolution,help="Off uses half-resolution rendering to reduce GPU work. Content and handoff angles are unchanged."){fullResolution=it;booleanSetting("full_resolution_glass",it)}
+       Toggle("Motion-Tracked Glass",motionGlass,help="Tilt your phone to move the glass. Live Screen only."){motionGlass=it;prefs.edit().putBoolean("motion_glass",it).apply();if(!it)MotionGlass.stop()}
+       if(motionGlass){
+        Toggle("Reverse direction",motionInvert){motionInvert=it;prefs.edit().putBoolean("motion_glass_invert",it).apply();MotionGlass.recenter()}
+        Text("Sensitivity · ${(motionStrength*100).roundToInt()}%")
+        Slider(value=motionStrength,onValueChange={motionStrength=it},valueRange=0f..2f,onValueChangeFinished={prefs.edit().putFloat("motion_glass_projection_strength",motionStrength).apply()})
+        Text("Smoothing · ${motionSmoothing.roundToInt()} ms")
+        Slider(value=motionSmoothing,onValueChange={motionSmoothing=it},valueRange=0f..300f,onValueChangeFinished={prefs.edit().putFloat("motion_glass_smoothing",motionSmoothing).apply()})
+        OutlinedButton(onClick={MotionGlass.recenter()}){Text("Recenter")}
+        TextButton(onClick={motionStrength=1f;motionSmoothing=90f;motionInvert=false;prefs.edit().putFloat("motion_glass_projection_strength",1f).putFloat("motion_glass_smoothing",90f).putBoolean("motion_glass_invert",false).apply();MotionGlass.recenter()}){Text("Reset motion settings")}
+       }
 
        Text("Fully open at ${threshold.roundToInt()}°. Adjust this in Advanced.",style=MaterialTheme.typography.bodySmall)
       }
@@ -478,7 +490,7 @@ class MainActivity:ComponentActivity(){
 @Composable internal fun SettingsCard(title:String,subtitle:String,content:@Composable ColumnScope.()->Unit){
  Card(shape=RoundedCornerShape(28.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface),border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant.copy(alpha=.5f)),modifier=Modifier.fillMaxWidth()){
   Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-   Text(title,style=MaterialTheme.typography.titleLarge);Text(subtitle,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);content()
+   Text(title,style=MaterialTheme.typography.titleLarge);if(subtitle.isNotEmpty())Text(subtitle,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);content()
   }
  }
 }
