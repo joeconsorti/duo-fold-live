@@ -155,6 +155,13 @@ final class CoverHandoff {
   finally{Binder.restoreCallingIdentity(identity);}
  }
  synchronized boolean innerActive(){return owned!=null && innerHeld;}
+ private long pauseToken;
+ synchronized void holdPanel(int source,long token){
+  clearPrewarm();clearDelay("hinge stationary");clearStale("fresh stationary hinge");
+  boolean first=token!=pauseToken;pauseToken=token;
+  if(first&&(owned==null||innerHeld!=(source==1)))changeState(source==1);
+  if(owned!=null)status="Hinge pause: usable "+(innerHeld?"inner":"cover")+" screen; resume on movement";
+ }
  synchronized boolean active(){return owned!=null && !innerHeld;}
  synchronized void release(){prewarm.reset();probe.abort();nativeProbe.update(false,0,false);releaseOwned();}
  private void releaseOwned(){

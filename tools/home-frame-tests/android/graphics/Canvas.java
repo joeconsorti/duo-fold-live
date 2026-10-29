@@ -1,0 +1,1 @@
+package android.graphics;import java.util.*;public class Canvas{public static final List<String> draws=new ArrayList<>();public Canvas(Bitmap b){}public void drawColor(int c){draws.add("color");}public void drawBitmap(Bitmap b,Rect src,Rect dst,Paint p){draws.add("background:"+dst);}public void drawBitmap(Bitmap b,Rect src,RectF dst,Paint p){draws.add("pane:"+dst);}}

@@ -1,0 +1,1 @@
+package android.app;public class ActivityTaskManager {public static IActivityTaskManager manager=new IActivityTaskManager();public static IActivityTaskManager getService(){return manager;}}

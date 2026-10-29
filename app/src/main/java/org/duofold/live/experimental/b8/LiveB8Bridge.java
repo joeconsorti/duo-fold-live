@@ -5,22 +5,20 @@ import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-/** Mirrors WMS windowing layers, never the compositor's ColorFade roots.
- * This is a visual bypass experiment, not a ColorFade-disable mechanism. */
+/** Independent screenshot shield. No mirrored display/window hierarchy is retained.
+ * Owned buffer children have only owned container parents; pixels cannot form graph edges. */
 final class LiveB8Bridge {
- private final File dir;private final boolean freeze;
+ private final File dir;
  private final List<Object> surfaces=new ArrayList<>();private final List<Object> bufferLayers=new ArrayList<>();
- private final Map<String,Object> logicalContainers=new HashMap<>();private final Map<String,Integer> logicalStacks=new HashMap<>();
  private final Map<String,Object> physicalContainers=new HashMap<>();private final Map<String,Integer> physicalStacks=new HashMap<>();
  private final ScheduledExecutorService watchdog=Executors.newScheduledThreadPool(2);
  private Class<?> sc,tc;private volatile boolean committed,submitted,closed;
- private boolean animationSubmitted;private volatile boolean animationCommitted;
  private int cleanupAttempts;private boolean revealSubmitted,removalSubmitted;private volatile boolean removalCommitted;private long armedAt;private int captures,handlesClosed;private long estimatedBytes;
- LiveB8Bridge(File dir){this(dir,false);}
- LiveB8Bridge(File dir,boolean freeze){this.dir=dir;this.freeze=freeze;}
+ LiveB8Bridge(File dir){this(dir,true);}
+ LiveB8Bridge(File dir,boolean freeze){this.dir=dir;if(!freeze)throw new IllegalArgumentException("Screenshot shield required");}
  private synchronized void log(String s){try(FileWriter w=new FileWriter(new File(dir,"live-window-bridge.txt"),true)){w.write(SystemClock.elapsedRealtime()+" "+s+"\n");}catch(IOException ignored){}}
  private static Object call(Object o,String name,Class<?>[] types,Object...args)throws Exception{return o.getClass().getMethod(name,types).invoke(o,args);}
- synchronized boolean ready(){return BridgePlan.canPromote(submitted,committed,closed);}
+ synchronized boolean ready(){return !removalSubmitted&&!revealSubmitted&&BridgePlan.canPromote(submitted,committed,closed);}
  synchronized boolean isClosed(){return closed;}
  synchronized void arm()throws Exception{
   if(closed||submitted||!surfaces.isEmpty())throw new IllegalStateException("Bridge already used");
@@ -32,30 +30,27 @@ final class LiveB8Bridge {
   sc=Class.forName("android.view.SurfaceControl");tc=Class.forName("android.view.SurfaceControl$Transaction");
   Object transaction=null;
   try{
-   Object wm=PowerExperiment.service("window","android.view.IWindowManager"),dm=PowerExperiment.service("display","android.hardware.display.IDisplayManager");
-   Class<?> wc=Class.forName("android.view.IWindowManager"),dc=Class.forName("android.hardware.display.IDisplayManager");
+   Object dm=PowerExperiment.service("display","android.hardware.display.IDisplayManager");
+   Class<?> dc=Class.forName("android.hardware.display.IDisplayManager");
    transaction=tc.getConstructor().newInstance();
    for(int id=0;id<2;id++){
     Object info=dc.getMethod("getDisplayInfo",int.class).invoke(dm,id);
     if(info==null)throw new IllegalStateException("D"+id+" absent");
     int stack=info.getClass().getField("layerStack").getInt(info);
-    Object mirror=sc.getDeclaredConstructor().newInstance();surfaces.add(mirror);
-    if(!Boolean.TRUE.equals(wc.getMethod("mirrorDisplay",int.class,sc).invoke(wm,id,mirror)))throw new IllegalStateException("WMS mirrorDisplay rejected D"+id);
-    if(!Boolean.TRUE.equals(call(mirror,"isValid",new Class<?>[]{})))throw new IllegalStateException("Invalid mirror D"+id);
     Object builder=Class.forName("android.view.SurfaceControl$Builder").getConstructor().newInstance();
     call(builder,"setName",new Class<?>[]{String.class},"FoldPowerLabBridge_D"+id);
     call(builder,"setContainerLayer",new Class<?>[]{});
     call(builder,"setHidden",new Class<?>[]{boolean.class},true);
     Object container=call(builder,"build",new Class<?>[]{});surfaces.add(container);
+    call(transaction,"setSkipScreenshot",new Class<?>[]{sc,boolean.class},container,true);
     call(transaction,"setLayerStack",new Class<?>[]{sc,int.class},container,stack);
     call(transaction,"setLayer",new Class<?>[]{sc,int.class},container,2147483646);
-    call(transaction,"reparent",new Class<?>[]{sc,sc},mirror,container);
-    call(transaction,"show",new Class<?>[]{sc},mirror);
+    freezeFrame(transaction,container,info,id);
     call(transaction,"show",new Class<?>[]{sc},container);
-    if(freeze){freezeFrame(transaction,mirror,container,info,id);
-     String physical=String.valueOf(info.getClass().getField("uniqueId").get(info));physicalContainers.put(physical,container);physicalStacks.put(physical,stack);logicalContainers.put(String.valueOf(id),container);logicalStacks.put(String.valueOf(id),stack);
-    }
-    log("PREPARED D"+id+" physical="+info.getClass().getField("uniqueId").get(info)+" stack="+stack+" z=2147483646; firmware ColorFade z=1073741825; no transform/crop; window subtree only; no input window");
+    String physical=String.valueOf(info.getClass().getField("uniqueId").get(info));
+    if(physicalContainers.containsKey(physical)||physicalStacks.containsValue(stack))throw new IllegalStateException("Ambiguous shield display mapping");
+    physicalContainers.put(physical,container);physicalStacks.put(physical,stack);
+    log("PREPARED D"+id+" physical="+info.getClass().getField("uniqueId").get(info)+" stack="+stack+" z=2147483646; firmware ColorFade z=1073741825; no transform/crop; independent screenshot buffers only; no input window");
    }
    Class<?> listener=Class.forName("android.view.SurfaceControl$TransactionCommittedListener");
    Object callback=Proxy.newProxyInstance(listener.getClassLoader(),new Class<?>[]{listener},(proxy,method,args)->{
@@ -70,30 +65,16 @@ final class LiveB8Bridge {
   }catch(Exception e){log("ARM_REJECTED "+root(e));close();throw e;}
   finally{if(transaction!=null)try{call(transaction,"close",new Class<?>[]{});}catch(Exception ignored){}}
  }
- /** Frozen buffers only cover initial attachment. The retained WMS mirrors then
-  * carry the already-committed opaque app + glass windows throughout promotion. */
- synchronized boolean animatedReady(){return animationCommitted&&!closed;}
- synchronized void animate()throws Exception{
-  if(animationSubmitted||closed||!ready())return;
-  Object t=tc.getConstructor().newInstance();
-  try{
-   for(Object layer:bufferLayers)call(t,"hide",new Class<?>[]{sc},layer);
-   addCommit(t,()->{synchronized(this){if(!closed){animationCommitted=true;logicalStacks.clear();}log("ANIMATED_MIRROR_COMMIT; frozen buffers hidden, WMS windows retained");}});
-   animationSubmitted=true;call(t,"apply",new Class<?>[]{});
-  }finally{call(t,"close",new Class<?>[]{});}
- }
  /** Follow physical panels when Android exchanges logical layer stacks. */
  synchronized void followPhysicalStacks(){
-  if(!freeze||closed||revealSubmitted||removalSubmitted)return;Object transaction=null;
+  if(closed||revealSubmitted||removalSubmitted)return;Object transaction=null;
   try{
    Object dm=PowerExperiment.service("display","android.hardware.display.IDisplayManager");Class<?> dc=Class.forName("android.hardware.display.IDisplayManager");
-   // A frozen image belongs to its original physical panel. An animated WMS
-   // mirror belongs to its logical DisplayContent root, whose geometry changes
-   // during remap. Do not move that root's mirror onto the opposite panel.
-   Map<String,Object> containers=animationCommitted?logicalContainers:physicalContainers;
-   Map<String,Integer> stacks=animationCommitted?logicalStacks:physicalStacks;
+   // Captured pixels always belong to the original physical panel, including after promotion.
+   Map<String,Object> containers=physicalContainers;
+   Map<String,Integer> stacks=physicalStacks;
    Map<String,Integer> observed=new HashMap<>();
-   for(int id=0;id<2;id++){Object info=dc.getMethod("getDisplayInfo",int.class).invoke(dm,id);if(info!=null)observed.put(animationCommitted?String.valueOf(id):String.valueOf(info.getClass().getField("uniqueId").get(info)),info.getClass().getField("layerStack").getInt(info));}
+   for(int id=0;id<2;id++){Object info=dc.getMethod("getDisplayInfo",int.class).invoke(dm,id);if(info!=null)observed.put(String.valueOf(info.getClass().getField("uniqueId").get(info)),info.getClass().getField("layerStack").getInt(info));}
    // Ambiguous transient mapping must not put two shields on the same stack.
    if(new HashSet<Integer>(observed.values()).size()!=observed.size())return;
    for(String physical:containers.keySet()){
@@ -104,13 +85,13 @@ final class LiveB8Bridge {
    }
    if(transaction!=null){call(transaction,"apply",new Class<?>[]{});
     for(String physical:containers.keySet())stacks.put(physical,observed.containsKey(physical)?observed.get(physical):-1);
-    log((animationCommitted?"ANIMATED_LOGICAL_RETARGET_SUBMITTED ":"FROZEN_RETARGET_SUBMITTED ")+stacks+"; sampled mapping, not atomic with Android remap");
+    log("SCREENSHOT_RETARGET_SUBMITTED "+stacks+"; sampled mapping, not atomic with Android remap");
    }
   }catch(Exception e){log("FROZEN_RETARGET_PENDING "+root(e));}
   finally{if(transaction!=null)try{call(transaction,"close",new Class<?>[]{});}catch(Exception ignored){}}
  }
- /** Optional display screenshot, excluding every layer owned by this bridge. */
- private void freezeFrame(Object transaction,Object mirror,Object container,Object info,int id)throws Exception{
+ /** Required display screenshot, excluding every layer owned by this bridge. */
+ private void freezeFrame(Object transaction,Object container,Object info,int id)throws Exception{
   Object shot=null,buffer=null;long began=SystemClock.elapsedRealtime();
   try{
    int w=info.getClass().getField("logicalWidth").getInt(info),h=info.getClass().getField("logicalHeight").getInt(info);
@@ -146,6 +127,9 @@ final class LiveB8Bridge {
    call(transaction,"setLayer",new Class<?>[]{sc,int.class},layer,1);
    call(transaction,"setBuffer",new Class<?>[]{sc,Class.forName("android.hardware.HardwareBuffer")},layer,buffer);
    call(transaction,"setColorSpace",new Class<?>[]{sc,Class.forName("android.graphics.ColorSpace")},layer,call(shot,"getColorSpace",new Class<?>[]{}));
+   // Arm visibility and capture exclusion together. Once ARM_COMMIT arrives,
+   // a second show/exclusion transaction adds no coverage or freshness evidence.
+   call(transaction,"setSkipScreenshot",new Class<?>[]{sc,boolean.class},layer,true);
    call(transaction,"show",new Class<?>[]{sc},layer);
    log("FROZEN_FRAME D"+id+" "+w+"x"+h+"; static shield until reveal, capture is not pixel readiness proof");
   }finally{if(buffer!=null)try{call(buffer,"close",new Class<?>[]{});handlesClosed++;}catch(Exception e){log("BUFFER_CLOSE_FAILED "+e);}}
@@ -162,7 +146,7 @@ final class LiveB8Bridge {
    }
    addCommit(transaction,()->{
     synchronized(this){
-     log("REVEAL_COMMIT closed="+closed+"; mirrors hidden; callback not pixel proof");
+     log("REVEAL_COMMIT closed="+closed+"; screenshots hidden; callback not pixel proof");
      if(!closed&&!watchdog.isShutdown())watchdog.execute(this::close);
     }
    });
@@ -187,7 +171,7 @@ final class LiveB8Bridge {
   // Callback is compositor transaction evidence, not proof of reclaimed GPU memory.
   removalCommitted=true;
   for(Object surface:surfaces)try{call(surface,"release",new Class<?>[]{});}catch(Exception e){log("Handle release: "+e);}
-  surfaces.clear();bufferLayers.clear();physicalContainers.clear();physicalStacks.clear();logicalContainers.clear();logicalStacks.clear();closed=true;
+  surfaces.clear();bufferLayers.clear();physicalContainers.clear();physicalStacks.clear();closed=true;
   log("REMOVE_COMMIT "+resources());watchdog.shutdownNow();
  }
  synchronized void close(){

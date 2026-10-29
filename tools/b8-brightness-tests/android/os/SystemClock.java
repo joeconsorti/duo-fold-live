@@ -1,1 +1,1 @@
-package android.os;public class SystemClock {public static long elapsedRealtime(){return 10000;}public static long uptimeMillis(){return 10000;}}
+package android.os;public class SystemClock {public static volatile long now=10000;public static long elapsedRealtime(){return now;}public static long uptimeMillis(){return now;}}

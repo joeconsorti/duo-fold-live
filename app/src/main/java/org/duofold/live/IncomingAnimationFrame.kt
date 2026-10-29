@@ -44,6 +44,7 @@ internal object IncomingAnimationFrame {
  private fun releaseCapture(){if(capturing){capturing=false;GlassFrames.release()}}
  @JvmStatic fun update(context:Context,info:Bundle?,fresh:Boolean,allowed:Boolean){
   val prefs=context.getSharedPreferences("standalone",0)
+  if(prefs.getBoolean("screenshot_native_test",false)&&prefs.getBoolean("dual",false)){if(session!=0L)clear();status="Screenshot test: incoming app renders natively; continuous capture disabled";return}
   val next=info?.getLong("session")?:0L
   val valid=fresh&&allowed&&prefs.getBoolean("enabled",false)&&prefs.getBoolean("dual",false)&&prefs.getBoolean("screenshot_camera_startup",false)&&info?.getBoolean("active")==true&&next>0L&&context.getSystemService(PowerManager::class.java).isInteractive&&!context.getSystemService(KeyguardManager::class.java).isKeyguardLocked
   val targetDisplay=info?.getInt("display",1)?:1

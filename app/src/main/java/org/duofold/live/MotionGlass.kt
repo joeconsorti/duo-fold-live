@@ -30,7 +30,7 @@ internal object MotionGlass : SensorEventListener {
  private var coverStrength=1f
  private var innerStrength=1f
  private var smoothing=90f
- private var invert=false
+ private val invert=false // Reverse-direction option retired; use the normal direction in both modes.
  private var x=0f
  private var y=0f
  private val matrix=FloatArray(9)
@@ -56,13 +56,12 @@ internal object MotionGlass : SensorEventListener {
   coverStrength=MotionGlassMath.safe(p.getFloat("motion_glass_cover_strength",legacyStrength),legacyStrength,0f,2f)
   innerStrength=MotionGlassMath.safe(p.getFloat("motion_glass_inner_strength",legacyStrength),legacyStrength,0f,2f)
   smoothing=MotionGlassMath.safe(p.getFloat("motion_glass_smoothing",90f),90f,0f,300f)
-  invert=p.getBoolean("motion_glass_invert",false)
   if(allowed && innerEnabled && angle>=open && running && baseline){
    beginReturn()
    if(innerReturn.pending && !innerReturn.finished(SystemClock.elapsedRealtime())){state="Returning inner glass to neutral";return}
    if(innerReturn.pending){lastReturn="completed ${InnerMotionReturn.DURATION_MS} ms";RecoveryLog.add("Motion inner return complete; ${InnerMotionReturn.DURATION_MS} ms")}
   }
-  if(!wanted){stop();state=if(enabled)"Waiting for live fold (Live Screen only)" else "Off";return}
+  if(!wanted){stop();state=if(enabled)"Waiting for fold" else "Off";return}
   if(innerReturn.pending){innerReturn.cancel(SystemClock.elapsedRealtime());lastReturn="interrupted by refold";RecoveryLog.add("Motion inner return interrupted by refold")}
   if(running)return
   if(manager==null){manager=context.applicationContext.getSystemService(SensorManager::class.java);sensor=manager?.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR,false) ?: manager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR,false)}

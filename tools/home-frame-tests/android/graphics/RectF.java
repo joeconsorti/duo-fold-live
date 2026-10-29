@@ -1,0 +1,1 @@
+package android.graphics;public class RectF{public final float left,top,right,bottom;public RectF(float a,float b,float c,float d){left=a;top=b;right=c;bottom=d;}public String toString(){return left+":"+top+":"+right+":"+bottom;}}

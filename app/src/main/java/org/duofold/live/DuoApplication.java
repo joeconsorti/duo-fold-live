@@ -10,6 +10,14 @@ public final class DuoApplication extends Application {
   FoldAwakeDefault.persist(this);
   if(BuildConfig.IS_PLAY)getSystemService(android.app.NotificationManager.class).cancel(220);
   SharedPreferences prefs=getSharedPreferences("standalone",MODE_PRIVATE);
+  // Resolve the one-time Duo default before historical migrations reset route flags.
+  boolean screenshotMode=FoldingModeSettings.screenshot(prefs);
+  // Owner-requested lightweight fold profile, once on install/upgrade.
+  // Later blur/quality choices remain editable and are preserved.
+  if(!prefs.getBoolean("lightweight_fold_alpha44",false))prefs.edit()
+   .putString("glass_render_mode","light").putBoolean("full_resolution_glass",false)
+   .putFloat("blur_strength",RenderQuality.DEFAULT_BLUR)
+   .putBoolean("lightweight_fold_alpha44",true).commit();
   // Adopt the owner-confirmed neutral background and leave the solid-mask test once.
   if(!prefs.getBoolean("neutral_blur_358_alpha15",false))prefs.edit()
    .putBoolean("notification_blur_adjusted",false).putBoolean("notification_blur_solid_mask",false)
@@ -31,7 +39,7 @@ public final class DuoApplication extends Application {
   // Owner-requested 3.5.1 upgrade: apply only these two values once.
   // Runs before activities/services read their settings; later edits persist.
   if(!prefs.getBoolean("stretch_glass_defaults_351",false)){
-   prefs.edit().putFloat("end_stretch",1.25f).putFloat("intensity",.4f)
+   prefs.edit().putFloat("end_stretch",1.25f).putFloat("intensity",RenderQuality.DEFAULT_GLASS)
     .putBoolean("stretch_glass_defaults_351",true).apply();
   }
   // Owner-approved stable 3.5.4: select Smooth once on install/upgrade, then preserve choices.
@@ -61,12 +69,11 @@ public final class DuoApplication extends Application {
   if(!prefs.getBoolean("live_screen_default_353_27",false))prefs.edit()
    .putBoolean("dual",false).putBoolean("cover_preview",true)
    .putBoolean("live_screen_default_353_27",true).commit();
-  // Screenshot mode stays unavailable until explicitly unlocked with the 10s gesture.
-  ScreenshotModeAccess.enforce(prefs);
-  // Split legacy direction-only styles into independent appearance and behavior.
-  String oldMode=prefs.getString("animation_mode",AnimationModePolicy.DEFAULT);
-  prefs.edit().putString("animation_behavior",AnimationModePolicy.initialBehavior(prefs.getString("animation_behavior",null),oldMode))
-   .putString("animation_mode",AnimationModePolicy.style(oldMode)).commit();
+  // Duo is the default once on upgrade; subsequent explicit mode choices persist.
+  FoldingModeSettings.initialize(prefs,screenshotMode);
+  GlassEffectSettings.initialize(prefs);
+  // Retire old appearance presets while preserving direction and glass/gyro settings.
+  AnimationModePolicy.initialize(prefs);
   // Endpoint cover-up experiments are parked; clear legacy values as well as gating execution.
   if(prefs.getBoolean("incoming_app_hold",true)||prefs.getBoolean("screenshot_endpoint_fade",false))
    prefs.edit().putBoolean("incoming_app_hold",false).putBoolean("screenshot_endpoint_fade",false).commit();

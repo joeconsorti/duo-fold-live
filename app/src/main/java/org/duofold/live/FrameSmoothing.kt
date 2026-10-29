@@ -7,6 +7,8 @@ internal object FrameSmoothing {
  const val FAST_MS=30f
  const val DEFAULT_MS=SMOOTH_MS
  fun sanitize(value:Float)=if(value.isFinite())value.coerceIn(12f,120f) else DEFAULT_MS
+ fun start(current:Float,target:Float,inner:Boolean,windowReveal:Boolean,startupEasing:Boolean):Float =
+  if(!current.isFinite()&&!inner&&target<=12f&&windowReveal&&startupEasing)0f else current
  fun step(current:Float,target:Float,dtMs:Float,smoothingMs:Float=DEFAULT_MS):Float {
   if(!target.isFinite())return current
   val goal=target.coerceIn(0f,180f)

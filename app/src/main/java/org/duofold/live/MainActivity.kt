@@ -63,30 +63,20 @@ class MainActivity:ComponentActivity(){
     val prefs=remember{getSharedPreferences("standalone",0)}
     val scope=rememberCoroutineScope()
     var enabled by remember{mutableStateOf(prefs.getBoolean("enabled",false))}
-    var mode by remember{mutableStateOf(AnimationModePolicy.sanitize(prefs.getString("animation_mode",AnimationModePolicy.DEFAULT)))}
     var behavior by remember{mutableStateOf(AnimationModePolicy.behavior(prefs.getString("animation_behavior",AnimationModePolicy.BOTH)))}
     var motionGlass by remember{mutableStateOf(prefs.getBoolean("motion_glass",true))}
     var motionCoverGlass by remember{mutableStateOf(prefs.getBoolean("motion_glass_cover_enabled",false))}
-    var motionInvert by remember{mutableStateOf(prefs.getBoolean("motion_glass_invert",false))}
     val legacyMotionStrength=remember{MotionGlassMath.safe(prefs.getFloat("motion_glass_projection_strength",1f),1f,0f,2f)}
     var motionCoverStrength by remember{mutableStateOf(MotionGlassMath.safe(prefs.getFloat("motion_glass_cover_strength",legacyMotionStrength),legacyMotionStrength,0f,2f))}
     var motionInnerStrength by remember{mutableStateOf(MotionGlassMath.safe(prefs.getFloat("motion_glass_inner_strength",legacyMotionStrength),legacyMotionStrength,0f,2f))}
     var motionSmoothing by remember{mutableStateOf(prefs.getFloat("motion_glass_smoothing",90f))}
-    var legacy by remember{mutableStateOf(false)}
     var supportBanner by remember{mutableStateOf(false)}
     var developer by remember{mutableStateOf(false)}
     val developerAnchor=remember{BringIntoViewRequester()}
-    var animationStyle by remember{mutableStateOf(prefs.getString("animation_style","duo") ?: "duo")}
     var liveMirror by remember{mutableStateOf(prefs.getBoolean("cover_preview",true))}
-    var debug by remember{mutableStateOf(prefs.getBoolean("debug_mode",false))}
-    var screenshotUnlocked by remember{mutableStateOf(ScreenshotModeAccess.unlocked(prefs))}
-    var screenshotNotice by remember{mutableStateOf(false)}
     val baseViewConfiguration=LocalViewConfiguration.current
-    val screenshotViewConfiguration=remember(baseViewConfiguration){object:ViewConfiguration by baseViewConfiguration{override val longPressTimeoutMillis=ScreenshotModeAccess.HOLD_MS}}
-    var dual by remember{mutableStateOf(prefs.getBoolean("dual",false))}
+    var screenshotMode by remember{mutableStateOf(FoldingModeSettings.screenshot(prefs))}
     var jitterProtection by remember{mutableStateOf(prefs.getBoolean("closed_hinge_jitter_protection",true))}
-    var closingAppReturn by remember{mutableStateOf(prefs.getBoolean("closing_app_return",false))}
-    var screenshotStartup by remember{mutableStateOf(prefs.getBoolean("screenshot_camera_startup",false))}
     var advanced by remember{mutableStateOf(false)}
     LaunchedEffect(developerShortcut){
      if(developerShortcut>0){advanced=true;developer=true;withFrameNanos{};withFrameNanos{};developerAnchor.bringIntoView(Rect(0f,0f,1f,resources.displayMetrics.heightPixels*.75f))}
@@ -96,7 +86,7 @@ class MainActivity:ComponentActivity(){
     var fadeSmoothing by remember{mutableFloatStateOf(FadeSettings.smoothing(prefs.getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING)))}
     var handoffAngle by remember{mutableFloatStateOf(HandoffSettings.angle(prefs.getFloat("handoff_angle",HandoffSettings.DEFAULT)))}
     var fadeGradualness by remember{mutableFloatStateOf(FadeSettings.gradualness(prefs.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS)))}
-    var fullResolution by remember{mutableStateOf(prefs.getBoolean("full_resolution_glass",false))}
+    var effectResolution by remember{mutableIntStateOf(GlassEffectSettings.resolution(prefs))}
     var antialias by remember{mutableStateOf(prefs.getBoolean("antialias_enabled",true))}
     var earlyStretch by remember{mutableFloatStateOf(prefs.getFloat("early_stretch",2.7f).let{if(it.isFinite())it.coerceIn(0f,3f)/3f else .9f})}
     var endStretch by remember{mutableFloatStateOf(prefs.getFloat("end_stretch",1.25f).let{if(it.isFinite())it.coerceIn(.8f,1.5f) else 1.25f})}
@@ -112,10 +102,10 @@ class MainActivity:ComponentActivity(){
     var antialiasMode by remember{mutableIntStateOf(RenderQuality.aaMode(prefs.getInt("antialias_method_v2",0)))}
     var antialiasStrength by remember{mutableFloatStateOf(RenderQuality.antialias(prefs.getFloat("antialias_strength",.35f)))}
     var contentFps by remember{mutableIntStateOf(RenderQuality.fps(prefs.getInt("content_fps",120)))}
-    var blurStrength by remember{mutableFloatStateOf(RenderQuality.blur(prefs.getFloat("blur_strength",.3f)))}
+    var blurStrength by remember{mutableFloatStateOf(RenderQuality.blur(prefs.getFloat("blur_strength",RenderQuality.DEFAULT_BLUR)))}
     var frostedReflection by remember{mutableStateOf(prefs.getBoolean("frosted_reflection",true))}
     var seamOffset by remember{mutableFloatStateOf(RenderQuality.seam(prefs.getFloat("seam_offset",.07f)))}
-    var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",.4f))}
+    var intensity by remember{mutableFloatStateOf(prefs.getFloat("intensity",RenderQuality.DEFAULT_GLASS))}
     var closedThreshold by remember{mutableFloatStateOf(FoldThreshold.sanitizeClosed(prefs.getFloat("closed_threshold",2f)))}
     var threshold by remember{mutableFloatStateOf(FoldThreshold.sanitize(prefs.getFloat("open_threshold",172f)))}
     var status by remember{mutableStateOf("Connecting…")}
@@ -126,28 +116,19 @@ class MainActivity:ComponentActivity(){
     var exporting by remember{mutableStateOf(false)}
     LaunchedEffect(Unit){while(true){enabled=prefs.getBoolean("enabled",false);status=LiveAngles.status+"\n"+LiveAngles.handoffStatus;if(!supportBanner && SupportPrompts.inAppDue(this@MainActivity)){supportBanner=true;SupportPrompts.seenInApp(this@MainActivity)};delay(600)}}
     fun restart(){startBackground();StandaloneService.instance?.restart()}
-    fun selectMode(value:String){
-     mode=value;animationStyle="duo";debug=false
-     prefs.edit().putString("animation_mode",value).putString("animation_style","duo").putBoolean("debug_mode",false).apply();restart()
-    }
     fun selectBehavior(value:String){
      behavior=value;prefs.edit().putString("animation_behavior",value).apply();restart()
     }
     fun selectFoldingMode(shot:Boolean){
-     if(shot && !ScreenshotModeAccess.unlocked(prefs)){screenshotNotice=true;return}
-     dual=shot;liveMirror=!shot
-     val edit=prefs.edit().putBoolean("dual",shot).putBoolean("cover_preview",!shot)
-     if(shot){screenshotStartup=true;closingAppReturn=true;jitterProtection=true
-      edit.putBoolean("screenshot_camera_startup",true).putBoolean("closing_app_return",true).putBoolean("incoming_app_hold",false).putBoolean("screenshot_endpoint_fade",false).putBoolean("closed_hinge_jitter_protection",true)
-     }
-     edit.apply();restart()
+     FoldingModeSettings.select(prefs,shot)
+     screenshotMode=shot;liveMirror=!shot
+     restart()
     }
     fun booleanSetting(key:String,value:Boolean){prefs.edit().putBoolean(key,value).apply();restart()}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)scope.launch{
      photoStatus="Preparing image…"
      runCatching{withContext(Dispatchers.IO){WallpaperFiles.savePhoto(this@MainActivity,uri)}}.onSuccess{photo=it;photoStatus="Photo saved as your selection. Not applied to Home yet."}.onFailure{photoStatus="Could not read image: ${it.message}"}
     }}
-    if(screenshotNotice)AlertDialog(onDismissRequest={screenshotNotice=false},title={Text("Coming soon")},text={Text("Screenshot Mode is in the final stages of active development.")},confirmButton={TextButton(onClick={screenshotNotice=false}){Text("OK")}})
     Surface(Modifier.fillMaxSize()){
      Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal=maxOf(20, (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp-720)/2).dp,vertical=24.dp),verticalArrangement=Arrangement.spacedBy(20.dp)){
       Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xff263d5b),Color(0xff252139))),RoundedCornerShape(32.dp)).padding(26.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
@@ -188,15 +169,19 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Make it yours",""){
        WallpaperInvitation{startActivity(Intent(this@MainActivity,WallpaperStudioActivity::class.java))}
       }
-      SettingsCard("Folding Animation Style","Choose how your Fold moves between screens."){
-       listOf("windowed" to "Inspired by iPhone Duo with even more windowed glass. Default.","duo_classic" to "1-for-1 recreation of the iPhone Duo animation, with a gentler stretch and stronger blur.","plain_fade" to "").forEach{(id,description)->
-        Surface(onClick={selectMode(id)},shape=RoundedCornerShape(20.dp),color=if(mode==id)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,modifier=Modifier.fillMaxWidth()){
+      SettingsCard("Folding Animation Style","Windowed Glass with live content or screenshots. Change styles while fully folded or fully open."){
+       listOf(true to FoldingModeSettings.DUO_LABEL,false to FoldingModeSettings.LIVE_LABEL).forEach{(shot,label)->
+        Surface(onClick={selectFoldingMode(shot)},modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp),color=if(screenshotMode==shot)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant){
          Row(Modifier.padding(14.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
-          RadioButton(selected=mode==id,onClick={selectMode(id)})
-          Column(Modifier.weight(1f).padding(start=8.dp)){Text(AnimationModePolicy.label(id),style=MaterialTheme.typography.titleMedium);if(description.isNotEmpty())Text(description,style=MaterialTheme.typography.bodySmall)}
+          RadioButton(selected=screenshotMode==shot,onClick=null)
+          Column(Modifier.weight(1f).padding(start=8.dp)){
+           Text(label,style=MaterialTheme.typography.titleMedium)
+           Text(if(shot)"Default. Animates app snapshots with Windowed Glass and your saved glass settings, then reveals the app on the selected screen." else "Animates live content as you fold between screens.",style=MaterialTheme.typography.bodySmall)
+          }
          }
         }
        }
+       Text("Hold the hinge still for 1.25 seconds to ease back to a usable screen: below 90° uses the cover, above 90° uses the inner screen, and exactly 90° keeps the active screen. Small hinge jitter is ignored; move 5° to resume.",style=MaterialTheme.typography.bodySmall)
       }
       SettingsCard("Animation Behavior","Choose when your selected animation is used."){
        listOf(AnimationModePolicy.BOTH,"fold_only","unfold_only").forEach{id->
@@ -207,25 +192,6 @@ class MainActivity:ComponentActivity(){
          }
         }
        }
-      }
-      SettingsCard("Folding Mode","Choose how content moves between screens. Your animation style stays selected."){
-       listOf(false to "Live Screen",true to "Screenshot Mode").forEach{(shot,label)->
-        CompositionLocalProvider(LocalViewConfiguration provides screenshotViewConfiguration){
-        Surface(modifier=Modifier.fillMaxWidth().combinedClickable(onClick={selectFoldingMode(shot)},onLongClick=if(shot){{
-         prefs.edit().putBoolean(ScreenshotModeAccess.KEY,true).apply();screenshotUnlocked=true
-         selectFoldingMode(true)
-         android.widget.Toast.makeText(this@MainActivity,"Screenshot Mode enabled for testing",android.widget.Toast.LENGTH_SHORT).show()
-        }}else null),shape=RoundedCornerShape(20.dp),color=if(dual==shot)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant){
-         Row(Modifier.padding(14.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
-          RadioButton(selected=dual==shot,onClick=null)
-          Column(Modifier.weight(1f).padding(start=8.dp)){
-           Text(label,style=MaterialTheme.typography.titleMedium)
-           Text(if(shot && !screenshotUnlocked)"Coming soon · In active development" else if(shot)"Experimental testing mode. Closer to the iPhone Duo approach: a frozen outgoing screen with live content on the incoming screen. Samsung’s final display switch may briefly go black." else "A custom live-screen experience built for Z Fold 8, unique to Duo Fold Live. A black transition midway through the fold masks Samsung’s display-switch limitation.",style=MaterialTheme.typography.bodySmall)
-          }
-         }
-        }
-       }
-      }
       }
       SettingsCard("Auto-rotate recovery","Screen stuck in portrait or landscape?"){
         Text("Turn off Enable animation above, then tap Repair auto-rotate. This enables auto-rotate on both screens. Requires authorized Shizuku or root.",style=MaterialTheme.typography.bodySmall)
@@ -240,8 +206,7 @@ class MainActivity:ComponentActivity(){
         if(rotationRepair.isNotEmpty())Text(rotationRepair,style=MaterialTheme.typography.bodySmall)
       }
       ShizukuHelp()
-      if(mode=="plain_fade")PlainFadeControls(prefs){restart()}
-      SettingsCard("Fine-tune your animation","Duo Classic uses its own stronger glass and blur preset. Other styles use your saved glass settings."){
+      SettingsCard("Fine-tune your animation","Glass, blur and motion settings apply to both Live Screen Mode (Legacy) and Duo Mode."){
 
        InfoLabel("Motion smoothness · ${smoothing.roundToInt()} ms","Higher values smooth hinge motion but add delay. This does not increase FPS. Default: Smooth (120 ms).")
        Slider(value=smoothing,onValueChange={smoothing=it},valueRange=12f..120f,onValueChangeFinished={prefs.edit().putFloat("smoothing_ms",smoothing).apply();restart()})
@@ -258,23 +223,24 @@ class MainActivity:ComponentActivity(){
         }
        }
        TextButton(onClick={smoothing=FrameSmoothing.DEFAULT_MS;prefs.edit().putFloat("smoothing_ms",smoothing).apply();restart()}){Text("Reset smoothness")}
-       InfoLabel("Blur amount · ${(blurStrength*100).roundToInt()}%","Softens pixelation, especially on the inner screen. Default: 30%.")
+       InfoLabel("Blur amount · ${(blurStrength*100).roundToInt()}%","Softens pixelation, especially on the inner screen. Default: 150%.")
        Slider(value=blurStrength,onValueChange={blurStrength=it},valueRange=0f..3f,onValueChangeFinished={prefs.edit().putFloat("blur_strength",blurStrength).apply();restart()})
 
-       TextButton(onClick={blurStrength=.3f;prefs.edit().putFloat("blur_strength",.3f).apply();restart()}){Text("Reset blur amount")}
-       InfoLabel("Glass strength · ${(intensity*100).roundToInt()}%","Controls the glass shading intensity, independently of blur. Default: 100%.")
+       TextButton(onClick={blurStrength=RenderQuality.DEFAULT_BLUR;prefs.edit().putFloat("blur_strength",RenderQuality.DEFAULT_BLUR).apply();restart()}){Text("Reset blur amount")}
+       InfoLabel("Glass strength · ${(intensity*100).roundToInt()}%","Controls the glass shading intensity, independently of blur. Default: 40% in both modes.")
        Slider(value=intensity,onValueChange={intensity=it},valueRange=.3f..1.5f,onValueChangeFinished={prefs.edit().putFloat("intensity",intensity).apply();restart()})
-       TextButton(onClick={intensity=.4f;prefs.edit().putFloat("intensity",.4f).apply();restart()}){Text("Reset glass strength")}
-       Toggle("Full-resolution glass · higher GPU cost",fullResolution,help="Off uses half-resolution rendering to reduce GPU work. Content and handoff angles are unchanged."){fullResolution=it;booleanSetting("full_resolution_glass",it)}
-       Toggle("Inner screen motion glass",motionGlass,help="Tilt your phone to change the glass perspective on the inner display. Live Screen only."){motionGlass=it;prefs.edit().putBoolean("motion_glass",it).apply();if(!it && !motionCoverGlass)MotionGlass.stop()}
+       TextButton(onClick={intensity=RenderQuality.DEFAULT_GLASS;prefs.edit().putFloat("intensity",RenderQuality.DEFAULT_GLASS).apply();restart()}){Text("Reset glass strength")}
+       InfoLabel("Glass / effect resolution · $effectResolution%","Shared by both modes. Default: 25% of each screen dimension, matching Duo Mode's existing resolution. Higher values add detail and GPU work. Advanced 4× Supersampling doubles the selected dimensions.")
+       Slider(value=effectResolution.toFloat(),onValueChange={effectResolution=((it/25f).roundToInt()*25).coerceIn(25,100)},valueRange=25f..100f,steps=2,onValueChangeFinished={prefs.edit().putInt(GlassEffectSettings.RESOLUTION_KEY,effectResolution).apply();restart()})
+       Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){listOf(25,50,75,100).forEach{Text("$it%",style=MaterialTheme.typography.bodySmall)}}
+       Toggle("Inner screen motion glass",motionGlass,help="Tilt your phone to change the glass perspective on the inner display. Uses the same controls in Live Screen Mode (Legacy) and Duo Mode."){motionGlass=it;prefs.edit().putBoolean("motion_glass",it).apply();if(!it && !motionCoverGlass)MotionGlass.stop()}
        if(motionGlass){
-        Toggle("Reverse direction",motionInvert){motionInvert=it;prefs.edit().putBoolean("motion_glass_invert",it).apply();MotionGlass.recenter()}
         Text("Inner screen sensitivity · ${(motionInnerStrength*100).roundToInt()}%")
         Slider(value=motionInnerStrength,onValueChange={motionInnerStrength=it},valueRange=0f..2f,onValueChangeFinished={prefs.edit().putFloat("motion_glass_inner_strength",motionInnerStrength).apply()})
         Text("Smoothing · ${motionSmoothing.roundToInt()} ms")
         Slider(value=motionSmoothing,onValueChange={motionSmoothing=it},valueRange=0f..300f,onValueChangeFinished={prefs.edit().putFloat("motion_glass_smoothing",motionSmoothing).apply()})
         OutlinedButton(onClick={MotionGlass.recenter()}){Text("Recenter")}
-        TextButton(onClick={motionInnerStrength=1f;motionSmoothing=90f;motionInvert=false;prefs.edit().putFloat("motion_glass_inner_strength",1f).putFloat("motion_glass_smoothing",90f).putBoolean("motion_glass_invert",false).apply();MotionGlass.recenter()}){Text("Reset motion settings")}
+        TextButton(onClick={motionInnerStrength=1f;motionSmoothing=90f;prefs.edit().putFloat("motion_glass_inner_strength",1f).putFloat("motion_glass_smoothing",90f).apply();MotionGlass.recenter()}){Text("Reset motion settings")}
        }
 
        Text("Fully open at ${threshold.roundToInt()}°. Adjust this in Advanced.",style=MaterialTheme.typography.bodySmall)
@@ -301,7 +267,7 @@ class MainActivity:ComponentActivity(){
       SettingsCard("Advanced","Display thresholds, fold behavior, and diagnostics."){
        TextButton(onClick={advanced=!advanced}){Text(if(advanced)"Hide advanced settings" else "Show advanced settings")}
        if(advanced){
-        InfoLabel("Handoff angle · ${handoffAngle.roundToInt()}°","Cover-to-inner switch angle. Default: 85°; range: 75–115°. Closing uses 4° less to avoid repeated switching. Applies to live cover preview and the screenshot window-first primary switch; legacy screenshot and continuity tests use their own routing.")
+        InfoLabel("Handoff angle · ${handoffAngle.roundToInt()}°","Default: 85°; range: 75–115°. Coordinated mode uses this as the center of a 40° hold band (opening +20°, closing −20°). Other applicable modes use it as the opening angle with closing 4° lower. Applies to live cover preview and the screenshot window-first primary switch; legacy screenshot and continuity tests use their own routing.")
         Slider(value=handoffAngle,onValueChange={handoffAngle=it.roundToInt().toFloat()},valueRange=75f..115f,steps=39,onValueChangeFinished={prefs.edit().putFloat("handoff_angle",handoffAngle).apply();restart()})
         TextButton(onClick={handoffAngle=HandoffSettings.DEFAULT;prefs.edit().putFloat("handoff_angle",handoffAngle).apply();restart()}){Text("Reset handoff angle")}
        InfoLabel("Black fade smoothing · ${fadeSmoothing.roundToInt()} ms","Smooths the black fade as the hinge moves. Higher values add more smoothing.")
@@ -352,7 +318,7 @@ class MainActivity:ComponentActivity(){
 
          Toggle("Startup easing",innerStartupEasing,help="Softens the inner animation near fully open, in both directions."){innerStartupEasing=it;booleanSetting("inner_startup_easing",it)}
 
-         InfoLabel("Early stretch · ${(innerEarlyStretch*100).roundToInt()}%","Changes how early inner content stretches. Independent of the cover and reflected preview. Default: 30%.")
+         InfoLabel("Early stretch · ${(innerEarlyStretch*100).roundToInt()}%","Changes how early inner content stretches. Independent of the cover and reflected preview. Default: 150%.")
          Slider(value=innerEarlyStretch,onValueChange={innerEarlyStretch=it},valueRange=0f..1f,onValueChangeFinished={prefs.edit().putFloat("inner_early_stretch",innerEarlyStretch*3f).apply();restart()})
 
          TextButton(onClick={innerEarlyStretch=.3f;prefs.edit().putFloat("inner_early_stretch",.9f).apply();restart()}){Text("Reset early stretch")}
@@ -401,16 +367,7 @@ class MainActivity:ComponentActivity(){
         Text("Shortcut: tap with four fingers anywhere in the app.",style=MaterialTheme.typography.bodySmall)
         if(developer){
          SettingsCard("Developer settings","Diagnostics and experimental controls. Normal use does not require these."){
-        if(!BuildConfig.IS_PLAY){
-         var liveB8 by remember { mutableStateOf(prefs.getBoolean("live_b8_enabled",false)) }
-         Toggle("Live B8 handoff (experimental)",liveB8,help="Automatic hinge-driven app and primary-display handoff. Uses the tested B8 mirror and brightness protection. Keep Enable animation ON. Live Screen mode only."){
-          liveB8=it
-          if(it){dual=false;prefs.edit().putBoolean("dual",false).putBoolean("live_b8_enabled",true).apply()}else prefs.edit().putBoolean("live_b8_enabled",false).apply()
-         }
-         if(liveB8)Text("Uses your handoff angle with the existing 4° closing hysteresis. No app picker, countdown, or manual test. Diagnostics appear in the status report. Fullscreen apps, including Duo, are selected before shielding. Home/split-screen transfers are skipped with a reason in the report. Severe thermal status pauses the experiment.",style=MaterialTheme.typography.bodySmall)
-         HorizontalDivider()
-        }
-        Toggle("Cover screen motion glass (experimental)",motionCoverGlass,help="Off by default. Adds tilt response to the cover display independently of inner motion glass. Live Screen only."){motionCoverGlass=it;prefs.edit().putBoolean("motion_glass_cover_enabled",it).apply();if(!it && !motionGlass)MotionGlass.stop()}
+        Toggle("Cover screen motion glass (experimental)",motionCoverGlass,help="Off by default. Adds tilt response to the cover display independently of inner motion glass, in both styles."){motionCoverGlass=it;prefs.edit().putBoolean("motion_glass_cover_enabled",it).apply();if(!it && !motionGlass)MotionGlass.stop()}
         if(motionCoverGlass){
         Text("Cover screen sensitivity · ${(motionCoverStrength*100).roundToInt()}%")
         Slider(value=motionCoverStrength,onValueChange={motionCoverStrength=it},valueRange=0f..2f,onValueChangeFinished={prefs.edit().putFloat("motion_glass_cover_strength",motionCoverStrength).apply()})
@@ -441,38 +398,34 @@ class MainActivity:ComponentActivity(){
         OutlinedButton(onClick={blurMeter=GlassRenderOptions.blurMeters()}){Text("Refresh retained blur meters")}
         Text(blurMeter,style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={val report=GlassRenderOptions.report(this@MainActivity)+"\nSelected BG adjustment=$blurAdjusted; solid mask=$blurSolid; radius=$systemRadius screen px";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Blur diagnostics",report))}){Text("Copy blur diagnostics")}
-        Text("Live Screen only. Normal remains the default. Both Samsung options use a wider moving sweep with a soft feathered edge: cover right edge across the screen; inner left edge toward the midpoint, keeping the right half clear. Notification blur + stretch retains projection. Android may suppress blur. These are visual experiments, not a proven speed improvement.",style=MaterialTheme.typography.bodySmall)
+        Text("Live Screen Mode (Legacy) only. Normal remains the default. Both Samsung options use a wider moving sweep with a soft feathered edge: cover right edge across the screen; inner left edge toward the midpoint, keeping the right half clear. Notification blur + stretch retains projection. Android may suppress blur. These are visual experiments, not a proven speed improvement.",style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
-        TextButton(onClick={legacy=!legacy}){Text(if(legacy)"Hide legacy & experimental visuals" else "Legacy & experimental visuals")}
-        if(legacy){
-         Text("Older visuals · optional",style=MaterialTheme.typography.titleSmall)
-         OutlinedButton(onClick={animationStyle="classic";prefs.edit().putString("animation_style","classic").apply();restart()}){Text("Use legacy Classic Glass")}
-         Toggle("Classic black shading (debug)",debug){debug=it;booleanSetting("debug_mode",it)}
-         TextButton(onClick={selectMode("windowed")}){Text("Restore Windowed Glass")}
-        }
         OutlinedButton(onClick={startActivity(Intent(this@MainActivity,CameraContinuityActivity::class.java))}){Text("Camera-style continuity test")}
         OutlinedButton(onClick={val report=StandaloneService.instance?.screenshotReport()?:"Accessibility disconnected";getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Screenshot mode test",report));android.widget.Toast.makeText(this@MainActivity,"Screenshot report copied",android.widget.Toast.LENGTH_SHORT).show()}){Text("Copy screenshot mode test report")}
+        Text("Composition image diagnostic",style=MaterialTheme.typography.titleMedium)
+        Text("Off by default. Arm next 6 folds, then return Home and fold normally with animation enabled. Home records the inner display throughout motion and for one second after cleanup, targeting 8 samples per second. The ZIP includes a frame viewer; extract it and open review.html. Missing or slow captures remain labelled gaps. Ordinary app diagnostics keep their existing samples. Images include screen content; inspect before sharing. Arming lasts 10 minutes. Keeps the latest 24 sample folders. Save ZIP to Downloads and attach it from your files.",style=MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick={CompositionDiagnostic.arm(this@MainActivity);android.widget.Toast.makeText(this@MainActivity,"Image diagnostic armed for six folds",android.widget.Toast.LENGTH_SHORT).show()}){Text("Arm next 6 folds")}
+        OutlinedButton(enabled=!exporting,onClick={scope.launch{exporting=true;try{
+         val saved=withContext(Dispatchers.IO){DiagnosticDownloads.save(this@MainActivity,CompositionDiagnostic.archive(this@MainActivity))}
+         android.widget.Toast.makeText(this@MainActivity,"Saved to Downloads/DuoFoldLive: $saved",android.widget.Toast.LENGTH_LONG).show()
+        }catch(e:Exception){android.widget.Toast.makeText(this@MainActivity,"ZIP not saved: ${e.message}",android.widget.Toast.LENGTH_LONG).show()}finally{exporting=false}}}){Text("Save ZIP to Downloads")}
+        OutlinedButton(enabled=!exporting,onClick={scope.launch{exporting=true;try{val intent=withContext(Dispatchers.IO){CompositionDiagnostic.export(this@MainActivity)};startActivity(intent)}catch(e:Exception){android.widget.Toast.makeText(this@MainActivity,e.message,android.widget.Toast.LENGTH_LONG).show()}finally{exporting=false}}}){Text("Share composition images")}
+        TextButton(onClick={CompositionDiagnostic.clear(this@MainActivity)}){Text("Clear composition images")}
         Text("Incoming ghosting diagnostic",style=MaterialTheme.typography.titleMedium)
-        Text("Screenshot Mode only. Choose a test, then fold/unfold in a fullscreen app. Raw capture shows the captured image without distortion. Solid magenta covers the animated region; text should not show through it. Return to Normal animation afterward. Resets when the app process restarts.",style=MaterialTheme.typography.bodySmall)
+        Text("Duo Mode only. Choose a test, then fold/unfold in a fullscreen app. Raw capture shows the captured image without distortion. Solid magenta covers the animated region; text should not show through it. Return to Normal animation afterward. Resets when the app process restarts.",style=MaterialTheme.typography.bodySmall)
         IncomingGhostDiagnostic.labels.forEachIndexed { index,label ->
          OutlinedButton(onClick={IncomingGhostDiagnostic.select(index)}){Text((if(IncomingGhostDiagnostic.mode==index)"✓ " else "")+label)}
         }
         Text("Screen continuity test",style=MaterialTheme.typography.titleMedium)
         Text("Arm, return to Home or the app you want to test, fully close, then unfold within 30 seconds. During the 20-second hold, opening past 98° tries moving real content to the inner display. The inner animation uses the transferred app. Check that content stays visible, with full-size layout, touch and navigation. Folding below 94° returns content; only one transfer per test. Temporarily requests system navigation on the inner display; restores the prior display policy after the test. Samsung may reject Home routing. Exit may still flash. Copy the connection report afterward.",style=MaterialTheme.typography.bodySmall)
-        OutlinedButton(enabled=enabled&&liveMirror&&!dual,onClick={LiveAngles.startContinuityProbe()}){Text("Arm 20-second continuity test")}
+        OutlinedButton(enabled=enabled&&liveMirror&&!screenshotMode,onClick={LiveAngles.startContinuityProbe()}){Text("Arm 20-second continuity test")}
         TextButton(onClick={LiveAngles.cancelContinuityProbe()}){Text("Stop continuity test")}
         Text(LiveAngles.continuityStatus,style=MaterialTheme.typography.bodySmall)
         HorizontalDivider()
-        Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
-        Text("For use with Dual-screen screenshot handoff OFF. Mirrors cover content without its animation. A frosted second copy is already visible on the left. At handoff, the same layout briefly holds, then fades into the inner content without a bright expansion. Screen-switch angles stay unchanged.",style=MaterialTheme.typography.bodySmall)
-        Toggle("Dual-screen screenshot handoff",dual){selectFoldingMode(it)}
-        Text(if(dual)"Active path: dual-screen screenshot handoff" else "Active path: normal handoff. The next two switches are inactive while dual-screen handoff is OFF.",style=MaterialTheme.typography.bodySmall)
-        Toggle("Screenshot window-first startup (experimental)",screenshotStartup){screenshotStartup=it;booleanSetting("screenshot_camera_startup",it)}
-        Text("Screenshot mode keeps the outgoing panel primary until the endpoint. The earlier mid-fold ON-hold experiment is inactive.",style=MaterialTheme.typography.bodySmall)
-        Text("Requires Dual-screen screenshot handoff ON. Diagnostic: commits the outgoing screenshot, then wakes the incoming panel while keeping the outgoing screen on. The selected animation runs over incoming app content. Final native-layout switch may still flash. Maximum hold: 30 seconds. Turn this off to restore the original screenshot path.",style=MaterialTheme.typography.bodySmall)
-        Toggle("Closing app-first return (experimental)",closingAppReturn){closingAppReturn=it;booleanSetting("closing_app_return",it)}
-        Text("Legacy setting, inactive in the current window-first experiment: the selected app returns after the incoming panel becomes primary at the fold endpoint.",style=MaterialTheme.typography.bodySmall)
-        Text("Cover preview is on by default; screenshot handoff is off. Debug changes the shading only.",style=MaterialTheme.typography.bodySmall)
+        if(!screenshotMode){
+         Toggle("Cover preview on inner screen (experimental)",liveMirror){liveMirror=it;booleanSetting("cover_preview",it)}
+         Text("Mirrors cover content during Live Screen Mode (Legacy) transitions, using your saved glass settings.",style=MaterialTheme.typography.bodySmall)
+        }
         Text(GlassFrames.status,style=MaterialTheme.typography.bodySmall)
         Text(HandoffFrames.status,style=MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick={startActivity(Intent(this@MainActivity,WallpaperTestActivity::class.java))}){Text("Photo wallpaper hinge test")}

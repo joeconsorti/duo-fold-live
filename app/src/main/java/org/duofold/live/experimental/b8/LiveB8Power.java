@@ -26,6 +26,12 @@ final class LiveB8Power {
  static String physical(Object o)throws Exception{return String.valueOf(o.getClass().getField("uniqueId").get(o));}
  int primary()throws Exception{Object i=info(0);int w=number(i,"logicalWidth"),h=number(i,"logicalHeight");return Math.min(w,h)/(float)Math.max(w,h)>.7f?1:2;}
  void on()throws Exception{for(int id=0;id<2;id++){held[id]=true;override.invoke(displays,tokens[id],2,id,10000);}}
+ void park()throws Exception{
+  // The selected source is D0. Let its normal power policy run, and stop the
+  // unused panel with a short renewable token lease, not a persistent setting.
+  if(held[0]){override.invoke(displays,tokens[0],0,0,-1);held[0]=false;}
+  held[1]=true;override.invoke(displays,tokens[1],1,1,1000);
+ }
  void request(int primary)throws Exception{
   String name=primary==1?"CONCURRENT_INNER_DEFAULT":"CONCURRENT_OUTER_DEFAULT";int id=-1;
   for(Object s:(List<?>)sc.getMethod("getSupportedDeviceStates").invoke(states))if(name.equals(s.getClass().getMethod("getName").invoke(s)))id=(int)s.getClass().getMethod("getIdentifier").invoke(s);

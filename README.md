@@ -57,27 +57,28 @@ The app guides setup. Samsung’s interactive wallpaper and Shizuku running in A
 
 ## What Duo Fold Live does
 
-**Your actual screen becomes part of the folding animation.** Duo follows the hinge as you move it, projecting your content through glass, reflections, blur, and a softened display handoff. The default path uses live content, so supported content can keep moving behind the effect.
+**Your actual screen becomes part of the folding animation.** Duo follows the hinge as you move it, projecting your content through glass, reflections, blur, and a softened display handoff. Duo Mode animates app snapshots; Live Screen Mode (Legacy) can keep supported content moving behind the effect.
 
-### Three animation styles
+### Folding Animation Style — alpha.65 reconstructed pre-release
 
-- **Windowed Glass:** the default, iPhone Duo-inspired experience with a live cover preview, reflected left side, progressive glass, and a black fade around the screen switch.
-- **Duo Classic:** 1-for-1 recreation of the iPhone Duo animation, with a gentler stretch and stronger blur.
-- **Plain Fade**
+The top selector offers **Duo Mode** (the renamed Screenshot Mode, default) and
+**Live Screen Mode (Legacy)**. Both use **Windowed Glass**. Duo is selected once
+on install/upgrade; any later explicit mode selection survives restarts.
 
-### Independent animation behavior and folding mode
+Duo Mode uses coordinated app snapshots, faster startup and shared gyro controls.
+This pre-release also includes workspace wallpaper and pane visibility fixes. See
+[alpha.65 release notes](docs/3.5.9-alpha.65-reconstructed-CHANGELOG.md).
 
-Select **Fold & Unfold** (default), **Fold-Only**, or **Unfold-Only** independently of your animation style. The separate **Folding Mode** section selects the content route: **Live Screen** is the normal default; **Screenshot Mode** is still in development.
+### Independent animation behavior
 
-### Plain Fade controls
-
-A translating black wipe travels across the cover screen or from the inner edge toward the hinge, with screen dimming underneath. The inner display stays black before handoff; Plain Fade never shows the cover preview or its mirrored copy.
-
-Cover and inner controls are independent: start/end position, start/end motion timing, timing exponent, edge softness, wipe darkness, start/end brightness, and dimming exponent. Settings save when a slider is released. Brightness adjusts the animation’s dimming overlay, not your phone’s system brightness. Each panel has a reset button; **Copy Plain Fade settings** makes sharing your preferred values easy.
+Select **Fold & Unfold** (default), **Fold-Only**, or **Unfold-Only** independently
+of Duo Mode / Live Screen Mode (Legacy). Both modes settle to a usable screen after a
+1.25-second hold: cover below 90°, inner above 90°, current screen at exactly 90°.
+Move 5° to resume. The hold and jitter behavior are unchanged in this candidate.
 
 ### A cover-screen preview inside the inner display
 
-Available in Windowed Glass and Duo Classic; disabled for Plain Fade.
+Available in Live Screen Mode (Legacy). Duo Mode uses its own coordinated panel snapshots.
 
 - **Clean right-side preview:** see the cover content without its animation layered into the mirror. The right preview is committed before the left reflection starts.
 - **Two left-side appearances:** **Frosted Reflection** is the default blurred, horizontally mirrored image. **Animated Reflection** mirrors the cover animation for a more literal glass-window effect. Select either in Advanced settings.
@@ -86,13 +87,13 @@ Available in Windowed Glass and Duo Classic; disabled for Plain Fade.
 
 ### Tune the look and motion
 
-- **V2 Window Reveal · experimental** is the default projection, with Original available for comparison. Cover early stretch defaults to 90%, end stretch to 125% (80–150%), and vertical compression to 90%. Separate inner controls default to 30% early stretch, 60% end stretch (0–150%), and 40% vertical compression. Both vertical sliders range from 0–200%; 100% retains the original perspective. Startup easing is on and toggleable. Duo Classic applies its own stretch, blur/glass, and stronger inner-compression tuning.
+- **V2 Window Reveal · experimental** is the default projection, with Original available for comparison. Cover early stretch defaults to 90%, end stretch to 125% (80–150%), and vertical compression to 90%. Separate inner controls default to 30% early stretch, 60% end stretch (0–150%), and 40% vertical compression. Both vertical sliders range from 0–200%; 100% retains the original perspective. Startup easing is on and toggleable.
 
-- **Motion smoothness, blur amount, and glass strength** have separate controls and reset buttons. Defaults: Smooth (120 ms), 30%, and 100% respectively. Fast selects 30 ms; the slider also supports custom smoothness.
+- **Motion smoothness, blur amount, and glass strength** have separate controls and reset buttons. Shared defaults in both modes: Smooth (120 ms), 150% blur, and 40% glass strength. Saved adjustments carry between modes. Fast selects 30 ms; the slider also supports custom smoothness.
 - **Black fade smoothing and gradualness** let you shape the transition around Samsung’s display switch.
 - **Manual live-content targets:** 120 FPS experimental by default, or 60 FPS for lower GPU cost. No automatic switching based on the display’s reported refresh rate. These are targets, not guaranteed frame rates.
 - **Three anti-aliasing methods** in Advanced: **Lightweight Texture Filtering** (default), **Edge-Adaptive Smoothing**, and **4× Supersampling**. AA can be disabled or adjusted within a narrow strength range, independently of blur and glass strength. The two heavier methods remain experimental.
-- **Optional full-resolution glass** for users who prefer more rendering detail; half-resolution glass is the baseline to reduce GPU work.
+- **Glass / effect resolution:** 25% (default), 50%, 75%, or 100% of each screen dimension, shared between both modes. The default matches the prior screenshot renderer. Advanced 4× Supersampling still doubles the selected dimensions; higher settings increase GPU work.
 - **Adjustable hinge thresholds:** choose when the effect treats the phone as fully open or closed. Defaults: 172° open and 2° closed.
 
 ### Your wallpaper, your launcher, your settings
@@ -107,7 +108,7 @@ Available in Windowed Glass and Duo Classic; disabled for Plain Fade.
 
 ### Experiments and useful diagnostics
 
-- **Screenshot Mode — coming soon:** normal selection displays a development notice. Holding its option for 10 seconds unlocks it for local testing. It is not the recommended everyday route.
+- **Duo Mode candidate:** the coordinated screenshot renderer is the default on install/upgrade, with Live Screen Mode (Legacy) still available. Later selections persist.
 - **Photo wallpaper hinge test:** an opt-in Developer-settings experiment with restoration controls. Applying the test wallpaper stopped fresh hinge readings in device testing; it does not fix custom wallpaper unlock flashes. Its wallpaper service can also appear in Samsung’s wallpaper picker.
 - **Copyable status reports** include angle-feed latency, measured capture throughput, renderer submission rates, preview/handoff events, AA settings, and 24-hour app-process health samples. Separate wallpaper reports help investigate unlock flashes.
 - **Free and open source:** all features are available without donating. Optional support reminders can be snoozed or permanently dismissed.

@@ -1,0 +1,1 @@
+package org.duofold.live;import android.content.Context;public class StandaloneService extends Context{public static final Companion Companion=new Companion();public static class Companion{public StandaloneService getInstance(){return new StandaloneService();}}}

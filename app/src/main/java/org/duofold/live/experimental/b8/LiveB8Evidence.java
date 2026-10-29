@@ -19,7 +19,7 @@ final class LiveB8Evidence {
    StringBuilder out=new StringBuilder("Recovery evidence: bootId="+boot+" shellPid="+android.os.Process.myPid()+" elapsed="+SystemClock.elapsedRealtime()+"\n");
    if(previous!=null)out.append("Previous session ").append(previous.getName()).append(" (may precede this version):\n").append(read(new File(previous,"live-journal.txt"),16000));
    out.append("\nBoot reason: ").append(command(root,"getprop","sys.boot.reason"));
-   out.append("\nRecent crash buffer (may be older/unrelated; absence is not proof):\n").append(command(root,"logcat","-b","crash","-d","-t","120"));
+   out.append("\nRecent crash buffer (may be older/unrelated; absence is not proof):\n").append(command(root,"logcat","-b","crash","-d"));
    recovered=out.toString();
   },"duo-b8-recovery");t.setDaemon(true);t.start();
  }
@@ -43,8 +43,8 @@ final class LiveB8Evidence {
   try{
    temp=File.createTempFile("duo-b8-evidence-",".tmp",root);android.system.Os.chmod(temp.getPath(),0600);
    process=new ProcessBuilder(args).redirectErrorStream(true).redirectOutput(temp).start();
-   if(!process.waitFor(800,TimeUnit.MILLISECONDS)){process.destroyForcibly();process.waitFor(200,TimeUnit.MILLISECONDS);return "Timed out: "+args[0];}
-   return read(temp,16000);
+   if(!process.waitFor(800,TimeUnit.MILLISECONDS)){process.destroyForcibly();process.waitFor(200,TimeUnit.MILLISECONDS);return "Timed out: "+args[0]+"; partial output follows:\n"+read(temp,256*1024);}
+   return read(temp,256*1024);
   }catch(Exception e){return "Unavailable: "+e;}
   finally{if(process!=null&&process.isAlive())process.destroyForcibly();if(temp!=null)temp.delete();}
  }

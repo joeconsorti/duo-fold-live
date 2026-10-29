@@ -8,21 +8,28 @@ import java.util.*;
 import java.util.concurrent.*;
 /** B8 only: bounded physical brightness reassertion. No settings or global freeze flag. */
 final class LiveB8Brightness {
+ interface SampleReader {Map<Long,BrightnessSamples.Sample> read(String phase,long timeoutMs)throws Exception;}
+ interface Pause {void sleep(long ms)throws InterruptedException;}
+ private final SampleReader source;private final Pause pause;
  private volatile long holdUntil,holdStart;private final File dir;private volatile boolean stopped;private Thread worker;private volatile boolean preparing;private final Map<Long,BrightnessSamples.Sample> prepared=new HashMap<>();private volatile BrightnessRefresh refresh;private volatile String preparationFailure;
- LiveB8Brightness(File dir){this.dir=dir;}
+ LiveB8Brightness(File dir){this(dir,null,Thread::sleep);}
+ LiveB8Brightness(File dir,SampleReader source,Pause pause){this.dir=dir;this.source=source==null?this::readSamples:source;this.pause=pause;}
  private synchronized void log(String s){try(FileWriter w=new FileWriter(new File(dir,"physical-brightness-hold.txt"),true)){w.write(SystemClock.elapsedRealtime()+" uptime="+SystemClock.uptimeMillis()+" "+s+"\n");}catch(IOException ignored){}}
- private Map<Long,BrightnessSamples.Sample> readSamples(String phase)throws Exception{
+ private Map<Long,BrightnessSamples.Sample> readSamples(String phase,long timeoutMs)throws Exception{
   File snapshot=new File(dir,"brightness-source-"+phase+".txt");
   java.lang.Process p=new ProcessBuilder("logcat","-d","-v","monotonic","-t","30000","SurfaceFlinger:I","*:S").redirectErrorStream(true).redirectOutput(snapshot).start();
-  if(!p.waitFor(2,TimeUnit.SECONDS)){p.destroyForcibly();p.waitFor(250,TimeUnit.MILLISECONDS);throw new IOException("Brightness source timed out before shield");}
+  if(!p.waitFor(timeoutMs,TimeUnit.MILLISECONDS)){p.destroyForcibly();p.waitFor(100,TimeUnit.MILLISECONDS);throw new IOException("Brightness source timed out before shield");}
   if(p.exitValue()!=0||snapshot.length()>16*1024*1024)throw new IOException("Brightness source unavailable/oversized");
   return BrightnessSamples.parse(new String(Files.readAllBytes(snapshot.toPath()),StandardCharsets.UTF_8));
  }
+ String preparationStatus(){return preparing?"pending":preparationFailure==null?"completed":"failed: "+preparationFailure;}
+ boolean preparing(){return preparing;}
+ void prepareAsync(){preparing=true;Thread t=new Thread(this::prepare,"duo-brightness-prepare");t.setDaemon(true);t.start();}
  void prepare(){
   preparing=true;
   try{
    if(stopped)return;
-   Map<Long,BrightnessSamples.Sample> samples=readSamples("prepare");
+   Map<Long,BrightnessSamples.Sample> samples=source.read("prepare",2000);
    long[] ids=(long[])Class.forName("android.view.SurfaceControl").getMethod("getPhysicalDisplayIds").invoke(null);
    if(ids.length!=2)throw new IOException("Expected two physical panels");
    Set<Long> missing=new HashSet<>();long now=SystemClock.uptimeMillis();
@@ -31,14 +38,31 @@ final class LiveB8Brightness {
     log("PREPARE missing="+missing+"; requesting temporary brightness refresh before handoff");
     synchronized(this){if(stopped)return;refresh=new BrightnessRefresh(dir);}
     refresh.refresh(missing);
-    samples=readSamples("refreshed");
-    // Only accept a new hardware command from this refresh, never an older cached command.
-    for(long id:missing){BrightnessSamples.Sample sample=samples.get(id);if(!BrightnessSamples.usable(sample,SystemClock.uptimeMillis())||sample.ms<refresh.clearedAt(id))throw new IOException("No fresh restored brightness command for physical="+id);}
+    samples=awaitRestored(ids,missing);
    }
-   synchronized(prepared){prepared.putAll(samples);}
+   synchronized(prepared){if(stopped)throw new IOException("Stopped during brightness preparation");prepared.clear();prepared.putAll(samples);}
    log("PREPARE_COMPLETE; per-physical samples cached for this run only");
   }catch(Exception e){preparationFailure=e.toString();log("PREPARE_FAILED "+e+"; switch still requires valid brightness");}
   finally{preparing=false;}
+ }
+ private Map<Long,BrightnessSamples.Sample> awaitRestored(long[] ids,Set<Long> refreshed)throws Exception{
+  // Clearing temporary brightness is asynchronous. A single log snapshot after
+  // 250ms can precede the restored hardware command. Retry observation only;
+  // never nudge again, accept the probe, or reuse a pre-clear command.
+  long deadline=SystemClock.elapsedRealtime()+1200;String pending="no restored commands";
+  for(int attempt=1;attempt<=6&&!stopped;attempt++){
+   long remaining=deadline-SystemClock.elapsedRealtime();if(remaining<=0)break;
+   try{
+    Map<Long,BrightnessSamples.Sample> samples=source.read("refreshed",Math.min(remaining,400));
+    Set<Long> missing=new HashSet<>();long now=SystemClock.uptimeMillis();
+    for(long id:ids){BrightnessSamples.Sample sample=samples.get(id);if(!BrightnessSamples.usable(sample,now)||(refreshed.contains(id)&&sample.ms<refresh.clearedAt(id)))missing.add(id);}
+    if(missing.isEmpty()&&!stopped&&SystemClock.elapsedRealtime()<=deadline){log("RESTORE_COMMANDS_READY observations="+attempt+"; fresh post-clear physical commands");return samples;}
+    pending="physical="+missing;
+   }catch(Exception e){pending=e.toString();}
+   log("RESTORE_COMMANDS_PENDING observation="+attempt+" "+pending);
+   remaining=deadline-SystemClock.elapsedRealtime();if(remaining>0&&!stopped)pause.sleep(Math.min(125,remaining));
+  }
+  throw new IOException(stopped?"Stopped awaiting restored brightness":"No fresh restored brightness command within bounded observation: "+pending);
  }
  synchronized void begin(String phase)throws Exception{
   if(stopped)throw new IllegalStateException("Brightness hold stopped");

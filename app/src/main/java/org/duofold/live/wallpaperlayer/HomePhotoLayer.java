@@ -52,7 +52,7 @@ final class HomePhotoLayer {
   main.post(bridgeTick);
  }
  final Runnable bridgeTick=new Runnable(){public void run(){
-  bridgeTickQueued=false;if(closed||bridgeDisplays.isEmpty()||!context.getSystemService(PowerManager.class).isInteractive())return;
+  bridgeTickQueued=false;if(closed||bridgeDisplays.isEmpty()||(!context.getSystemService(PowerManager.class).isInteractive()&&!keyguardLocked()))return;
   long now=SystemClock.elapsedRealtime();boolean locked=keyguardLocked();
   if(!locked&&unlockedAt<0)unlockedAt=now;
   WakeBridgePolicy.State bridgeState=bridgePolicy.observe(locked,now,prepareBeforeUnlock);
@@ -151,22 +151,27 @@ final class HomePhotoLayer {
   prepareBeforeUnlock=WakePreparationTest.enabled(context);
   setPhoto(photo);
  }
- long wakeGeneration;boolean reattachQueued;
+ long wakeGeneration;volatile long wakePreparationUntil;boolean reattachQueued;
  void windowChanged(){
   if(closed||reattachQueued)return;reattachQueued=true;
   main.postDelayed(()->{reattachQueued=false;if(closed)return;for(Entry e:entries.values())reattach(e);requestRefresh();pollBridge();},0);
  }
  void screenEvent(String action){
   syncWakeTest();
-  long generation=++wakeGeneration;
+  long generation=++wakeGeneration;wakePreparationUntil=SystemClock.elapsedRealtime()+2000;
+  // A failed rebind while Home had no surface must not delay a new wake by 2 s.
+  retryAt=0;attempts.clear();
+  for(Entry e:entries.values()){e.nextRebind=0;e.rebindFailures=0;if(e.rebind!=null){e.rebind.cancel();e.rebind=null;}}
   if(Intent.ACTION_SCREEN_OFF.equals(action)){
-   resetBridges();long now=SystemClock.elapsedRealtime();for(Map.Entry<Integer,Long> seen:homeSeen.entrySet())if(now-seen.getValue()<1500)bridgeDisplays.add(seen.getKey());
+   Set<Integer> previousEligible=new HashSet<>(bridgeDisplays);
+   resetBridges();long now=SystemClock.elapsedRealtime();
+   bridgeDisplays.addAll(WakeEligibilityPolicy.sleeping(homeSeen,previousEligible,now));
    note.accept("Wake photo sleep eligibility; epoch="+bridgeEpoch+"; displays="+bridgeDisplays+"; recentHome="+homeSeen);
-   return;
+   // Prepare while dark too: waiting for SCREEN_ON can expose Samsung's first frame.
   }
   if(Intent.ACTION_USER_PRESENT.equals(action)){if(unlockedAt<0)unlockedAt=SystemClock.elapsedRealtime();bridgePolicy.unlocked(SystemClock.elapsedRealtime());}
   pollBridge();requestRefresh();
-  for(int delay:new int[]{0,32,100,250,500})main.postDelayed(()->{
+  for(int delay:new int[]{0,32,100,250,500,1000,1500})main.postDelayed(()->{
    if(closed||generation!=wakeGeneration)return;
    for(Entry e:entries.values())reattach(e);
    requestRefresh();
@@ -174,22 +179,26 @@ final class HomePhotoLayer {
  }
  void reattach(Entry e){
   if(closed||e.released||e.rebind!=null||SystemClock.elapsedRealtime()<e.nextRebind)return;
-  e.nextRebind=SystemClock.elapsedRealtime()+30;
+  e.nextRebind=SystemClock.elapsedRealtime()+HomePhotoPolicy.reattachDelay(0);
   AttachmentRequest request=new AttachmentRequest(SystemClock.elapsedRealtime());e.rebind=request;
   main.postDelayed(()->rebound(e,request,request.timeout(SystemClock.elapsedRealtime()),-1),5000);
   try{attachment.request(e.target.window,e.anchor,main,result->rebound(e,request,request.reply(SystemClock.elapsedRealtime(),result),result));}
-  catch(Throwable error){request.cancel();e.rebind=null;status="Home photo reattachment failed: "+failure(error);note.accept(status);}
+  catch(Throwable error){request.cancel();e.rebind=null;deferReattach(e);status="Home photo reattachment failed: "+failure(error);note.accept(status);}
  }
+ void deferReattach(Entry e) {
+        e.rebindFailures = Math.min(4, e.rebindFailures + 1);
+        e.nextRebind = SystemClock.elapsedRealtime() + HomePhotoPolicy.reattachDelay(e.rebindFailures);
+    }
  void rebound(Entry e,AttachmentRequest request,AttachmentRequest.Result outcome,int result){
   if(outcome==AttachmentRequest.Result.IGNORED||e.rebind!=request)return;
   e.rebind=null;if(closed||e.released||entries.get(e.target.display)!=e)return;
-  if(outcome!=AttachmentRequest.Result.SUCCESS){status="Wake photo Home reattachment "+outcome+" ("+result+")";note.accept(status);return;}
-  refreshGeometry();if(prepareBeforeUnlock)commitHome(e);else homeReady(e);status="Home photo attachment acknowledged; display="+e.target.display+" window="+e.target.window+"; compositor visibility requires trace";note.accept(status);
+  if(outcome!=AttachmentRequest.Result.SUCCESS){deferReattach(e);status="Wake photo Home reattachment "+outcome+" ("+result+")";note.accept(status);return;}
+  e.rebindFailures=0;refreshGeometry();if(prepareBeforeUnlock)commitHome(e);else homeReady(e);status="Home photo attachment acknowledged; display="+e.target.display+" window="+e.target.window+"; compositor visibility requires trace";note.accept(status);
  }
  void requestRefresh(){
   if(closed||!querying.compareAndSet(false,true))return;
   try{worker.execute(()->{try{
-   if(!context.getSystemService(PowerManager.class).isInteractive())return;
+   if(!context.getSystemService(PowerManager.class).isInteractive()&&!(prepareBeforeUnlock&&keyguardLocked()&&SystemClock.elapsedRealtime()<wakePreparationUntil))return;
    ResolveInfo home=context.getPackageManager().resolveActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
    if(home==null||home.activityInfo==null){main.post(()->status="Home photo: default launcher unavailable");return;}
    String pkg=home.activityInfo.packageName;
@@ -212,12 +221,14 @@ final class HomePhotoLayer {
    }finally{w.recycle();}
    main.post(()->{if(closed)return;
     if(epoch==bridgeEpoch&&!locked&&!keyguardLocked()&&context.getSystemService(PowerManager.class).isInteractive()){
-     activeHomeWindows.clear();activeHomeWindows.putAll(sampledHomeWindows);homeSeen.clear();for(int id:activeHome)homeSeen.put(id,sampled);
+     activeHomeWindows.clear();activeHomeWindows.putAll(sampledHomeWindows);
+     // An empty accessibility sample during teardown is not evidence of another app.
+     // Keep only the timestamp (not active readiness); SCREEN_OFF still bounds its age.
+     WakeEligibilityPolicy.remember(homeSeen,activeHome,otherActive,sampled);
      for(int id:new ArrayList<>(bridgeDisplays))if(otherActive.contains(id)&&!activeHome.contains(id))finishBridge(id,"Another app active");
     }
     if(epoch==bridgeEpoch&&prepareBeforeUnlock&&!bridgeDisplays.isEmpty())noteWakeSnapshot("window sample; epoch="+epoch+"; locked="+locked+"; activeHome="+activeHome+"; otherApp="+otherActive+"; HomeTargets="+targets.size()+"; lockTargets="+lockTargets.size()+"; bridges="+bridges.keySet());
-    if(epoch==bridgeEpoch)for(Target t:lockTargets)prepareBridge(t);
-    for(Target t:targets)ensure(t);
+    if(epoch==bridgeEpoch){for(Target t:lockTargets)prepareBridge(t);for(Target t:targets)ensure(t);}
    });
   }catch(Throwable e){main.post(()->{if(!closed)status="Home photo lookup waiting: "+e.getClass().getSimpleName();});}finally{querying.set(false);}});}catch(RejectedExecutionException ignored){querying.set(false);}
  }
@@ -261,7 +272,19 @@ final class HomePhotoLayer {
   }catch(Throwable error){e.close();retryAt=SystemClock.elapsedRealtime()+5000;status="Home photo placement failed; existing wallpaper retained: "+failure(error);note.accept(status);}
  }
  static String failure(Throwable error){while(error instanceof java.lang.reflect.InvocationTargetException&&error.getCause()!=null)error=error.getCause();return error.getClass().getSimpleName()+": "+String.valueOf(error.getMessage());}
- void geometry(SurfaceControl.Transaction tx,Entry e)throws Exception{
+ long geometrySkips,geometryUpdates;
+void invalidateGeometry() {
+        for (Entry e : this.entries.values()) {
+            e.lastGeometry = null;
+        }
+        for (Entry e2 : this.bridges.values()) {
+            e2.lastGeometry = null;
+        }
+    }
+String geometryReport() {
+        return "geometry updates=" + this.geometryUpdates + "; unchanged skipped=" + this.geometrySkips;
+    }
+void geometry(SurfaceControl.Transaction tx,Entry e)throws Exception{e.lastGeometry=null;
   SurfaceControl parent=photoParent.apply(e.target.display);if(parent==null||!parent.isValid())throw new IllegalStateException("Persistent photo parent unavailable");
   tx.reparent(e.photo,parent);
   Display d=context.getSystemService(DisplayManager.class).getDisplay(e.target.display);
@@ -275,7 +298,53 @@ final class HomePhotoLayer {
   if(selected!=null){src=selected.crop(size.x,size.y);tx.setBuffer(e.photo,selected.buffer());}else tx.setBuffer(e.photo,buffer);
   tx.setGeometry(e.photo,src,new Rect(0,0,size.x,size.y),Surface.ROTATION_0);
  }
- void refreshGeometry(){if(closed)return;syncWakeTest();try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){for(Entry e:entries.values())geometry(tx,e);for(Entry e:bridges.values())if(e.photo!=null)geometry(tx,e);tx.apply();}catch(Exception e){status="Home photo geometry waiting: "+e.getClass().getSimpleName();}}
+ void refreshGeometry() {
+        if (this.closed) {
+            return;
+        }
+        syncWakeTest();
+        try {
+            try (SurfaceControl.Transaction tx = new SurfaceControl.Transaction()) {
+                HashMap<Entry, PhotoGeometryKey> changed = new HashMap<>();
+                ArrayList<Entry> all = new ArrayList<>(this.entries.values());
+                all.addAll(this.bridges.values());
+                Iterator<Entry> it = all.iterator();
+                while (it.hasNext()) {
+                    Entry e = it.next();
+                    if (e.photo != null && !e.released) {
+                        SurfaceControl parent = this.photoParent.apply(e.target.display);
+                        if (parent == null || !parent.isValid()) {
+                            throw new IllegalStateException("Persistent photo parent unavailable");
+                        }
+                        Display d = ((DisplayManager) this.context.getSystemService(DisplayManager.class)).getDisplay(e.target.display);
+                        if (d != null && d.isValid()) {
+                            Point size = new Point();
+                            d.getRealSize(size);
+                            String physical = String.valueOf(Display.class.getMethod("getUniqueId", new Class[0]).invoke(d, new Object[0]));
+                            int stack = ((Integer) Display.class.getMethod("getLayerStack", new Class[0]).invoke(d, new Object[0])).intValue();
+                            PanelPhotos.Photo selected = this.album == null ? null : this.album.forDisplay(d, size.x, size.y);
+                            PhotoGeometryKey key = new PhotoGeometryKey(parent, selected == null ? this.hardware : selected, physical, size.x, size.y, d.getRotation(), stack);
+                            if (key.same(e.lastGeometry)) {
+                                this.geometrySkips++;
+                            } else {
+                                geometry(tx, e);
+                                changed.put(e, key);
+                            }
+                        }
+                    }
+                }
+                if (!changed.isEmpty()) {
+                    tx.apply();
+                    this.geometryUpdates += changed.size();
+                    for (Map.Entry<Entry, PhotoGeometryKey> update : changed.entrySet()) {
+                        update.getKey().lastGeometry = update.getValue();
+                    }
+                }
+            }
+        } catch (Exception e2) {
+            this.status = "Home photo geometry waiting: " + e2.getClass().getSimpleName();
+        }
+    }
  void setPhoto(Bitmap photo){
   Bitmap next=photo.copy(Bitmap.Config.HARDWARE,false);if(next==null)throw new IllegalStateException("Cannot prepare Home photo");
   HardwareBuffer old=buffer;hardware=next;buffer=next.getHardwareBuffer();
@@ -283,5 +352,5 @@ final class HomePhotoLayer {
  }
  void close(){if(closed)return;closed=true;resetBridges();main.removeCallbacks(bridgeTick);worker.shutdown();for(Entry e:pending.values())e.close();pending.clear();for(Entry e:entries.values())e.close();entries.clear();if(buffer!=null){buffer.close();buffer=null;}hardware=null;}
  static final class Target{final int window,display;final String pkg;Target(int w,int d,String p){window=w;display=d;pkg=p;}}
- static final class Entry{final Target target;final SurfaceControl anchor;final AttachmentRequest request=new AttachmentRequest(SystemClock.elapsedRealtime());SurfaceControl photo;AttachmentRequest rebind;long nextRebind,homeReadyEpoch=-1;boolean bridgeReady,bridgeShown,released,handoffPending;Entry(Target t,SurfaceControl a){target=t;anchor=a;}void detach(SurfaceControl.Transaction tx){if(photo!=null)tx.setVisibility(photo,false).reparent(photo,null);tx.setVisibility(anchor,false).reparent(anchor,null);}void release(){if(released)return;released=true;if(photo!=null)photo.release();anchor.release();}void close(){request.cancel();if(rebind!=null)rebind.cancel();if(released)return;try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){detach(tx);tx.apply();}catch(RuntimeException ignored){}finally{release();}}}
+ static final class Entry{final Target target;final SurfaceControl anchor;final AttachmentRequest request=new AttachmentRequest(SystemClock.elapsedRealtime());SurfaceControl photo;PhotoGeometryKey lastGeometry;int rebindFailures;AttachmentRequest rebind;long nextRebind,homeReadyEpoch=-1;boolean bridgeReady,bridgeShown,released,handoffPending;Entry(Target t,SurfaceControl a){target=t;anchor=a;}void detach(SurfaceControl.Transaction tx){if(photo!=null)tx.setVisibility(photo,false).reparent(photo,null);tx.setVisibility(anchor,false).reparent(anchor,null);}void release(){if(released)return;released=true;if(photo!=null)photo.release();anchor.release();}void close(){request.cancel();if(rebind!=null)rebind.cancel();if(released)return;try(SurfaceControl.Transaction tx=new SurfaceControl.Transaction()){detach(tx);tx.apply();}catch(RuntimeException ignored){}finally{release();}}}
 }

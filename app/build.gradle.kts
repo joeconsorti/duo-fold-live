@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 android {
  namespace = "org.duofold.live"
  compileSdk = 36
- defaultConfig { applicationId = "org.duofold.live"; minSdk = 34; targetSdk = 36; versionCode = 1255; versionName = "3.5.9-alpha.6" }
+ defaultConfig { manifestPlaceholders["appLabel"]="Duo Fold Live"; applicationId = "org.duofold.live"; minSdk = 34; targetSdk = 36; versionCode = 1318; versionName = "3.5.9-alpha.65-reconstructed" }
  flavorDimensions += "distribution"
  productFlavors {
   create("github") { dimension="distribution"; buildConfigField("boolean","IS_PLAY","false") }
@@ -13,7 +13,7 @@ android {
   storeFile=file(releaseKey); storePassword=System.getenv("DUO_STORE_PASSWORD")
   keyAlias=System.getenv("DUO_KEY_ALIAS"); keyPassword=System.getenv("DUO_KEY_PASSWORD")
  } }
- buildTypes { getByName("release") { isMinifyEnabled=false; isShrinkResources=false; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt")); if (releaseKey != null) signingConfig=signingConfigs.getByName("standalone") } }
+ buildTypes { getByName("debug") { applicationIdSuffix=".test"; versionNameSuffix="-local"; manifestPlaceholders["appLabel"]="Duo Fold Live Test" }; getByName("release") { isMinifyEnabled=false; isShrinkResources=false; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt")); if (releaseKey != null) signingConfig=signingConfigs.getByName("standalone") } }
  buildFeatures { compose=true; buildConfig=true }
  compileOptions { sourceCompatibility=JavaVersion.VERSION_17; targetCompatibility=JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget="17" }

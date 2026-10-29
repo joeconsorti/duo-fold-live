@@ -1,0 +1,1 @@
+package android.os;public class Parcel{public Bundle bundle;public static Parcel obtain(){return new Parcel();}public void writeInterfaceToken(String s){}public void writeInt(int i){}public void writeIntArray(int[] a){}public void writeString(String s){}public void readException(){}public Bundle readBundle(){return bundle;}public void recycle(){}}

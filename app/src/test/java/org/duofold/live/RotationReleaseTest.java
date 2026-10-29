@@ -33,4 +33,19 @@ public class RotationReleaseTest {
  @Test public void ignoredOrAbsentPosturePreservesOriginal(){
   assertTrue(RotationRelease.locked(0,true));assertFalse(RotationRelease.locked(null,false));
  }
+ @Test public void savedPreferencesAndLocksPrecedeFixedRelease()throws Exception{
+  List<String> calls=new ArrayList<>();
+  RotationRelease.restore(()->calls.add("locks"),()->calls.add("postures"),()->calls.add("user"),()->calls.add("fixed"));
+  assertEquals(Arrays.asList("locks","postures","user","fixed"),calls);
+ }
+ @Test public void eachRestorationFailureStillReleasesProtection(){
+  for(int failed=0;failed<4;failed++){
+   final int failureIndex=failed;List<Integer> calls=new ArrayList<>();
+   RotationRelease.Step[] steps=new RotationRelease.Step[4];
+   for(int i=0;i<4;i++){final int index=i;steps[i]=()->{calls.add(index);if(index==failureIndex)throw new Exception("phase "+index);};}
+   try{RotationRelease.restore(steps[0],steps[1],steps[2],steps[3]);fail();}
+   catch(Exception expected){assertEquals("phase "+failed,expected.getMessage());}
+   assertEquals(Arrays.asList(0,1,2,3),calls);
+  }
+ }
 }

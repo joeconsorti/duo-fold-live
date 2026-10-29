@@ -1,0 +1,1 @@
+package android.view;public class IWindowManager {public static boolean locked;public boolean isKeyguardLocked(){return locked;}}

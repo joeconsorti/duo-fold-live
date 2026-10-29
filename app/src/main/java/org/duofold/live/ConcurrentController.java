@@ -50,7 +50,7 @@ final class ConcurrentController {
   b.putString("physical",fixedSecondary);b.putInt("width",destinationWidth);b.putInt("height",destinationHeight);return b;
  }
  private long readinessLostAt;
- private int destinationWidth,destinationHeight;private String endpointObservation="";
+ private int destinationWidth,destinationHeight,sourceWidth,sourceHeight;private String endpointObservation="";
  private boolean endpointReturnWaiting;private long endpointReturnDeadline;private String endpointTarget="";
  private boolean routeCheckpoint;private String routeObservation="";
  private boolean cameraSession;private String fixedPrimary="";
@@ -121,7 +121,7 @@ final class ConcurrentController {
   Object current=info.getClass().getField("currentState").get(info),base=info.getClass().getField("baseState").get(info);
   if(!current.getClass().getMethod("getIdentifier").invoke(current).equals(base.getClass().getMethod("getIdentifier").invoke(base)))throw new IllegalStateException("Existing display override; stop other test apps first");
   clearClosingDelay();
-  if(cameraSession){readinessLostAt=0;closingAppReturnAttempted=false;taskRequested=false;taskVerified=false;routeCheckpoint=false;routeObservation="";panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);captureDestinationSize();capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
+  if(cameraSession){readinessLostAt=0;closingAppReturnAttempted=false;taskRequested=false;taskVerified=false;routeCheckpoint=false;routeObservation="";panelsReadySince=0;routePollAt=0;fixedPrimary=physicalPrimary();fixedSecondary=physicalId(1);captureDestinationSize();captureSourceSize();capturedTasks=false;log("REQUEST after committed outgoing screenshot; retain physical primary="+fixedPrimary+"; source="+(inner?"inner":"cover"));samplePanels(Float.NaN,true,false,true);}
   if(cameraSession){powerOverrideArmed=false;powerCancellationSent=false;if(powerOverride!=null)powerOverride.newSession();}
   setConcurrent(inner,now); // Captured outgoing panel becomes the secondary Presentation.
  }
@@ -160,6 +160,11 @@ final class ConcurrentController {
   destinationWidth=d.getClass().getField("logicalWidth").getInt(d);destinationHeight=d.getClass().getField("logicalHeight").getInt(d);
   if(destinationWidth<=0||destinationHeight<=0)throw new IllegalStateException("Destination dimensions unavailable");
  }
+ private void captureSourceSize()throws Exception{
+  Object dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
+  Object d=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,0);
+  sourceWidth=d.getClass().getField("logicalWidth").getInt(d);sourceHeight=d.getClass().getField("logicalHeight").getInt(d);
+ }
  private boolean primaryReady(String physical)throws Exception{
   Object dm=Class.forName("android.hardware.display.DisplayManagerGlobal").getMethod("getInstance").invoke(null);
   Object d=dm.getClass().getMethod("getDisplayInfo",int.class).invoke(dm,0);if(d==null)return false;
@@ -172,7 +177,7 @@ final class ConcurrentController {
  }
  private void deferEndpointReturn(long now){
   if(cameraSession&&fixedRoute!=null&&fixedRoute.pending()&&!endpointReturnWaiting){
-   endpointReturnWaiting=true;endpointTarget=fixedSecondary;endpointObservation="";endpointReturnDeadline=now+1800;
+   endpointReturnWaiting=true;endpointTarget=fixedSecondary;endpointObservation="";endpointReturnDeadline=now+5000;
    log("ENDPOINT: retain exact app on D1 until incoming primary is ON and destination-sized; target="+endpointTarget);
   }
  }
@@ -185,20 +190,29 @@ final class ConcurrentController {
   try{
    routeUnlocked=unlocked;
    if(powerOverride!=null){
-    if((!fresh||!cameraStartup)&&!powerCancellationSent){powerCancellationSent=true;powerOverride.cancel("stale angle or mode changed");}
-    else if(!unlocked&&!powerCancellationSent){powerCancellationSent=true;powerOverride.cancelUnlessFoldSleep();}
+    if(((!fresh&&!endpointReturnWaiting)||!cameraStartup)&&!powerCancellationSent){powerCancellationSent=true;powerOverride.cancel("stale angle or mode changed");}
+    else if(!unlocked){powerOverride.cancelUnlessFoldSleep();}
    }
    if(endpointReturnWaiting){
     if(owned!=null){releaseInternal();return;}
     boolean mapped=false;
     try{mapped=primaryReady(endpointTarget);}catch(Exception e){log("Endpoint mapping observation unavailable: "+e.getClass().getSimpleName());}
-    if(EndpointReturnPolicy.shouldWait(now,endpointReturnDeadline,unlocked&&cameraStartup,mapped)){
-     status="Endpoint: waiting for incoming panel ON with destination dimensions before task return";return;
+    // A return to the original endpoint is a reversal, not permission to use
+    // whichever logical D0 happens to exist during a remap.
+    if(fresh&&((primaryInner&&angle>=FoldThreshold.sanitize(openThreshold))||(!primaryInner&&angle==0))&&!endpointTarget.equals(fixedPrimary)){
+     endpointTarget=fixedPrimary;destinationWidth=sourceWidth;destinationHeight=sourceHeight;
+     log("ENDPOINT reversal: await original physical panel "+endpointTarget);return;
     }
+    if(!EndpointReturnPolicy.safeToReturn(unlocked,mapped)){
+     status=now<endpointReturnDeadline?"Endpoint: waiting for unlocked incoming panel ON and destination-sized":"Endpoint recovery pending: no task return to an OFF or wrong panel";return;
+    }
+    // Keep this gate active until restore has actually completed, including retries.
+    if(now-restoreAt>=250){restoreAt=now;returnTask();}
+    if(fixedRoute!=null&&fixedRoute.pending()){status="Endpoint: exact task return pending";return;}
     endpointReturnWaiting=false;
-    log(mapped?"ENDPOINT: incoming physical panel is D0, ON and destination-sized; return exact app":"ENDPOINT: mapping wait ended; recover exact app");
-    returnTask();
-    status=mapped?"Endpoint complete — normal display control restored":"Endpoint mapping wait ended — recovery attempted";
+    if(powerOverride!=null)powerOverride.cancel("incoming panel mapped and task returned");
+    log("ENDPOINT: incoming panel ON and destination-sized; exact task returned");
+    status="Endpoint complete — normal display control restored";
    }
    if(owned==null&&fixedRoute!=null&&fixedRoute.pending()){
     if(now-restoreAt>=1000){restoreAt=now;returnTask();}
@@ -221,6 +235,11 @@ final class ConcurrentController {
    }
    bootstrapping=false;
    if(angle>0&&closingDelay.active()){log("CLOSE_DELAY END: reopened");clearClosingDelay();}
+   if(cameraSession&&cameraStartup&&owned!=null&&taskRequested&&!powerOverrideArmed&&EndpointReturnPolicy.armPower(primaryInner,angle,FoldThreshold.sanitize(openThreshold))){
+    if(powerOverride==null)powerOverride=new HandoffPowerOverride();
+    powerOverride.newSession();powerOverride.arm(5000);powerOverrideArmed=true;powerCancellationSent=false;
+    log("ENDPOINT ON lease requested; bounded 5000 ms; not optical proof");
+   }
    if(FoldThreshold.endpoint(angle,openThreshold)){
     if(cameraSession&&angle==0&&owned!=null&&holdClosing()){status="Screenshot closing hold: awaiting Android release (1000 ms fallback)";return;}
     if(endpointSince==0)endpointSince=now;
@@ -259,6 +278,7 @@ final class ConcurrentController {
      // Never tear down or re-route a working fixed-panel session on this check.
      try{
       FixedTaskRoute.Observation observation=fixedRoute.observe();
+      if(observation.placed&&!observation.focused){String focus=fixedRoute.focusPlacedOnce();if(focus.startsWith("FOCUS"))log(focus);observation=fixedRoute.observe();}
       String next=observation.summary();
       if(!next.equals(routeObservation)){routeObservation=next;log("TASK OBSERVATION: "+next);}
       if(observation.verified()&&!taskVerified){log("TASK PLACED + FOCUSED on D1; optical continuity not verified");windows.capture("app placed and focused");}

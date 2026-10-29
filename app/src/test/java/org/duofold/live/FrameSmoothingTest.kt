@@ -11,4 +11,14 @@ class FrameSmoothingTest {
  }
  @Test fun directionChangesDoNotOvershoot(){var a=100f;repeat(30){a=FrameSmoothing.step(a,20f,8.33f);assertTrue(a in 20f..100f)};val prior=a;a=FrameSmoothing.step(a,150f,8.33f);assertTrue(a in prior..150f)}
  @Test fun initializesWithoutAnimatingFromUnknown(){assertEquals(80f,FrameSmoothing.step(Float.NaN,80f,8f),0f)}
+ @Test fun standardCoverStartupStartsFromClosedOnlyWhenEasingApplies(){
+  assertEquals(0f,FrameSmoothing.start(Float.NaN,6f,false,true,true),0f)
+  assertTrue(FrameSmoothing.start(Float.NaN,13f,false,true,true).isNaN())
+  assertTrue(FrameSmoothing.start(Float.NaN,6f,true,true,true).isNaN())
+  assertTrue(FrameSmoothing.start(Float.NaN,6f,false,false,true).isNaN())
+  assertTrue(FrameSmoothing.start(Float.NaN,6f,false,true,false).isNaN())
+ }
+ @Test fun establishedAngleNeverRestartsStartupDuringReversal(){
+  assertEquals(8f,FrameSmoothing.start(8f,6f,false,true,true),0f)
+ }
 }

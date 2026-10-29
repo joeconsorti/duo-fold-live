@@ -41,7 +41,7 @@ internal class ScreenshotStartupWindow(context:StandaloneService,display:Display
   val frame=HandoffFrames.frame
   val d=displays.getDisplay(displayId)
   inner=d?.mode?.let{minOf(it.physicalWidth,it.physicalHeight).toFloat()/maxOf(it.physicalWidth,it.physicalHeight)>.7f}?:false
-  incoming=ScreenshotRenderPolicy.incoming(frame?.physicalId,next,LiveAngles.dualActive)
+  incoming=!ctx.getSharedPreferences("standalone",0).getBoolean("screenshot_native_test",false)&&ScreenshotRenderPolicy.incoming(frame?.physicalId,next,LiveAngles.dualActive)
   view.alpha=if((frame!=null&&ScreenshotStartupPolicy.ownsFrame(frame.physicalId,next))||incoming)1f else 0f
   configuration=android.content.res.Configuration(ctx.resources.configuration)
   if(view.isAttachedToWindow)runCatching{
@@ -55,7 +55,7 @@ internal class ScreenshotStartupWindow(context:StandaloneService,display:Display
   life.registry.currentState=Lifecycle.State.CREATED
   view.setViewTreeLifecycleOwner(life);view.setViewTreeSavedStateRegistryOwner(life)
   view.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-  view.viewTreeObserver.addOnDrawListener{
+  view.viewTreeObserver.addOnPreDrawListener{
    draws++
    val frame=HandoffFrames.frame;val stamp=composedStamp
    if(frame!=null&&stamp==frame.stamp&&stamp>0&&stamp!=pendingStamp&&ScreenshotStartupPolicy.ownsFrame(frame.physicalId,identity())){
@@ -68,6 +68,7 @@ internal class ScreenshotStartupWindow(context:StandaloneService,display:Display
      }
     }
    }
+   true
   }
   view.setContent{
    val frame=HandoffFrames.frame?.takeIf{ScreenshotStartupPolicy.ownsFrame(it.physicalId,physical)}
@@ -79,7 +80,7 @@ internal class ScreenshotStartupWindow(context:StandaloneService,display:Display
       DuoLiveShade(object:StandaloneFoldHost{
        override fun onMovement(){}
        override fun onFrame(active:Boolean,strength:Float){this@ScreenshotStartupWindow.strength=strength}
-      },ctx.getSharedPreferences("standalone",0).getFloat("intensity",.4f),innerPanel=inner,frozenFrame=frame,opaqueContent=frame!=null,liveFrame=if(frame==null)input else null)
+      },ctx.getSharedPreferences("standalone",0).getFloat("intensity",RenderQuality.DEFAULT_GLASS),innerPanel=inner,frozenFrame=frame,opaqueContent=frame!=null,liveFrame=if(frame==null)input else null)
      }
     }
    }
