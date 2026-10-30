@@ -16,7 +16,11 @@ final class HandoffFadePolicy {
  void settings(float smoothing,float gradualness){this.smoothing=FadeSettings.smoothing(smoothing);this.gradualness=FadeSettings.gradualness(gradualness);}
  private float filtered(float target,long now){
   long dt=filterTime<0?0:Math.max(0,now-filterTime);filterTime=now;
-  if(smoothing==0||target>=1||dt==0){filtered=target;return target;}
+  // Rising toward black follows the angle directly. Lagging it made a fast unfold
+  // reach the handoff at ~30% and then jump to 100% in one frame (choppy fade).
+  // Falling (re-opening away from the handoff) keeps the smoothing, which also
+  // gives jitter a peak-hold instead of flicker.
+  if(smoothing==0||target>=filtered||dt==0){filtered=target;return target;}
   filtered+=(target-filtered)*(float)(1-Math.exp(-dt/smoothing));
   if(Math.abs(filtered-target)<.001f)filtered=target;
   return filtered;
@@ -27,7 +31,13 @@ final class HandoffFadePolicy {
  private boolean mappingChanged;
  private float arrival;
  private boolean armed=true,expired=false;
- void reset(){filterTime=-1;filtered=0;primary=null;physical=null;mappingChanged=false;switched=reveal=blackSince=onSince=readyAt=-1;armed=true;expired=false;readiness="idle";}
+ private long expiredAt=-1;
+ /** 1 → 0 smoothstep over the user's reveal duration. */
+ static float releaseEnvelope(long elapsed,float gradualness){
+  float x=Math.max(0,Math.min(1,elapsed/(float)FadeSettings.reveal(gradualness)));
+  return 1-x*x*(3-2*x);
+ }
+ void reset(){filterTime=-1;filtered=0;primary=null;physical=null;mappingChanged=false;switched=reveal=blackSince=onSince=readyAt=-1;armed=true;expired=false;expiredAt=-1;readiness="idle";}
  void mapping(String id){if(physical!=null&&!physical.equals(id))mappingChanged=true;physical=id;}
  boolean transitioning(){return switched>=0;}
  static float approach(boolean inner,float angle){return approach(inner,angle,0);}
@@ -76,8 +86,12 @@ final class HandoffFadePolicy {
   }
   if(!armed&&(inner?(angle>=handoff-2+FadeSettings.span(gradualness)||angle<=arrival-2):(angle<=handoff-2-FadeSettings.span(gradualness)||angle>=arrival+2)))armed=true;
   float alpha=armed?approach(inner,angle,gradualness,handoff):0;
-  if(alpha<=0){blackSince=-1;expired=false;}
-  if(alpha>=.999f){if(blackSince<0)blackSince=now;if(now-blackSince>1200)expired=true;}else blackSince=-1;
-  return expired?0:filtered(alpha,now);
+  if(alpha<=0){blackSince=-1;expired=false;expiredAt=-1;}
+  if(alpha>=.999f){if(blackSince<0)blackSince=now;if(now-blackSince>1200&&!expired){expired=true;expiredAt=now;}}else blackSince=-1;
+  if(expired){
+   // No switch arrived: release the hold with the reveal curve instead of a 1→0 pop.
+   float out=releaseEnvelope(now-expiredAt,gradualness);filterTime=now;filtered=out;return out;
+  }
+  return filtered(alpha,now);
  }
 }

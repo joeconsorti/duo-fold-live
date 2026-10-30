@@ -13,10 +13,32 @@ public class HandoffFadePolicyTest {
  @Test public void smoothingSoftensMovementButNeverDelaysFullBlack(){
   HandoffFadePolicy p=new HandoffFadePolicy();p.handoff(98);p.settings(24,0);
   p.opacity(0,false,88,true,true,-1,false);
-  float softened=p.opacity(8,false,93,true,true,-1,false);
-  assertTrue(softened>0&&softened<.5f);
+  // Rising toward black tracks the angle so there is no lag-then-jump at the handoff.
+  assertEquals(HandoffFadePolicy.approach(false,93,0,98),p.opacity(8,false,93,true,true,-1,false),.001);
   assertEquals(1,p.opacity(16,false,98,true,true,-1,false),0);
-  assertTrue(p.opacity(24,false,88,true,true,-1,false)<1);
+  // Falling away from black is still softened.
+  float falling=p.opacity(24,false,88,true,true,-1,false);
+  assertTrue(falling<1&&falling>0);
+ }
+ @Test public void fastUnfoldRampsToBlackWithoutAFinalJump(){
+  HandoffFadePolicy p=new HandoffFadePolicy();p.handoff(85);p.settings(120,.35f);
+  float previous=0,maxStep=0;
+  // ~250 degrees/s unfold sampled every 8 ms across the approach band.
+  for(int i=0;i<=40;i++){
+   float angle=60+i*2f;if(angle>85)angle=85;
+   float a=p.opacity(i*8,false,angle,true,true,-1,false);
+   maxStep=Math.max(maxStep,a-previous);previous=a;
+  }
+  assertEquals(1,previous,0);
+  assertTrue("largest single-frame jump was "+maxStep,maxStep<.2f);
+ }
+ @Test public void jitterNearHandoffHoldsInsteadOfFlickering(){
+  HandoffFadePolicy p=new HandoffFadePolicy();p.handoff(98);p.settings(120,0);
+  p.opacity(0,false,90,true,true,-1,false);
+  float high=p.opacity(8,false,94,true,true,-1,false);
+  float dip=p.opacity(16,false,92,true,true,-1,false);
+  assertTrue(dip>HandoffFadePolicy.approach(false,92,0,98));
+  assertTrue(dip<=high);
  }
  @Test public void gradualRevealStillWaitsForDestinationDraw(){
   HandoffFadePolicy p=new HandoffFadePolicy();p.handoff(98);p.settings(24,1);
@@ -92,8 +114,17 @@ public class HandoffFadePolicyTest {
  }
  @Test public void noSwitchTimesOutAndInvalidInputClears(){
   HandoffFadePolicy p=new HandoffFadePolicy();p.handoff(98);p.opacity(0,false,100,true,true,-1,false);
-  assertEquals(0,p.opacity(1201,false,100,true,true,-1,false),0);
-  assertEquals(0,p.opacity(1210,false,100,false,true,-1,false),0);
-  assertEquals(0,p.opacity(1220,false,Float.NaN,true,true,-1,false),0);
+  // The expired hold eases out over the reveal duration instead of popping to 0.
+  assertEquals(1,p.opacity(1201,false,100,true,true,-1,false),0);
+  assertEquals(.5f,p.opacity(1291,false,100,true,true,-1,false),.001);
+  assertEquals(0,p.opacity(1381,false,100,true,true,-1,false),0);
+  assertEquals(0,p.opacity(1390,false,100,false,true,-1,false),0);
+  assertEquals(0,p.opacity(1400,false,Float.NaN,true,true,-1,false),0);
+ }
+ @Test public void releaseEnvelopeEasesOverRevealDuration(){
+  assertEquals(1,HandoffFadePolicy.releaseEnvelope(0,0),0);
+  assertEquals(.5f,HandoffFadePolicy.releaseEnvelope(90,0),.001);
+  assertEquals(0,HandoffFadePolicy.releaseEnvelope(180,0),0);
+  assertEquals(0,HandoffFadePolicy.releaseEnvelope(500,1),0);
  }
 }

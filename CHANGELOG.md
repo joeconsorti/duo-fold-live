@@ -1,3 +1,12 @@
+# Unreleased — Handoff fade and unlock flash fixes
+
+- Fix choppy unfold fade: the approach to black no longer lags behind the hinge. With 120 ms smoothing a fast unfold reached the handoff at ~30% black and then jumped ~70% in one frame. Rising opacity now tracks the angle; falling opacity keeps the smoothing (which also holds through hand jitter instead of flickering).
+- Fix fade dropping out mid-transition: when the fade is disabled, the angle goes stale, the keyguard appears or the primary display is briefly unavailable, visible black layers now ease out over the reveal duration instead of being removed in one frame. If conditions recover first (e.g. a 2° wobble flipping Fold-Only/Unfold-Only), the fade resumes without forgetting the in-flight display switch.
+- The "no switch arrived" 1.2 s black hold now eases out instead of popping to 0.
+- Active fade ramps use a 16 ms fallback tick instead of 80 ms, so a stalled VSYNC around the panel switch can no longer drop the reveal to ~12 fps.
+- Reduce unlock wallpaper flashes: a Home sample up to 4 s before SCREEN_OFF (was 1.5 s) now qualifies for the wake bridge. Sampling cadence plus late SCREEN_OFF delivery could exceed 1.5 s, so no bridge was prepared.
+- Samsung's physical display-switch blackout itself is unchanged; these fixes make the fade that covers it more reliable.
+
 # 3.5.4 — Cover-close continuity and motion presets
 
 - Promote the user-tested alpha.7 normal-mode closure behavior: let Android release the cover request at full closure, with the same 1000 ms fallback and cancellation safeguards. User testing on SM-F971U reported that the full-close blackout disappeared. The separate mid-fold display-switch blackout remains.

@@ -12,4 +12,12 @@ public class WakeBridgePolicyTest {
  @Test public void unlockBroadcastCannotShortenVisibleHold(){WakeBridgePolicy p=new WakeBridgePolicy();p.observe(false,100);p.shown(102);p.unlocked(105);assertEquals(1000,p.remaining(105));p.unlocked(500);assertEquals(EXPIRED,p.observe(false,1105));}
  @Test public void repeatedShowsDoNotExtendHoldForever(){WakeBridgePolicy p=new WakeBridgePolicy();p.shown(100);p.shown(500);assertEquals(EXPIRED,p.observe(false,1100));assertEquals(WAITING,p.observe(true,1200));}
  @Test public void sleepResetCancelsPreviousHold(){WakeBridgePolicy p=new WakeBridgePolicy();p.shown(100);p.unlocked(101);p.reset();assertEquals(WAITING,p.observe(true,5000));p.shown(6000);assertEquals(1000,p.remaining(6000));}
+ @Test public void homeSampledBeforeLateScreenOffBroadcastStillGetsBridge(){
+  // 500 ms poll + enumeration + late SCREEN_OFF delivery used to exceed 1500 ms.
+  assertTrue(WakeBridgePolicy.homeEligible(1000,2900));
+  assertTrue(WakeBridgePolicy.homeEligible(1000,4999));
+  assertFalse(WakeBridgePolicy.homeEligible(1000,5000));
+  assertFalse(WakeBridgePolicy.homeEligible(-1,2000));
+  assertFalse(WakeBridgePolicy.homeEligible(3000,2000));
+ }
 }

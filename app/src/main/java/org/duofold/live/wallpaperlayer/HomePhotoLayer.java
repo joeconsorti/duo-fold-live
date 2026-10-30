@@ -160,7 +160,7 @@ final class HomePhotoLayer {
   syncWakeTest();
   long generation=++wakeGeneration;
   if(Intent.ACTION_SCREEN_OFF.equals(action)){
-   resetBridges();long now=SystemClock.elapsedRealtime();for(Map.Entry<Integer,Long> seen:homeSeen.entrySet())if(now-seen.getValue()<1500)bridgeDisplays.add(seen.getKey());
+   resetBridges();long now=SystemClock.elapsedRealtime();for(Map.Entry<Integer,Long> seen:homeSeen.entrySet())if(WakeBridgePolicy.homeEligible(seen.getValue(),now))bridgeDisplays.add(seen.getKey());
    note.accept("Wake photo sleep eligibility; epoch="+bridgeEpoch+"; displays="+bridgeDisplays+"; recentHome="+homeSeen);
    return;
   }
