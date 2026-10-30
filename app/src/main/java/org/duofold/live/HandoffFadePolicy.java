@@ -2,6 +2,14 @@ package org.duofold.live;
 /** Visual masking only. Never changes display state, thresholds or the underlying animation. */
 final class HandoffFadePolicy {
  static final long REVEAL_MS=180,READY_TIMEOUT_MS=900,ON_SETTLE_MS=32;
+ /**
+  * Fully open, the mid-fold reasons for a long wait no longer apply, so the
+  * unconfirmed fallback reveal comes sooner. Readiness rules are unchanged: a
+  * stale clear still never counts as confirmed readiness.
+  */
+ static final long OPEN_READY_TIMEOUT_MS=350;
+ /** Sticky summary of the most recent reveal, for status reports. */
+ String lastReveal="none yet";
  static final int UI_DRAW=0,GLASS_COMMITTED=1,ENDPOINT_COMMITTED=2;
  static final long COMMIT_SETTLE_MS=2;
  private boolean requireInnerGlass;
@@ -73,7 +81,9 @@ final class HandoffFadePolicy {
     }else if(now-onSince>=ON_SETTLE_MS&&drawnInner==inner&&drawn>=onSince+ON_SETTLE_MS){reveal=now;readiness="destination draw";}
     // Emergency escape is not evidence of readiness. Keep a bounded recovery
     // instead of leaving the user's display black after a renderer failure.
-    if(reveal<0&&now-onSince>=READY_TIMEOUT_MS){reveal=now;readiness="TIMEOUT recovery; readiness NOT confirmed";}
+    boolean open=inner&&angle>=openThreshold;
+    if(reveal<0&&now-onSince>=(open?OPEN_READY_TIMEOUT_MS:READY_TIMEOUT_MS)){reveal=now;readiness=open?"TIMEOUT recovery (fully open); readiness NOT confirmed":"TIMEOUT recovery; readiness NOT confirmed";}
+    if(reveal>=0)lastReveal=(inner?"inner":"cover")+" after "+(reveal-onSince)+" ms ON ("+(reveal-switched)+" ms since switch): "+readiness;
    }
    if(reveal<0)return 1;
    float x=Math.min(1,(now-reveal)/(float)FadeSettings.reveal(gradualness));

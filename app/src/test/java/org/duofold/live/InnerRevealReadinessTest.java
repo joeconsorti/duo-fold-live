@@ -51,8 +51,40 @@ public class InnerRevealReadinessTest {
   HandoffFadePolicy p=start();
   assertEquals(1,p.opacity(100,true,178,true,true,99,true,HandoffFadePolicy.ENDPOINT_COMMITTED,-1),0);
   assertEquals(1,p.opacity(200,true,178,true,true,199,true,HandoffFadePolicy.ENDPOINT_COMMITTED,19),0);
-  assertEquals(1,p.opacity(500,true,178,true,true,499,true,HandoffFadePolicy.ENDPOINT_COMMITTED,30),0);
+  assertEquals(1,p.opacity(369,true,178,true,true,368,true,HandoffFadePolicy.ENDPOINT_COMMITTED,19),0);
   assertTrue(p.readiness.startsWith("waiting"));
+  // Fully open, the bounded fallback arrives at 350 ms ON and is labelled unconfirmed.
+  assertEquals(1,p.opacity(370,true,178,true,true,368,true,HandoffFadePolicy.ENDPOINT_COMMITTED,19),0);
+  assertEquals("TIMEOUT recovery (fully open); readiness NOT confirmed",p.readiness);
+  assertTrue(p.lastReveal.contains("350 ms ON"));
+ }
+ @Test public void partlyOpenKeepsTheFullFallbackWait(){
+  HandoffFadePolicy p=start();
+  assertEquals(1,p.opacity(600,true,171,true,true,-1,false),0);
+  assertEquals(1,p.opacity(919,true,171,true,true,-1,false),0);
+  assertEquals(1,p.opacity(920,true,171,true,true,-1,false),0);
+  assertEquals("TIMEOUT recovery; readiness NOT confirmed",p.readiness);
+ }
+ @Test public void reachingFullyOpenLateRevealsAtOnce(){
+  HandoffFadePolicy p=start();
+  assertEquals(1,p.opacity(500,true,150,true,true,-1,false),0);
+  assertEquals(1,p.opacity(510,true,175,true,true,-1,false),0);
+  assertTrue(p.readiness.startsWith("TIMEOUT recovery (fully open)"));
+  assertTrue(p.opacity(600,true,175,true,true,-1,false)<1);
+ }
+ @Test public void confirmedReadinessStillWinsWhenFullyOpen(){
+  HandoffFadePolicy p=start();
+  assertEquals(1,p.opacity(50,true,178,true,true,50,true,HandoffFadePolicy.ENDPOINT_COMMITTED,30),0);
+  assertEquals(1,p.opacity(52,true,178,true,true,50,true,HandoffFadePolicy.ENDPOINT_COMMITTED,30),0);
+  assertEquals("fresh content capture + fully-open clear committed",p.readiness);
+  assertTrue(p.lastReveal.contains("fully-open clear committed"));
+ }
+ @Test public void coverRevealIsUnaffectedByOpenAngle(){
+  HandoffFadePolicy p=new HandoffFadePolicy();p.handoff(98);p.renderer(true,172);
+  p.opacity(0,true,94,true,true,-1,true);
+  p.opacity(10,false,178,true,true,-1,true);
+  assertEquals(1,p.opacity(400,false,178,true,true,-1,true),0);
+  assertEquals(1,p.opacity(909,false,178,true,true,-1,true),0);
  }
  @Test public void anotherOffIntervalInvalidatesEvidence(){
   HandoffFadePolicy p=start();glass(p,25,25,22);glass(p,27,25,22);
