@@ -16,11 +16,7 @@ final class HandoffFadePolicy {
  void settings(float smoothing,float gradualness){this.smoothing=FadeSettings.smoothing(smoothing);this.gradualness=FadeSettings.gradualness(gradualness);}
  private float filtered(float target,long now){
   long dt=filterTime<0?0:Math.max(0,now-filterTime);filterTime=now;
-  // Rising toward black follows the angle directly. Lagging it made a fast unfold
-  // reach the handoff at ~30% and then jump to 100% in one frame (choppy fade).
-  // Falling (re-opening away from the handoff) keeps the smoothing, which also
-  // gives jitter a peak-hold instead of flicker.
-  if(smoothing==0||target>=filtered||dt==0){filtered=target;return target;}
+  if(smoothing==0||target>=1||dt==0){filtered=target;return target;}
   filtered+=(target-filtered)*(float)(1-Math.exp(-dt/smoothing));
   if(Math.abs(filtered-target)<.001f)filtered=target;
   return filtered;

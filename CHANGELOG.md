@@ -1,6 +1,5 @@
 # Unreleased — Handoff fade and unlock flash fixes
 
-- Fix choppy unfold fade: the approach to black no longer lags behind the hinge. With 120 ms smoothing a fast unfold reached the handoff at ~30% black and then jumped ~70% in one frame. Rising opacity now tracks the angle; falling opacity keeps the smoothing (which also holds through hand jitter instead of flickering).
 - Fix fade dropping out mid-transition: when the fade is disabled, the angle goes stale, the keyguard appears or the primary display is briefly unavailable, visible black layers now ease out over the reveal duration instead of being removed in one frame. If conditions recover first (e.g. a 2° wobble flipping Fold-Only/Unfold-Only), the fade resumes without forgetting the in-flight display switch.
 - The "no switch arrived" 1.2 s black hold now eases out instead of popping to 0.
 - Active fade ramps use a 16 ms fallback tick instead of 80 ms, so a stalled VSYNC around the panel switch can no longer drop the reveal to ~12 fps.
