@@ -2,6 +2,14 @@ package org.duofold.live;
 /** Visual masking only. Never changes display state, thresholds or the underlying animation. */
 final class HandoffFadePolicy {
  static final long REVEAL_MS=180,READY_TIMEOUT_MS=900,ON_SETTLE_MS=32;
+ /**
+  * Fully open, the mid-fold reasons for a long wait no longer apply, so the
+  * unconfirmed fallback reveal comes sooner. Readiness rules are unchanged: a
+  * stale clear still never counts as confirmed readiness.
+  */
+ static final long OPEN_READY_TIMEOUT_MS=350;
+ /** Sticky summary of the most recent reveal, for status reports. */
+ String lastReveal="none yet";
  static final int UI_DRAW=0,GLASS_COMMITTED=1,ENDPOINT_COMMITTED=2;
  static final long COMMIT_SETTLE_MS=2;
  private boolean requireInnerGlass;
@@ -27,7 +35,13 @@ final class HandoffFadePolicy {
  private boolean mappingChanged;
  private float arrival;
  private boolean armed=true,expired=false;
- void reset(){filterTime=-1;filtered=0;primary=null;physical=null;mappingChanged=false;switched=reveal=blackSince=onSince=readyAt=-1;armed=true;expired=false;readiness="idle";}
+ private long expiredAt=-1;
+ /** 1 → 0 smoothstep over the user's reveal duration. */
+ static float releaseEnvelope(long elapsed,float gradualness){
+  float x=Math.max(0,Math.min(1,elapsed/(float)FadeSettings.reveal(gradualness)));
+  return 1-x*x*(3-2*x);
+ }
+ void reset(){filterTime=-1;filtered=0;primary=null;physical=null;mappingChanged=false;switched=reveal=blackSince=onSince=readyAt=-1;armed=true;expired=false;expiredAt=-1;readiness="idle";}
  void mapping(String id){if(physical!=null&&!physical.equals(id))mappingChanged=true;physical=id;}
  boolean transitioning(){return switched>=0;}
  static float approach(boolean inner,float angle){return approach(inner,angle,0);}
@@ -67,7 +81,9 @@ final class HandoffFadePolicy {
     }else if(now-onSince>=ON_SETTLE_MS&&drawnInner==inner&&drawn>=onSince+ON_SETTLE_MS){reveal=now;readiness="destination draw";}
     // Emergency escape is not evidence of readiness. Keep a bounded recovery
     // instead of leaving the user's display black after a renderer failure.
-    if(reveal<0&&now-onSince>=READY_TIMEOUT_MS){reveal=now;readiness="TIMEOUT recovery; readiness NOT confirmed";}
+    boolean open=inner&&angle>=openThreshold;
+    if(reveal<0&&now-onSince>=(open?OPEN_READY_TIMEOUT_MS:READY_TIMEOUT_MS)){reveal=now;readiness=open?"TIMEOUT recovery (fully open); readiness NOT confirmed":"TIMEOUT recovery; readiness NOT confirmed";}
+    if(reveal>=0)lastReveal=(inner?"inner":"cover")+" after "+(reveal-onSince)+" ms ON ("+(reveal-switched)+" ms since switch): "+readiness;
    }
    if(reveal<0)return 1;
    float x=Math.min(1,(now-reveal)/(float)FadeSettings.reveal(gradualness));
@@ -76,8 +92,12 @@ final class HandoffFadePolicy {
   }
   if(!armed&&(inner?(angle>=handoff-2+FadeSettings.span(gradualness)||angle<=arrival-2):(angle<=handoff-2-FadeSettings.span(gradualness)||angle>=arrival+2)))armed=true;
   float alpha=armed?approach(inner,angle,gradualness,handoff):0;
-  if(alpha<=0){blackSince=-1;expired=false;}
-  if(alpha>=.999f){if(blackSince<0)blackSince=now;if(now-blackSince>1200)expired=true;}else blackSince=-1;
-  return expired?0:filtered(alpha,now);
+  if(alpha<=0){blackSince=-1;expired=false;expiredAt=-1;}
+  if(alpha>=.999f){if(blackSince<0)blackSince=now;if(now-blackSince>1200&&!expired){expired=true;expiredAt=now;}}else blackSince=-1;
+  if(expired){
+   // No switch arrived: release the hold with the reveal curve instead of a 1→0 pop.
+   float out=releaseEnvelope(now-expiredAt,gradualness);filterTime=now;filtered=out;return out;
+  }
+  return filtered(alpha,now);
  }
 }

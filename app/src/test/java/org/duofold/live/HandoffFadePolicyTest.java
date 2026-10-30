@@ -92,8 +92,17 @@ public class HandoffFadePolicyTest {
  }
  @Test public void noSwitchTimesOutAndInvalidInputClears(){
   HandoffFadePolicy p=new HandoffFadePolicy();p.handoff(98);p.opacity(0,false,100,true,true,-1,false);
-  assertEquals(0,p.opacity(1201,false,100,true,true,-1,false),0);
-  assertEquals(0,p.opacity(1210,false,100,false,true,-1,false),0);
-  assertEquals(0,p.opacity(1220,false,Float.NaN,true,true,-1,false),0);
+  // The expired hold eases out over the reveal duration instead of popping to 0.
+  assertEquals(1,p.opacity(1201,false,100,true,true,-1,false),0);
+  assertEquals(.5f,p.opacity(1291,false,100,true,true,-1,false),.001);
+  assertEquals(0,p.opacity(1381,false,100,true,true,-1,false),0);
+  assertEquals(0,p.opacity(1390,false,100,false,true,-1,false),0);
+  assertEquals(0,p.opacity(1400,false,Float.NaN,true,true,-1,false),0);
+ }
+ @Test public void releaseEnvelopeEasesOverRevealDuration(){
+  assertEquals(1,HandoffFadePolicy.releaseEnvelope(0,0),0);
+  assertEquals(.5f,HandoffFadePolicy.releaseEnvelope(90,0),.001);
+  assertEquals(0,HandoffFadePolicy.releaseEnvelope(180,0),0);
+  assertEquals(0,HandoffFadePolicy.releaseEnvelope(500,1),0);
  }
 }
