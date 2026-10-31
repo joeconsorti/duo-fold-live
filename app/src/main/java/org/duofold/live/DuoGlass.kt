@@ -260,20 +260,30 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
  private var openThreshold=172f
  private var smoothingMs=FrameSmoothing.DEFAULT_MS
  private var bufferWidth=0;private var bufferHeight=0
+ private var motionResolution=RenderQuality.DEFAULT_RESOLUTION
+ private var resolutionPinned=false
+ private fun selectMotionResolution(angle:Float){
+  if(standardAnimation || preview)return // Coordinated renderers pin both panels at session start.
+  if(!angle.isFinite())return
+  val moving=angle>2f && angle<openThreshold
+  if(moving && !resolutionPinned){motionResolution=AdaptiveResolution.beginAnimation(context.getSharedPreferences("standalone",0));resolutionPinned=true;updateBufferSize()}
+  if(!moving)resolutionPinned=false
+ }
  private var outputWidth=0;private var outputHeight=0;private var outputFormat=0
  private fun updateBufferSize(){
   if(preview || width<=0 || height<=0)return
   val prefs=context.getSharedPreferences("standalone",0)
-  val w=GlassEffectSettings.bufferDimension(prefs,width);val h=GlassEffectSettings.bufferDimension(prefs,height)
+  val w=GlassEffectSettings.bufferDimension(prefs,width,motionResolution);val h=GlassEffectSettings.bufferDimension(prefs,height,motionResolution)
   if(w!=bufferWidth || h!=bufferHeight){bufferWidth=w;bufferHeight=h;holder.setFixedSize(w,h)}
  }
  override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int){super.onSizeChanged(w,h,oldw,oldh);updateBufferSize()}
  private val angleListener=LiveAngles.Listener { value,_ ->
+  selectMotionResolution(value)
   if(!preparedStandby && value.isFinite() && (value!=targetAngle||LiveAngles.hingePauseAt>0)){targetAngle=value;requestDraw()}
  }
  private var diagnosticMode=0
  private var opaqueContent=false
- private var frozen=false;private var frame:GlassFrame?=null;private var amount=0f;private var intensity=.4f;private var inner=false;private var rotation=0
+ private var frozen=false;private var frame:GlassFrame?=null;private var amount=0f;private var intensity=RenderQuality.DEFAULT_GLASS;private var inner=false;private var rotation=0
  private val basePaint=Paint(Paint.FILTER_BITMAP_FLAG)
  private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
  private val motionOffset=FloatArray(2)
@@ -397,6 +407,7 @@ internal class FrostSurface(context:Context,private val preview:Boolean=false,pr
   this.diagnosticMode=diagnosticMode;this.opaqueContent=ScreenshotRenderPolicy.opaqueEffect(standardAnimation,opaqueContent);this.hingeAngle=angle;this.frozen=frozen;frame=next;this.amount=amount;this.intensity=intensity;this.inner=inner;this.rotation=rotation
   smoothingMs=FrameSmoothing.sanitize(context.getSharedPreferences("standalone",0).getFloat("smoothing_ms",FrameSmoothing.DEFAULT_MS))
   openThreshold=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
+  selectMotionResolution(angle)
   requestDraw()}
  // Same shader/uniform/settings code as normal Windowed Glass. Only its texture is retained.
  fun configureStandardSnapshot(next:GlassFrame,raw:Float,visual:Float,inner:Boolean,rotation:Int){

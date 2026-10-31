@@ -72,6 +72,7 @@ public final class DuoApplication extends Application {
   // Duo is the default once on upgrade; subsequent explicit mode choices persist.
   FoldingModeSettings.initialize(prefs,screenshotMode);
   GlassEffectSettings.initialize(prefs);
+  AdaptiveResolution.start(this);
   // Retire old appearance presets while preserving direction and glass/gyro settings.
   AnimationModePolicy.initialize(prefs);
   // Endpoint cover-up experiments are parked; clear legacy values as well as gating execution.

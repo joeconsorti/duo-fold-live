@@ -15,7 +15,7 @@ internal class PreparedGlassHost(context:Context):ViewGroup(context) {
  private val sizes= arrayOf(Point(),Point())
  private val dm=context.getSystemService(DisplayManager::class.java)
  private val identities=HashMap<String,Int>()
- private var lastIntensity=.4f
+ private var lastIntensity=RenderQuality.DEFAULT_GLASS
  private var configured=false
  private var selected=-1
  private val captureListener:()->Unit={if(configured)selectPrimary()}

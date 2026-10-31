@@ -1,5 +1,9 @@
 # Next release
 
+## 3.5.9-alpha.66 — adaptive resolution
+
+Default-on thermal adaptation: selected maximum -> 25% at thermal status >=1; 50% at status 0; selected maximum after ten continuous minutes at status 0. Slider maximum and opt-out persist. Changes apply between animations. New/reset defaults are 100% resolution, 50% glass and 75% blur; existing saved settings are retained. See [alpha.66 release notes](3.5.9-alpha.66-reconstructed-CHANGELOG.md).
+
 - User confirmed on 2026-10-13 that the Windowed Glass retreat is fixed in 3.5.5-alpha.2.
 - Glass strength defaults to 40% for new setups and Reset glass strength. Existing saved strengths remain selected. UI, renderer, screenshot path, report fallback and initial setup agree.
 - Custom wallpaper unlock flash: partial success / largely resolved in 3.5.5-alpha.5. User reports no flashes after the off/on test, with possibly one on the first unlock, versus every unlock before preparation was implemented. Software logs also show a completed atomic Home handoff after re-enabling. Keep wake preparation ON by default in future builds, with the three-second-hold developer override. Defer residual first-unlock / missing-Home-eligibility investigation until after the main priorities; do not claim every edge case is fixed.

@@ -75,15 +75,15 @@ public class FoldingModeSettingsTest {
   values.put("full_resolution_glass",true);
   values.put("motion_glass_invert",true);
   GlassEffectSettings.initialize(prefs);restart();assertRoute(true);
-  assertEquals(25,GlassEffectSettings.resolution(prefs));
-  assertEquals(.4f,prefs.getFloat("intensity",0),0);
-  assertEquals(1.5f,prefs.getFloat("blur_strength",0),0);
+  assertEquals(100,GlassEffectSettings.resolution(prefs));
+  assertEquals(.5f,prefs.getFloat("intensity",0),0);
+  assertEquals(.75f,prefs.getFloat("blur_strength",0),0);
   assertFalse(prefs.contains("full_resolution_glass"));
   assertFalse(prefs.contains("motion_glass_invert"));
-  assertEquals(612,GlassEffectSettings.bufferDimension(prefs,2448));
+  assertEquals(2448,GlassEffectSettings.bufferDimension(prefs,2448));
   FoldingModeSettings.select(prefs,false);GlassEffectSettings.initialize(prefs);restart();assertRoute(false);
-  assertEquals(25,GlassEffectSettings.resolution(prefs));
-  assertEquals(.4f,prefs.getFloat("intensity",0),0);assertEquals(1.5f,prefs.getFloat("blur_strength",0),0);
+  assertEquals(100,GlassEffectSettings.resolution(prefs));
+  assertEquals(.5f,prefs.getFloat("intensity",0),0);assertEquals(.75f,prefs.getFloat("blur_strength",0),0);
  }
  @Test public void resolutionAndGlassEditsCarryAcrossModesAndRestarts(){
   for(int resolution:new int[]{25,50,75,100})for(boolean shot:new boolean[]{true,false}){
@@ -96,10 +96,16 @@ public class FoldingModeSettingsTest {
    assertEquals(2448*resolution/100,GlassEffectSettings.bufferDimension(prefs,2448));
   }
  }
+ @Test public void adaptationDefaultsOnAndPreservesExplicitOptOutAcrossRestart(){
+  GlassEffectSettings.initialize(prefs);assertTrue(prefs.getBoolean(AdaptiveResolution.ENABLED_KEY,false));
+  values.put(AdaptiveResolution.ENABLED_KEY,false);values.put(GlassEffectSettings.RESOLUTION_KEY,25);
+  GlassEffectSettings.initialize(prefs);restart();GlassEffectSettings.initialize(prefs);
+  assertFalse(prefs.getBoolean(AdaptiveResolution.ENABLED_KEY,true));assertEquals(25,GlassEffectSettings.resolution(prefs));
+ }
  @Test public void malformedQualityFallsBackWithoutChangingSavedGlassTuning(){
   values.put(GlassEffectSettings.RESOLUTION_KEY,999);values.put("intensity",.75f);values.put("blur_strength",.9f);
   GlassEffectSettings.initialize(prefs);
-  assertEquals(25,prefs.getInt(GlassEffectSettings.RESOLUTION_KEY,0));
+  assertEquals(100,prefs.getInt(GlassEffectSettings.RESOLUTION_KEY,0));
   assertEquals(.75f,prefs.getFloat("intensity",0),0);assertEquals(.9f,prefs.getFloat("blur_strength",0),0);
  }
  @Test public void disabledAnimationAndSavedAppearanceArePreserved(){

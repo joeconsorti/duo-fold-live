@@ -86,6 +86,7 @@ class MainActivity:ComponentActivity(){
     var fadeSmoothing by remember{mutableFloatStateOf(FadeSettings.smoothing(prefs.getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING)))}
     var handoffAngle by remember{mutableFloatStateOf(HandoffSettings.angle(prefs.getFloat("handoff_angle",HandoffSettings.DEFAULT)))}
     var fadeGradualness by remember{mutableFloatStateOf(FadeSettings.gradualness(prefs.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS)))}
+    var adaptiveResolution by remember{mutableStateOf(prefs.getBoolean(AdaptiveResolution.ENABLED_KEY,true))}
     var effectResolution by remember{mutableIntStateOf(GlassEffectSettings.resolution(prefs))}
     var antialias by remember{mutableStateOf(prefs.getBoolean("antialias_enabled",true))}
     var earlyStretch by remember{mutableFloatStateOf(prefs.getFloat("early_stretch",2.7f).let{if(it.isFinite())it.coerceIn(0f,3f)/3f else .9f})}
@@ -223,16 +224,18 @@ class MainActivity:ComponentActivity(){
         }
        }
        TextButton(onClick={smoothing=FrameSmoothing.DEFAULT_MS;prefs.edit().putFloat("smoothing_ms",smoothing).apply();restart()}){Text("Reset smoothness")}
-       InfoLabel("Blur amount · ${(blurStrength*100).roundToInt()}%","Softens pixelation, especially on the inner screen. Default: 150%.")
+       InfoLabel("Blur amount · ${(blurStrength*100).roundToInt()}%","Softens pixelation, especially on the inner screen. Default: 75%.")
        Slider(value=blurStrength,onValueChange={blurStrength=it},valueRange=0f..3f,onValueChangeFinished={prefs.edit().putFloat("blur_strength",blurStrength).apply();restart()})
 
        TextButton(onClick={blurStrength=RenderQuality.DEFAULT_BLUR;prefs.edit().putFloat("blur_strength",RenderQuality.DEFAULT_BLUR).apply();restart()}){Text("Reset blur amount")}
-       InfoLabel("Glass strength · ${(intensity*100).roundToInt()}%","Controls the glass shading intensity, independently of blur. Default: 40% in both modes.")
+       InfoLabel("Glass strength · ${(intensity*100).roundToInt()}%","Controls the glass shading intensity, independently of blur. Default: 50% in both modes.")
        Slider(value=intensity,onValueChange={intensity=it},valueRange=.3f..1.5f,onValueChangeFinished={prefs.edit().putFloat("intensity",intensity).apply();restart()})
        TextButton(onClick={intensity=RenderQuality.DEFAULT_GLASS;prefs.edit().putFloat("intensity",RenderQuality.DEFAULT_GLASS).apply();restart()}){Text("Reset glass strength")}
-       InfoLabel("Glass / effect resolution · $effectResolution%","Shared by both modes. Default: 25% of each screen dimension, matching Duo Mode's existing resolution. Higher values add detail and GPU work. Advanced 4× Supersampling doubles the selected dimensions.")
+       InfoLabel("Glass / effect resolution · $effectResolution%","Shared by both modes. Default: 100% of each screen dimension. This slider sets the maximum when adaptive resolution is on. Higher values add detail and GPU work. Advanced 4× Supersampling doubles the selected dimensions.")
        Slider(value=effectResolution.toFloat(),onValueChange={effectResolution=((it/25f).roundToInt()*25).coerceIn(25,100)},valueRange=25f..100f,steps=2,onValueChangeFinished={prefs.edit().putInt(GlassEffectSettings.RESOLUTION_KEY,effectResolution).apply();restart()})
        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){listOf(25,50,75,100).forEach{Text("$it%",style=MaterialTheme.typography.bodySmall)}}
+       Toggle("Adaptive resolution",adaptiveResolution,help="On by default. Reduces animation resolution to 25% when the device reports thermal pressure. Returns to 50% when thermal status clears, then to your selected maximum after 10 uninterrupted minutes clear. Never exceeds the slider. Changes apply on the next animation."){adaptiveResolution=it;prefs.edit().putBoolean(AdaptiveResolution.ENABLED_KEY,it).apply()}
+       TextButton(onClick={effectResolution=RenderQuality.DEFAULT_RESOLUTION;prefs.edit().putInt(GlassEffectSettings.RESOLUTION_KEY,effectResolution).apply();restart()}){Text("Reset resolution")}
        Toggle("Inner screen motion glass",motionGlass,help="Tilt your phone to change the glass perspective on the inner display. Uses the same controls in Live Screen Mode (Legacy) and Duo Mode."){motionGlass=it;prefs.edit().putBoolean("motion_glass",it).apply();if(!it && !motionCoverGlass)MotionGlass.stop()}
        if(motionGlass){
         Text("Inner screen sensitivity · ${(motionInnerStrength*100).roundToInt()}%")

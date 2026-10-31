@@ -1,10 +1,10 @@
 package org.duofold.live;
 /** Bounded, device-independent rendering settings. */
 final class RenderQuality {
- static final float DEFAULT_BLUR=1.5f;
- static final float DEFAULT_GLASS=.4f;
- static final int DEFAULT_RESOLUTION=25;
- static int resolution(int value){return value==50||value==75||value==100?value:DEFAULT_RESOLUTION;}
+ static final float DEFAULT_BLUR=.75f;
+ static final float DEFAULT_GLASS=.5f;
+ static final int DEFAULT_RESOLUTION=100;
+ static int resolution(int value){return value==25||value==50||value==75||value==100?value:DEFAULT_RESOLUTION;}
  static int bufferDimension(int logical,int percent,boolean aa,int method){
   // Percent is per dimension. Existing 4x AA doubles each selected dimension.
   long pixels=(long)Math.max(1,logical)*resolution(percent)*(aa&&aaMode(method)==2?2:1)/100;

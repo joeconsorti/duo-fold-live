@@ -15,6 +15,7 @@ import android.view.*
 internal object B8Presentation {
  private val main=Handler(Looper.getMainLooper())
  private var session=0L
+ private var sessionResolution=RenderQuality.DEFAULT_RESOLUTION
  private var latestSession=0L
  private var blocked=0L
  private var lastUpdate=0L
@@ -80,7 +81,7 @@ internal object B8Presentation {
  private var diagnosticAt=0L
  fun ownsRendering()=session!=0L // Suppress stale legacy content from source preparation onward.
  @JvmStatic fun acknowledgement():Bundle=Bundle(acknowledgement)
- @JvmStatic fun report()=status+"\nSession standard Windowed Glass: $animationEnabled; normal shader and saved controls; backend=${if(direct) "independent moving layers; no handoff shield" else "legacy logical windows"}; moving captures enabled on direct path\nIncoming capture: "+incomingDecision+"\n"+HomeFrames.status+"\n"+WorkspaceFrames.status+"\n"+retained+"\n"+CompositionDiagnostic.report()+"\n"+WallpaperVisibilityProbe.report()+"\n"+FoldThermalTrace.report()
+ @JvmStatic fun report()=status+"\nSession effect resolution: $sessionResolution% per dimension\nSession standard Windowed Glass: $animationEnabled; normal shader and saved controls; backend=${if(direct) "independent moving layers; no handoff shield" else "legacy logical windows"}; moving captures enabled on direct path\nIncoming capture: "+incomingDecision+"\n"+HomeFrames.status+"\n"+WorkspaceFrames.status+"\n"+retained+"\n"+CompositionDiagnostic.report()+"\n"+WallpaperVisibilityProbe.report()+"\n"+FoldThermalTrace.report()
  private val guard=object:Runnable{override fun run(){
   if(session==0L)return
   val host=StandaloneService.instance
@@ -115,11 +116,11 @@ internal object B8Presentation {
   if(next==blocked)return
   direct=info?.getBoolean("direct")==true;directMapped=info?.getBoolean("sceneMapped")==true;directStage=info?.getString("directStage","")?:""
   if(next!=session){
-   clear("new session");animationEnabled=context.getSharedPreferences("standalone",0).getBoolean(HandoffVisualPolicy.KEY,false);incomingDecision="not sampled";session=next;latestSession=next;homeScene=info!!.getBoolean("home",false);workspaceScene=info.getBoolean("workspace",false);workspaceTasks=info.getIntArray("workspaceTasks")?:intArrayOf()
+   clear("new session");sessionResolution=AdaptiveResolution.beginAnimation(context.getSharedPreferences("standalone",0));animationEnabled=context.getSharedPreferences("standalone",0).getBoolean(HandoffVisualPolicy.KEY,false);incomingDecision="not sampled";session=next;latestSession=next;homeScene=info!!.getBoolean("home",false);workspaceScene=info.getBoolean("workspace",false);workspaceTasks=info.getIntArray("workspaceTasks")?:intArrayOf()
    HomeInnerDiagnostic.stop("new coordinated session")
    CompositionDiagnostic.pauseForAnimation(context,animationEnabled&&!direct)
    if(!animationEnabled||direct){val armed=CompositionDiagnostic.begin(context,next,homeScene&&direct);if(armed&&homeScene&&direct)HomeInnerDiagnostic.begin(context,next)}
-   FoldThermalTrace.begin(context,next);started=SystemClock.elapsedRealtime();source=info.getString("source","");task=info.getInt("task",-1);retryAt=0
+   FoldThermalTrace.begin(context,next,sessionResolution);started=SystemClock.elapsedRealtime();source=info.getString("source","");task=info.getInt("task",-1);retryAt=0
    sessionOpenAngle=context.getSharedPreferences("standalone",0).getFloat("open_threshold",172f)
    main.postDelayed(guard,100)
    if(snapshots){host.onFrame(false,0f);RecoveryLog.add("B8 LEGACY_HOST_SUPPRESSED session=$next; preparation through cleanup")}
@@ -390,7 +391,7 @@ internal object B8Presentation {
   private fun resize(w:Int,h:Int){
    if(w<=0||h<=0)return
    if(w!=layoutWidth||h!=layoutHeight){layoutWidth=w;layoutHeight=h;painter?.layout(0,0,w,h)}
-   bufferCapacity.include(GlassEffectSettings.bufferDimension(prefs,w),GlassEffectSettings.bufferDimension(prefs,h))
+   bufferCapacity.include(GlassEffectSettings.bufferDimension(prefs,w,sessionResolution),GlassEffectSettings.bufferDimension(prefs,h,sessionResolution))
    // Warm both extents before promotion. Canvas and SurfaceView apply inverse
    // axis scales, so this capacity does not change logical geometry or aspect.
    // Unknown/transient mappings cannot contribute a new size.
@@ -398,7 +399,7 @@ internal object B8Presentation {
     if(!PanelIdentityPolicy.known(physical))continue
     val size=B8PanelGeometry.size(panel)
     if(!shapeMatches(physical,size.x,size.y))continue
-    bufferCapacity.include(GlassEffectSettings.bufferDimension(prefs,size.x),GlassEffectSettings.bufferDimension(prefs,size.y))
+    bufferCapacity.include(GlassEffectSettings.bufferDimension(prefs,size.x,sessionResolution),GlassEffectSettings.bufferDimension(prefs,size.y,sessionResolution))
    }
    val bw=bufferCapacity.width();val bh=bufferCapacity.height()
    if(bw!=bufferWidth||bh!=bufferHeight){bufferWidth=bw;bufferHeight=bh;bufferChanges++;invalidateCommit();view.holder.setFixedSize(bw,bh)
@@ -513,7 +514,7 @@ internal object B8Presentation {
   private val root=row.getParcelable("root",SurfaceControl::class.java)!!
   private val dm=host.getSystemService(DisplayManager::class.java)
   private val prefs=host.getSharedPreferences("standalone",0)
-  private val producer=B8BufferLayer(host,root,GlassEffectSettings.bufferDimension(prefs,width),GlassEffectSettings.bufferDimension(prefs,height),width,height)
+  private val producer=B8BufferLayer(host,root,GlassEffectSettings.bufferDimension(prefs,width,sessionResolution),GlassEffectSettings.bufferDimension(prefs,height,sessionResolution),width,height)
   private var painter:FrostSurface?=null
   private fun effects():FrostSurface=painter?:FrostSurface(host,standardAnimation=true,homeScene=homeScene,workspaceScene=workspaceScene).also{it.layout(0,0,width,height);painter=it}
   private var closed=false;private var queued=false;private var pending=false
