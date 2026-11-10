@@ -1,0 +1,1 @@
+package android.view;public class IWindowManager {public static boolean locked;public static int layouts;public void updateRotation(boolean config,boolean layout){if(!config||!layout)throw new AssertionError();layouts++;}public boolean isKeyguardLocked(){return locked;}}

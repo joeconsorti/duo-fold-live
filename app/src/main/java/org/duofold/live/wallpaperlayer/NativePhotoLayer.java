@@ -1,5 +1,5 @@
 package org.duofold.live.wallpaperlayer;
-import android.window.*;import android.view.*;import android.graphics.*;import android.hardware.HardwareBuffer;import android.os.*;import java.util.*;import java.util.function.Consumer;
+import android.hardware.display.DisplayManager;import android.window.*;import android.view.*;import android.graphics.*;import android.hardware.HardwareBuffer;import android.os.*;import java.util.*;import java.util.function.Consumer;
 /** Own child surfaces only; never transforms, hides or reparents Samsung's parent surfaces. */
 public final class NativePhotoLayer extends DisplayAreaOrganizer {
  final HashMap<IBinder,Entry> layers=new HashMap<>();final Consumer<String> note;final Consumer<Throwable> failed;
@@ -63,8 +63,16 @@ public final class NativePhotoLayer extends DisplayAreaOrganizer {
   }
  }
  SurfaceControl photoParent(int display){for(Entry e:layers.values())if(e.info.displayId==display&&e.parent.isValid())return e.parent;return null;}
- String rendererDescription(){return "Native compositor surface; independent wake surfaces="+independentCount+(independent?" (submitted, not a visibility guarantee)":" (disabled)");}
- void geometry(SurfaceControl.Transaction t,Entry e){
+ String rendererDescription() {
+        return "Geometry updates=" + this.geometryUpdates + "; unchanged skipped=" + this.geometrySkips + "; native compositor surface; independent wake surfaces=" + this.independentCount + (this.independent ? " (submitted, not a visibility guarantee)" : " (disabled)");
+    }
+ long geometrySkips,geometryUpdates;
+void invalidateGeometry() {
+        for (Entry e : this.layers.values()) {
+            e.lastGeometry = null;
+        }
+    }
+void geometry(SurfaceControl.Transaction t,Entry e){e.lastGeometry=null;
   try{
    android.hardware.display.DisplayManager dm=context.getSystemService(android.hardware.display.DisplayManager.class);
    Display display=dm.getDisplay(e.info.displayId);
@@ -85,13 +93,46 @@ public final class NativePhotoLayer extends DisplayAreaOrganizer {
    if(e.wake!=null)t.setGeometry(e.wake,src,new Rect(bounds),Surface.ROTATION_0);
   }catch(Exception error){throw new IllegalStateException("Native photo geometry",error);}
  }
- public void refreshDisplays(){if(closed)return;try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){
-  android.hardware.display.DisplayManager dm=context.getSystemService(android.hardware.display.DisplayManager.class);
-  for(Entry e:layers.values()){Display d=dm.getDisplay(e.info.displayId);if(d!=null&&d.isValid())geometry(t,e);}t.apply();
- }catch(Throwable error){failed.accept(error);}}
+ public void refreshDisplays() {
+        if (this.closed) {
+            return;
+        }
+        try {
+            try (SurfaceControl.Transaction t = new SurfaceControl.Transaction()) {
+                DisplayManager dm = (DisplayManager) this.context.getSystemService(DisplayManager.class);
+                HashMap<Entry, PhotoGeometryKey> changed = new HashMap<>();
+                for (Entry e : this.layers.values()) {
+                    Display d = dm.getDisplay(e.info.displayId);
+                    if (d != null && d.isValid()) {
+                        Point size = new Point();
+                        d.getRealSize(size);
+                        String physical = String.valueOf(Display.class.getMethod("getUniqueId", new Class[0]).invoke(d, new Object[0]));
+                        int stack = ((Integer) Display.class.getMethod("getLayerStack", new Class[0]).invoke(d, new Object[0])).intValue();
+                        Object selected = this.album == null ? null : this.album.forDisplay(d, size.x, size.y);
+                        PhotoGeometryKey key = new PhotoGeometryKey(e.parent, selected == null ? this.hardware : selected, physical, size.x, size.y, d.getRotation(), stack);
+                        if (key.same(e.lastGeometry)) {
+                            this.geometrySkips++;
+                        } else {
+                            geometry(t, e);
+                            changed.put(e, key);
+                        }
+                    }
+                }
+                if (!changed.isEmpty()) {
+                    t.apply();
+                    this.geometryUpdates += changed.size();
+                    for (Map.Entry<Entry, PhotoGeometryKey> update : changed.entrySet()) {
+                        update.getKey().lastGeometry = update.getValue();
+                    }
+                }
+            }
+        } catch (Throwable error) {
+            this.failed.accept(error);
+        }
+    }
  public void onDisplayAreaAppeared(DisplayAreaInfo info,SurfaceControl leash){try{attach(info,leash);}catch(Throwable e){failed.accept(e);}}
- public void onDisplayAreaInfoChanged(DisplayAreaInfo info){if(closed)return;Entry e=layers.get(info.token.asBinder());if(e==null)return;e.info=info;try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){geometry(t,e);t.apply();}catch(Throwable error){failed.accept(error);}}
+ public void onDisplayAreaInfoChanged(DisplayAreaInfo info){if(closed)return;Entry e=layers.get(info.token.asBinder());if(e==null)return;e.info=info;e.lastGeometry=null;try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){geometry(t,e);t.apply();}catch(Throwable error){failed.accept(error);}}
  public void onDisplayAreaVanished(DisplayAreaInfo info){Entry e=layers.remove(info.token.asBinder());if(e!=null){if(e.wake!=null)independentCount--;e.remove();}}
  public void close(){if(closed)return;closed=true;for(Entry e:layers.values())try{e.remove();}catch(Exception error){note.accept("Native child cleanup: "+error);}layers.clear();if(registered){registered=false;try{unregisterOrganizer();}catch(Exception e){note.accept("Native organizer cleanup: "+e);}}if(buffer!=null){buffer.close();buffer=null;}hardware=null;}
- static class Entry{String lastConfiguration="",lastSize="";DisplayAreaInfo info;SurfaceControl wake;final SurfaceControl parent,child;Entry(DisplayAreaInfo i,SurfaceControl p,SurfaceControl c){info=i;parent=p;child=c;}void remove(){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(child,false).reparent(child,null);if(wake!=null)t.setVisibility(wake,false).reparent(wake,null);t.apply();}finally{releaseHandles();}}void releaseHandles(){if(wake!=null){wake.release();wake=null;}child.release();parent.release();}}
+ static class Entry{String lastConfiguration="",lastSize="";PhotoGeometryKey lastGeometry;DisplayAreaInfo info;SurfaceControl wake;final SurfaceControl parent,child;Entry(DisplayAreaInfo i,SurfaceControl p,SurfaceControl c){info=i;parent=p;child=c;}void remove(){try(SurfaceControl.Transaction t=new SurfaceControl.Transaction()){t.setVisibility(child,false).reparent(child,null);if(wake!=null)t.setVisibility(wake,false).reparent(wake,null);t.apply();}finally{releaseHandles();}}void releaseHandles(){if(wake!=null){wake.release();wake=null;}child.release();parent.release();}}
 }

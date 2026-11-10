@@ -1,0 +1,1 @@
+package android.graphics;public class RenderNode{public RenderNode(String s){}public boolean setPosition(int a,int b,int c,int d){return true;}public RecordingCanvas beginRecording(){return new RecordingCanvas();}public void endRecording(){}public void discardDisplayList(){}}

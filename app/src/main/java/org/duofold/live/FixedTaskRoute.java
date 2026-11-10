@@ -5,7 +5,7 @@ import java.util.*;
 /** Owns only the exact fullscreen app selected before concurrent activation. */
 final class FixedTaskRoute {
  private final Object manager;private final Class<?> api;
- private int task=-1;private boolean requested;private String component="";
+ private int task=-1;private boolean requested,focusAttempted;private String component="";
  FixedTaskRoute()throws Exception{api=Class.forName("android.app.IActivityTaskManager");manager=Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null);}
  FixedTaskRoute(Object manager,Class<?> api){this.manager=manager;this.api=api;}
  private int number(Object o,String name)throws Exception{return o.getClass().getField(name).getInt(o);}
@@ -13,7 +13,7 @@ final class FixedTaskRoute {
  private List<?> tasks(int display)throws Exception{return (List<?>)api.getMethod("getTasks",int.class,boolean.class,boolean.class,int.class).invoke(manager,64,false,false,display);}
  private boolean contains(Object root,int id)throws Exception{if(number(root,"taskId")==id)return true;int[] children=(int[])field(root,"childTaskIds");if(children!=null)for(int child:children)if(child==id)return true;return false;}
  String prepare()throws Exception{
-  if(requested)throw new IllegalStateException("Previous exact task still needs return");task=-1;
+  if(requested)throw new IllegalStateException("Previous exact task still needs return");task=-1;focusAttempted=false;
   Object root=api.getMethod("getFocusedRootTaskInfo").invoke(manager);
   if(root==null||number(root,"displayId")!=0)return "SKIP: outgoing display does not own focus";
   Object window=field(field(root,"configuration"),"windowConfiguration");
@@ -46,6 +46,21 @@ final class FixedTaskRoute {
   Object root=api.getMethod("getFocusedRootTaskInfo").invoke(manager);
   int display=root==null?-1:number(root,"displayId"),rootTask=root==null?-1:number(root,"taskId");
   return new Observation(placed,root!=null&&display==1&&contains(root,task),display,rootTask);
+ }
+ String focusPlacedOnce()throws Exception{
+  if(focusAttempted)return "Focus correction already attempted";
+  Observation observation=observe();
+  if(!observation.placed||observation.focused)return "Focus correction not needed";
+  Object root=api.getMethod("getFocusedRootTaskInfo").invoke(manager);
+  if(root==null||number(root,"displayId")!=0)return "Focus correction skipped: focus changed";
+  Object window=field(field(root,"configuration"),"windowConfiguration");
+  if((int)window.getClass().getMethod("getActivityType").invoke(window)!=2)return "Focus correction skipped: another app or Recents owns focus";
+  // Validate identity again before changing focus. No activity is restarted.
+  boolean exact=false;for(Object item:tasks(1))if(number(item,"taskId")==task&&component.equals(String.valueOf(field(item,"topActivity"))))exact=true;
+  if(!exact)return "Focus correction skipped: selected app changed";
+  focusAttempted=true;
+  api.getMethod("setFocusedTask",int.class).invoke(manager,task);
+  return "FOCUS requested once for exact task="+task+" on D1";
  }
  boolean placedAndFocused()throws Exception{return observe().verified();}
  String primaryFocusSummary()throws Exception{

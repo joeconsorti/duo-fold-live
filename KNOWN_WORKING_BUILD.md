@@ -1,4 +1,10 @@
-# Current release baseline — 3.5.5
+# Current public promotion — 3.5.9
+
+Owner approved alpha.109 for the public stable release on 2026-11-09. Version `3.5.9-reconstructed` (versionCode at least 1363), tag `v3.5.9`, public package `org.duofold.live`. Runtime matches alpha.109; promotion changes version metadata, release workflow and documentation only. Release signing must match the public v3.5.8 certificate. The reconstructed-source label is retained, and automated tests are not handset/optical proof.
+
+Alpha.107 remains the preserved earlier user-approved local rollback reference, with its exact original artifacts and tag. See `STABLE_REFERENCE.json` and `docs/3.5.9-reconstructed-CHANGELOG.md`.
+
+# Previous release baseline — 3.5.5
 
 Owner approved stable/main promotion on 2026-10-17. This release retains the alpha.34 runtime, launcher icon, and optional support reminders, with stable version metadata and documentation updates only.
 

@@ -33,4 +33,30 @@ public class RotationReleaseTest {
  @Test public void ignoredOrAbsentPosturePreservesOriginal(){
   assertTrue(RotationRelease.locked(0,true));assertFalse(RotationRelease.locked(null,false));
  }
+ @Test public void fixedOverrideReleasedBeforeThawStartsSensorSelection()throws Exception{
+  List<String> calls=new ArrayList<>();
+  RotationRelease.restore(()->calls.add("locks"),()->calls.add("postures"),()->calls.add("user"),()->calls.add("fixed"));
+  assertEquals(Arrays.asList("fixed","locks","postures","user"),calls);
+ }
+ @Test public void eachRestorationFailureStillReleasesProtection(){
+  for(int failed=0;failed<4;failed++){
+   final int failureIndex=failed;List<Integer> calls=new ArrayList<>();
+   RotationRelease.Step[] steps=new RotationRelease.Step[4];
+   for(int i=0;i<4;i++){final int index=i;steps[i]=()->{calls.add(index);if(index==failureIndex)throw new Exception("phase "+index);};}
+   try{RotationRelease.restore(steps[0],steps[1],steps[2],steps[3]);fail();}
+   catch(Exception expected){assertEquals("phase "+failed,expected.getMessage());}
+   assertEquals(Arrays.asList(3,0,1,2),calls);
+  }
+ }
+ @Test public void sensorEnableIsNotExposedToTemporaryFixedOverride()throws Exception{
+  boolean[] fixed={true};boolean[] sensorEnabled={false};
+  RotationRelease.restore(()->{sensorEnabled[0]=true;assertFalse("do not thaw while fixed policy suppresses sensor selection",fixed[0]);},()->assertTrue(sensorEnabled[0]),()->assertFalse(fixed[0]),()->fixed[0]=false);
+ }
+ @Test public void lockedDestinationDoesNotReplayOutgoingGlobalAngle(){
+  assertEquals("1",RotationRelease.userRotationTarget(true,1,"0"));
+  assertEquals("3",RotationRelease.userRotationTarget(true,3,"1"));
+  assertEquals("0",RotationRelease.userRotationTarget(false,1,"0"));
+  assertNull(RotationRelease.userRotationTarget(false,1,null));
+  assertEquals("2",RotationRelease.userRotationTarget(true,null,"2"));
+ }
 }

@@ -56,8 +56,8 @@ jobs:
           import os, re
           from pathlib import Path
           p = Path('app/build.gradle.kts')
-          if not re.search(r'versionName\s*=\s*"(?:[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+|3\.5\.[012345678])"', p.read_text()):
-              raise SystemExit('Release policy: only alpha versions and owner-approved 3.5.0/3.5.1/3.5.2/3.5.3/3.5.4/3.5.5/3.5.6/3.5.7/3.5.8 are allowed')
+          if not re.search(r'versionName\s*=\s*"(?:[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+(?:-reconstructed)?|3\.5\.[012345678]|3\.5\.9-reconstructed)"', p.read_text()):
+              raise SystemExit('Release policy: only alpha versions and owner-approved stable versions through 3.5.9-reconstructed are allowed')
           current = int(re.search(r'\bversionCode\s*=\s*(\d+)', p.read_text()).group(1))
           code = max(current, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
           text, count = re.subn(r'\bversionCode\s*=\s*\d+', f'versionCode = {code}', p.read_text())
@@ -79,10 +79,17 @@ jobs:
 
       - name: Test and build unsigned release
         run: |
+          cmp PRIVACY.md app/src/main/assets/privacy.txt
           python3 tools/check_inner_stretch.py
           python3 tools/check_window_shading.py
           python3 tools/check_motion_projection.py
-          ./gradlew --no-daemon testGithubReleaseUnitTest lintGithubRelease assembleGithubRelease
+          python3 tools/check_b8_baseline.py
+          python3 tools/check_live_b8.py
+          if ! ./gradlew --no-daemon testGithubReleaseUnitTest lintGithubRelease assembleGithubRelease; then
+            report=app/build/intermediates/lint_intermediate_text_report/githubRelease/lintReportGithubRelease/lint-results-githubRelease.txt
+            if [ -f "$report" ]; then cat "$report"; fi
+            exit 1
+          fi
 
       - name: Audit release manifests and test counts
         run: python3 tools/check_release_outputs.py --variant github
@@ -108,7 +115,9 @@ jobs:
           apk="dist/Duo-Fold-Live-github-ci-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}.apk"
           "$tools/zipalign" -f -P 16 4 app/build/outputs/apk/github/release/app-github-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
           "$tools/apksigner" sign --ks "$key" --ks-key-alias "$KEY_ALIAS" --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD --out "$apk" "$RUNNER_TEMP/aligned.apk"
-          "$tools/apksigner" verify --verbose --print-certs "$apk"
+          "$tools/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-signature.txt"
+          # Retain the signing identity of the existing public v3.5.8 APK.
+          grep -Fqx 'Signer #1 certificate SHA-256 digest: b73c9f53f4500766d94e42dcd7f965d0988a8f9888f0be85243e0c031eacecdc' "$RUNNER_TEMP/apk-signature.txt"
           "$tools/zipalign" -c -P 16 4 "$apk"
           (cd dist && sha256sum *.apk > SHA256SUMS.txt)
 
@@ -151,6 +160,11 @@ jobs:
           # Owner approved alpha.15 with inner screen motion enabled by default as stable 3.5.8.
           if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.5.8 ]; then
             tag="v3.5.8"
+            release_flags=(--latest)
+          fi
+          # Owner approved alpha.109 for public stable promotion on 2026-11-09.
+          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.5.9-reconstructed ]; then
+            tag="v3.5.9"
             release_flags=(--latest)
           fi
           gh release create "$tag" dist/Duo-Fold-Live-github-*.apk dist/SHA256SUMS.txt \

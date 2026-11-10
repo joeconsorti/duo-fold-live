@@ -10,8 +10,15 @@ import rikka.shizuku.Shizuku;
 public final class LiveAngles {
  public interface Listener { void angle(float value,long nanos); }
  private static final Set<Listener> listeners=new HashSet<>();
+ public interface BaseListener {void base(int value);}
+ private static final Set<BaseListener> baseListeners=new HashSet<>();
+ public static void addBase(BaseListener l){baseListeners.add(l);l.base(freshPhysicalBase());}
+ public static void removeBase(BaseListener l){baseListeners.remove(l);}
  private static float angle=Float.NaN;
  private static long last=0;
+ public static int physicalBase=-1;
+ private static long physicalBaseAt;
+ public static int freshPhysicalBase(){return physicalBaseAt>0&&SystemClock.elapsedRealtime()-physicalBaseAt<=750?physicalBase:-1;}
  public static boolean dualActive=false;
  public static String screenshotTrace="Screenshot trace idle";
  public static boolean coverPreview=false;
@@ -55,10 +62,10 @@ public final class LiveAngles {
  }
  public static String handoffStatus="Normal display control";
  public static String status="Angle reader off";
- public static String closedHingeReport="Closed-hinge jitter protection: awaiting helper";
+ public static String closedHingeReport="Hinge jitter protection: awaiting helper";
  public static float currentAngle(){return angle;}
  public static long ageMs(){return last==0?-1:SystemClock.elapsedRealtime()-last;}
- public static boolean fresh(){return last>0 && SystemClock.elapsedRealtime()-last<750;}
+ public static boolean fresh(){return Float.isFinite(angle)&&last>0 && SystemClock.elapsedRealtime()-last<750;}
  public static void add(Listener l){listeners.add(l);if(fresh())l.angle(angle,last*1000000L);}
  public static void remove(Listener l){listeners.remove(l);}
  private final RuntimeSettings settings;
@@ -69,13 +76,17 @@ public final class LiveAngles {
  private volatile long lastPoll;
  private long statusFormatAt;
  public static volatile boolean effectAllowed=true;
+ public static volatile long hingePauseAt;
+ public static String hingePauseReport="Hinge pause: waiting for movement";
+ public static float pauseFraction(){return HingePausePolicy.fraction(hingePauseAt,SystemClock.elapsedRealtime(),HingePausePolicy.EASE_MS);}
  private boolean pollInFlight,urgentPoll;
  private long pollStarted;
- private static long roundTripMs;
+ private final PollCadence.Endpoint endpointCadence=new PollCadence.Endpoint();
+ private static long roundTripMs;private static int targetPollMs=4;private long thermalReadAt;private int b8Thermal;
  private static String rateSummary="Collecting polling rates";
  private long rateStarted;private int ratePolls,rateReplies,rateChanges,rateReceived;
  public static volatile String readerDiagnostics="Not connected";
- public static String latencyReport(){return "Angle poll target period: 4 ms; last round trip: "+roundTripMs+" ms; "+rateSummary;}
+ public static String latencyReport(){return "Angle poll target period: "+targetPollMs+" ms; last round trip: "+roundTripMs+" ms; "+rateSummary;}
  public static void handoffReady(){LiveAngles self=current;if(self==null)return;self.main.post(()->{
   if(!self.running)return;
   if(self.pollInFlight){self.urgentPoll=true;return;}
@@ -131,16 +142,36 @@ public final class LiveAngles {
   p.gravity=Gravity.TOP|Gravity.LEFT;p.setTitle("Duo angle source");return p;
  }
  private void sendAngleCommand(View v){if(v!=null&&v.getWindowToken()!=null)WallpaperManager.getInstance(v.getContext()).sendWallpaperCommand(v.getWindowToken(),action,0,0,0,null);}
+ public static volatile String b8StartGates="B8 start gates: awaiting reader";
+ private String lastB8StartGates="";
+ private void recordB8StartGates(Bundle response){
+  if(!settings.getBoolean("live_b8_enabled",false)||settings.getBoolean("dual",false))return;
+  String value="B8 start gates: animation="+response.getBoolean("clientAnimation")
+   +"; host="+response.getBoolean("clientHost")
+   +"; interactive="+response.getBoolean("clientInteractive")
+   +"; keyguardLocked="+response.getBoolean("clientKeyguardLocked")
+   +"; thermal="+b8Thermal+"; effectAllowed="+response.getBoolean("effectAllowed",false)
+   +"; readerEligible="+response.getBoolean("b8Eligible",false)
+   +"; physicalBase="+response.getInt("physicalBase",-1)
+   +"; fresh="+(response.getLong("last")>0&&SystemClock.elapsedRealtime()-response.getLong("last")<750);
+  b8StartGates=value;
+  if(!value.equals(lastB8StartGates)){lastB8StartGates=value;RecoveryLog.add(value);}
+ }
  private Bundle call(int code)throws Exception{
   IBinder b=reader;if(b==null)throw new IllegalStateException("Reader disconnected");
-  Parcel p=Parcel.obtain(),r=Parcel.obtain();try{p.writeInterfaceToken(AngleReader.DESCRIPTOR);if(code==1){p.writeString(action);p.writeString(context.getApplicationInfo().sourceDir);}if(code==2)p.writeInt(StandaloneService.Companion.getInstance()!=null && settings.getBoolean("enabled",false) && context.getSystemService(PowerManager.class).isInteractive() && !context.getSystemService(android.app.KeyguardManager.class).isKeyguardLocked()?1:0);
+  if(SystemClock.elapsedRealtime()-thermalReadAt>=1000){thermalReadAt=SystemClock.elapsedRealtime();b8Thermal=context.getSystemService(PowerManager.class).getCurrentThermalStatus();}
+  boolean gateHost=StandaloneService.Companion.getInstance()!=null,gateEnabled=settings.getBoolean("enabled",false);
+  boolean gateInteractive=code==2&&context.getSystemService(PowerManager.class).isInteractive();
+  boolean gateLocked=code==2&&context.getSystemService(android.app.KeyguardManager.class).isKeyguardLocked();
+  Parcel p=Parcel.obtain(),r=Parcel.obtain();try{p.writeInterfaceToken(AngleReader.DESCRIPTOR);if(code==1){p.writeString(action);p.writeString(context.getApplicationInfo().sourceDir);}if(code==2)p.writeInt(gateHost && b8Thermal<3 && gateEnabled && gateInteractive && !gateLocked?1:0);
    if(code==2){
     p.writeInt(settings.getBoolean("dual",false)?1:0);
     android.view.Display display=context.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
     android.view.Display.Mode mode=display.getMode();p.writeInt(Math.min(mode.getPhysicalWidth(),mode.getPhysicalHeight())/(float)Math.max(mode.getPhysicalWidth(),mode.getPhysicalHeight())>.7f?1:0);
-    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(settings.getFloat("open_threshold",172f));p.writeInt(settings.getBoolean("cover_preview",true)?1:0);p.writeInt(settings.getBoolean("enabled",false)?1:0);p.writeFloat(settings.getFloat("closed_threshold",2f));p.writeLong(continuityRequest);p.writeFloat(settings.getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING));p.writeFloat(settings.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS));p.writeString(settings.getString("animation_mode",AnimationModePolicy.DEFAULT));p.writeInt(AnimationModePolicy.blackFade(settings.getString("animation_mode",AnimationModePolicy.DEFAULT),settings.getBoolean("debug_mode",false))?1:0);p.writeFloat(HandoffSettings.angle(settings.getFloat("handoff_angle",HandoffSettings.DEFAULT)));p.writeInt(settings.getBoolean("screenshot_camera_startup",false)?1:0);p.writeInt(host!=null&&host.screenshotWindowReady()&&host.screenshotFrameReady()?1:0);p.writeInt(settings.getBoolean("screenshot_remap_power_hold",true)?1:0);p.writeInt(0); /* Reserved former closing-power slot; preserve parcel layout. */p.writeInt(settings.getBoolean("closing_app_return",false)?1:0);p.writeInt(settings.getBoolean("closed_hinge_jitter_protection",true)?1:0);p.writeString(AnimationModePolicy.behavior(settings.getString("animation_behavior",AnimationModePolicy.BOTH)));
+    StandaloneService host=StandaloneService.Companion.getInstance();p.writeInt(host!=null&&host.secondaryReady()?1:0);p.writeInt(HandoffFrames.readySource());p.writeFloat(settings.getFloat("open_threshold",172f));p.writeInt(settings.getBoolean("cover_preview",true)?1:0);p.writeInt(settings.getBoolean("enabled",false)&&b8Thermal<3?1:0);p.writeFloat(settings.getFloat("closed_threshold",2f));p.writeLong(continuityRequest);p.writeFloat(settings.getFloat("fade_smoothing_ms",FadeSettings.DEFAULT_SMOOTHING));p.writeFloat(settings.getFloat("fade_gradualness",FadeSettings.DEFAULT_GRADUALNESS));p.writeString(settings.getString("animation_mode",AnimationModePolicy.DEFAULT));p.writeInt(AnimationModePolicy.blackFade(settings.getString("animation_mode",AnimationModePolicy.DEFAULT),settings.getBoolean("debug_mode",false))?1:0);p.writeFloat(HandoffSettings.angle(settings.getFloat("handoff_angle",HandoffSettings.DEFAULT)));p.writeInt(settings.getBoolean("screenshot_camera_startup",false)?1:0);p.writeInt(host!=null&&host.screenshotWindowReady()&&host.screenshotFrameReady()?1:0);p.writeInt(settings.getBoolean("screenshot_remap_power_hold",true)?1:0);p.writeInt(0); /* Reserved former closing-power slot; preserve parcel layout. */p.writeInt(settings.getBoolean("closing_app_return",false)?1:0);p.writeInt(settings.getBoolean("closed_hinge_jitter_protection",true)?1:0);p.writeString(AnimationModePolicy.behavior(settings.getString("animation_behavior",AnimationModePolicy.BOTH)));p.writeInt(settings.getBoolean("live_b8_enabled",false)?1:0);
+    p.writeInt(b8Thermal);p.writeBundle(B8Presentation.acknowledgement());p.writeInt(settings.getBoolean(HingePausePolicy.RESUME_MOVEMENT_KEY,false)?1:0);
    }
-   if(!b.transact(code,p,r,0))throw new IllegalStateException("Unsupported reader");r.readException();return code==2?r.readBundle(getClass().getClassLoader()):null;
+   if(!b.transact(code,p,r,0))throw new IllegalStateException("Unsupported reader");r.readException();Bundle response=code==2?r.readBundle(getClass().getClassLoader()):null;if(response!=null){PanelIdentity.accept(response.getBundle("panelIdentity"));response.putBoolean("clientAnimation",gateEnabled);response.putBoolean("clientHost",gateHost);response.putBoolean("clientInteractive",gateInteractive);response.putBoolean("clientKeyguardLocked",gateLocked);}return response;
   }finally{p.recycle();r.recycle();}
  }
  private final Runnable poll=new Runnable(){public void run(){
@@ -153,6 +184,8 @@ public final class LiveAngles {
    if(ReaderRecovery.needsRestart(b.getString("state"))){main.post(()->{if(running){RecoveryLog.add("Expired wallpaper reader lease; paced recovery");stop();status="Reader lease expired — awaiting recovery";}});return;}
    main.post(()->{
    if(!running)return;
+   recordB8StartGates(b);
+   hingePauseAt=b.getLong("hingePauseAt");hingePauseReport=b.getString("hingePauseReport",hingePauseReport);
    String nextHandoff=b.getString("handoff", "Unknown display status");
    if(!nextHandoff.equals(handoffStatus))RecoveryLog.add(nextHandoff);
    handoffStatus=nextHandoff;continuityStatus=b.getString("continuityProbe",continuityStatus);continuityTrace=b.getString("continuityTrace",continuityTrace);
@@ -175,26 +208,37 @@ public final class LiveAngles {
     rateSummary=String.format(Locale.US,"%.1f polls/s; %.1f replies/s; %.1f observed angle changes/s",ratePolls/seconds,rateReplies/seconds,rateChanges/seconds);
     rateStarted=rateNow;ratePolls=rateReplies=rateChanges=0;
    }
-   if(received>count && stamp>0 && SystemClock.elapsedRealtime()-stamp<750){
+   FoldDiagnostics.reader(b,b.getBoolean("clientInteractive"),b.getBoolean("clientKeyguardLocked"),b8Thermal,SystemClock.elapsedRealtime()-pollStarted);
+   physicalBase=b.getInt("physicalBase",-1);physicalBaseAt=b.getLong("physicalBaseAt");
+   // Observe physical closure even when sleep has stopped fresh wallpaper replies.
+   for(BaseListener l:new ArrayList<>(baseListeners))l.base(freshPhysicalBase());
+   if((received>count || Float.compare(angle,b.getFloat("angle"))!=0) && stamp>0 && SystemClock.elapsedRealtime()-stamp<750){
     count=received;angle=b.getFloat("angle");last=stamp;
     for(Listener l:new ArrayList<>(listeners))l.angle(angle,stamp*1000000L);
    }
    android.view.Display currentDisplay=context.getSystemService(android.hardware.display.DisplayManager.class).getDisplay(0);
    android.view.Display.Mode currentMode=currentDisplay.getMode();
    boolean innerNow=Math.min(currentMode.getPhysicalWidth(),currentMode.getPhysicalHeight())/(float)Math.max(currentMode.getPhysicalWidth(),currentMode.getPhysicalHeight())>.7f;
+   B8Presentation.update(context,b.getBundle("b8Presentation"));
    IncomingAnimationFrame.update(context,b.getBundle("incomingHold"),fresh(),effectAllowed);
+   LegacyEndpointCoverage.update(context,b.getBundle("incomingHold"),angle,fresh(),effectAllowed);
    IncomingHold.update(context,b.getBundle("incomingHold"),angle,fresh(),effectAllowed);
    HandoffFrames.update(innerNow,dualActive,angle,fresh(),settings.getFloat("open_threshold",172f),settings.getBoolean("enabled",false) && settings.getBoolean("dual",false) && context.getSystemService(PowerManager.class).isInteractive() && !context.getSystemService(android.app.KeyguardManager.class).isKeyguardLocked(),settings.getBoolean("screenshot_camera_startup",false), false);
-   if(SystemClock.elapsedRealtime()>=statusFormatAt){statusFormatAt=SystemClock.elapsedRealtime()+250;status=(fresh()?String.format(Locale.US,"LIVE %.0f° (closed ≤%.0f°)",b.getFloat("rawAngle"),settings.getFloat("closed_threshold",2f)):"Waiting for fresh wallpaper angles")+" · "+received+" replies · "+b.getInt("unique")+" distinct · UID "+b.getInt("uid");}
+   if(SystemClock.elapsedRealtime()>=statusFormatAt){statusFormatAt=SystemClock.elapsedRealtime()+250;status=(fresh()?String.format(Locale.US,"LIVE %.0f° (closed ≤%.0f°)",b.getFloat("angle"),settings.getFloat("closed_threshold",2f))+(physicalBase==0&&b.getFloat("rawAngle")>2?" · wallpaper angle rejected while CLOSED":""):"Waiting for fresh wallpaper angles")+" · "+received+" replies · "+b.getInt("unique")+" distinct · UID "+b.getInt("uid");}
    roundTripMs=SystemClock.elapsedRealtime()-pollStarted;
    pollInFlight=false;
-   long delay=PollCadence.delay(on,roundTripMs,urgentPoll);urgentPoll=false;
+   boolean duo=settings.getBoolean("live_b8_enabled",false)&&!settings.getBoolean("dual",false);
+   Bundle scene=b.getBundle("b8Presentation");
+   targetPollMs=duo?endpointCadence.period(SystemClock.elapsedRealtime(),angle,settings.getFloat("open_threshold",172f),fresh(),scene!=null&&scene.getLong("session")>0):settings.getBoolean("screenshot_native_test",false)?((angle<=2||angle>=settings.getFloat("open_threshold",172f))?32:16):4;
+   long delay=PollCadence.delay(on,roundTripMs,urgentPoll);
+   if(on&&targetPollMs>4&&!urgentPoll)delay=Math.max(delay,Math.max(1,targetPollMs-roundTripMs));
+   urgentPoll=false;
    main.postDelayed(poll,delay);
   });}catch(Exception e){fail(e);}});
  }};
  private void fail(Exception e){main.post(()->{if(running){RecoveryLog.add("Reader error: "+e.getClass().getSimpleName());status="Reader error: "+e.getMessage();stop();}});}
  public static void stopCurrent(){LiveAngles self=current;if(self!=null)self.stop();}
- public void stop(){IncomingAnimationFrame.clear();IncomingHold.clear("reader stopped");closedHingeReport="Closed-hinge jitter protection: reader stopped";continuityRequest=0;HandoffFrames.clear();if(current==this)current=null;nativeInner=false;continuityNative=false;coverPreview=false;running=false;pollInFlight=false;urgentPoll=false;dualActive=false;last=0;if(status.startsWith("LIVE")||status.startsWith("Waiting")||status.startsWith("Connecting"))status="Angle reader stopped";main.removeCallbacksAndMessages(null);
+ public void stop(){physicalBase=-1;physicalBaseAt=0;hingePauseAt=0;hingePauseReport="Hinge pause: reader stopped";LegacyEndpointCoverage.clear("reader stopped");IncomingAnimationFrame.clear();IncomingHold.clear("reader stopped");closedHingeReport="Hinge jitter protection: reader stopped";continuityRequest=0;HandoffFrames.clear();if(current==this)current=null;nativeInner=false;continuityNative=false;coverPreview=false;running=false;pollInFlight=false;urgentPoll=false;dualActive=false;last=0;if(status.startsWith("LIVE")||status.startsWith("Waiting")||status.startsWith("Connecting"))status="Angle reader stopped";main.removeCallbacksAndMessages(null);
   if(binding!=null){binding.close();binding=null;}
   reader=null;if(thread!=null){thread.quitSafely();thread=null;}
   if(secondaryAnchor!=null){try{secondaryWm.removeViewImmediate(secondaryAnchor);}catch(Exception ignored){}secondaryAnchor=null;}

@@ -16,4 +16,8 @@ final class LiveMirrorLayout {
   float scale=Math.max(dw/(float)sw,dh/(float)sh);
   return new float[]{scale,(dw-sw*scale)/2f,(dh-sh*scale)/2f};
  }
+ static float[] contain(int sw,int sh,int dw,int dh){
+  float scale=fit(sw,sh,dw,dh)[0];
+  return new float[]{scale,(dw-sw*scale)/2f,(dh-sh*scale)/2f};
+ }
 }

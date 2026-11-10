@@ -6,7 +6,7 @@ public class FixedTaskRouteTest {
  public static class Window {public int type=1,mode=1;public int getActivityType(){return type;}public int getWindowingMode(){return mode;}}
  public static class Config {public Window windowConfiguration=new Window();}
  public static class Task {public int taskId,displayId;public String topActivity="Duo";public int[] childTaskIds;public Config configuration=new Config();Task(int id,int display){taskId=id;displayId=display;childTaskIds=new int[]{id};}}
- public static class Api {public Task focus=new Task(42,0);public List<Task> source=new ArrayList<>(),target=new ArrayList<>();public Object getFocusedRootTaskInfo(){return focus;}public List<Task> getTasks(int n,boolean a,boolean b,int display){return display==0?source:target;}}
+ public static class Api {public int focusCalls;public void setFocusedTask(int id){focusCalls++;focus=new Task(id,1);}public Task focus=new Task(42,0);public List<Task> source=new ArrayList<>(),target=new ArrayList<>();public Object getFocusedRootTaskInfo(){return focus;}public List<Task> getTasks(int n,boolean a,boolean b,int display){return display==0?source:target;}}
  @Test public void homeIsNeverSelected()throws Exception{Api api=new Api();api.focus.configuration.windowConfiguration.type=2;api.source.add(api.focus);FixedTaskRoute route=new FixedTaskRoute(api,Api.class);assertTrue(route.prepare().startsWith("SKIP"));assertFalse(route.selected());}
  @Test public void selectFocusedExactTaskAndRequireDestinationFocus()throws Exception{Api api=new Api();api.source.add(new Task(99,0));Task selected=new Task(42,0);api.source.add(selected);FixedTaskRoute route=new FixedTaskRoute(api,Api.class);assertTrue(route.prepare().contains("task=42"));assertFalse(route.placedAndFocused());selected.displayId=1;api.target.add(selected);assertFalse(route.placedAndFocused());api.focus=new Task(42,1);assertTrue(route.placedAndFocused());api.focus=new Task(99,1);assertFalse(route.placedAndFocused());}
  @Test public void multiWindowIsNeverSelected()throws Exception{Api api=new Api();api.focus.configuration.windowConfiguration.mode=6;api.source.add(api.focus);FixedTaskRoute route=new FixedTaskRoute(api,Api.class);route.prepare();assertFalse(route.selected());}
@@ -15,5 +15,18 @@ public class FixedTaskRouteTest {
   api.target.add(selected);FixedTaskRoute.Observation placed=route.observe();assertTrue(placed.placed);assertFalse(placed.focused);assertFalse(placed.verified());assertEquals(0,placed.focusedDisplay);
   api.target.clear();api.focus=new Task(42,1);FixedTaskRoute.Observation focused=route.observe();assertFalse(focused.placed);assertTrue(focused.focused);assertFalse(focused.verified());
   api.focus=null;FixedTaskRoute.Observation missing=route.observe();assertFalse(missing.focused);assertEquals(-1,missing.focusedDisplay);
+ }
+ @Test public void repairsHomeFocusOnceWithoutRestartingApp()throws Exception{
+  Api api=new Api();Task selected=new Task(42,0);api.source.add(selected);FixedTaskRoute route=new FixedTaskRoute(api,Api.class);route.prepare();
+  api.target.add(selected);api.focus=new Task(1,0);api.focus.configuration.windowConfiguration.type=2;
+  assertTrue(route.focusPlacedOnce().startsWith("FOCUS"));assertEquals(1,api.focusCalls);assertTrue(route.observe().verified());
+  api.focus=new Task(1,0);api.focus.configuration.windowConfiguration.type=2;route.focusPlacedOnce();assertEquals(1,api.focusCalls);
+ }
+ @Test public void neverStealsFocusFromAnotherAppOrRoutesMissingTask()throws Exception{
+  Api api=new Api();Task selected=new Task(42,0);api.source.add(selected);FixedTaskRoute route=new FixedTaskRoute(api,Api.class);route.prepare();api.target.add(selected);
+  api.focus=new Task(99,0);route.focusPlacedOnce();assertEquals(0,api.focusCalls);
+  api.focus.configuration.windowConfiguration.type=3;route.focusPlacedOnce();assertEquals(0,api.focusCalls);
+  api.focus.configuration.windowConfiguration.type=2;api.target.clear();route.focusPlacedOnce();assertEquals(0,api.focusCalls);
+  selected.topActivity="Different";api.target.add(selected);route.focusPlacedOnce();assertEquals(0,api.focusCalls);
  }
 }

@@ -5,11 +5,20 @@ import android.content.SharedPreferences;
 public final class DuoApplication extends Application {
  @Override public void onCreate(){
   super.onCreate();
+  FoldDiagnostics.init(this);
   PrivilegedAccess.init(this);
   registerActivityLifecycleCallbacks(new DeveloperShortcut());
   FoldAwakeDefault.persist(this);
   if(BuildConfig.IS_PLAY)getSystemService(android.app.NotificationManager.class).cancel(220);
   SharedPreferences prefs=getSharedPreferences("standalone",MODE_PRIVATE);
+  // Resolve the one-time Duo default before historical migrations reset route flags.
+  boolean screenshotMode=FoldingModeSettings.screenshot(prefs);
+  // Owner-requested lightweight fold profile, once on install/upgrade.
+  // Later blur/quality choices remain editable and are preserved.
+  if(!prefs.getBoolean("lightweight_fold_alpha44",false))prefs.edit()
+   .putString("glass_render_mode","light").putBoolean("full_resolution_glass",false)
+   .putFloat("blur_strength",RenderQuality.DEFAULT_BLUR)
+   .putBoolean("lightweight_fold_alpha44",true).commit();
   // Adopt the owner-confirmed neutral background and leave the solid-mask test once.
   if(!prefs.getBoolean("neutral_blur_358_alpha15",false))prefs.edit()
    .putBoolean("notification_blur_adjusted",false).putBoolean("notification_blur_solid_mask",false)
@@ -31,7 +40,7 @@ public final class DuoApplication extends Application {
   // Owner-requested 3.5.1 upgrade: apply only these two values once.
   // Runs before activities/services read their settings; later edits persist.
   if(!prefs.getBoolean("stretch_glass_defaults_351",false)){
-   prefs.edit().putFloat("end_stretch",1.25f).putFloat("intensity",.4f)
+   prefs.edit().putFloat("end_stretch",1.25f).putFloat("intensity",RenderQuality.DEFAULT_GLASS)
     .putBoolean("stretch_glass_defaults_351",true).apply();
   }
   // Owner-approved stable 3.5.4: select Smooth once on install/upgrade, then preserve choices.
@@ -41,9 +50,26 @@ public final class DuoApplication extends Application {
   // Reset only Advanced animation controls once per installed build.
   // Removing these keys uses the same defaults as the UI and renderer.
   String build=BuildConfig.VERSION_NAME+":"+BuildConfig.VERSION_CODE;
-  if(!build.equals(prefs.getString("advanced_animation_defaults_build",""))){
+  String previousBuild=prefs.getString("advanced_animation_defaults_build","");
+  // Keep the handoff comparison on the saved controls from prior compatible local builds.
+  boolean restorationUpgrade="3.5.9-alpha.96-reconstructed-local:1349".equals(build)
+   && ("3.5.9-alpha.95-reconstructed-local:1348".equals(previousBuild)
+        || "3.5.9-alpha.94-reconstructed-local:1347".equals(previousBuild)
+        || "3.5.9-alpha.93-reconstructed-local:1346".equals(previousBuild)
+        || "3.5.9-alpha.92-reconstructed-local:1345".equals(previousBuild)
+        || "3.5.9-alpha.91-reconstructed-local:1344".equals(previousBuild)
+        || "3.5.9-alpha.90-reconstructed-local:1343".equals(previousBuild)
+        || "3.5.9-alpha.89-reconstructed-local:1342".equals(previousBuild)
+        || "3.5.9-alpha.88-reconstructed-local:1341".equals(previousBuild)
+        || "3.5.9-alpha.87-reconstructed-local:1340".equals(previousBuild)
+        || "3.5.9-alpha.86-reconstructed-local:1339".equals(previousBuild)
+        || "3.5.9-alpha.85-reconstructed-local:1338".equals(previousBuild)
+        || "3.5.9-alpha.84-reconstructed-local:1337".equals(previousBuild)
+        || "3.5.9-alpha.83-reconstructed-local:1336".equals(previousBuild)
+        || "3.5.9-alpha.82-reconstructed-local:1335".equals(previousBuild));
+  if(!build.equals(previousBuild)){
    SharedPreferences.Editor edit=prefs.edit();
-   for(String key:new String[]{
+   if(!restorationUpgrade)for(String key:new String[]{
     "handoff_angle","fade_smoothing_ms","fade_gradualness","window_reveal_v2",
     "cover_vertical_compression","startup_easing","early_stretch","enhanced_end_stretch","end_stretch",
     "inner_vertical_compression","inner_startup_easing","inner_early_stretch","inner_enhanced_end_stretch","inner_end_stretch",
@@ -61,12 +87,12 @@ public final class DuoApplication extends Application {
   if(!prefs.getBoolean("live_screen_default_353_27",false))prefs.edit()
    .putBoolean("dual",false).putBoolean("cover_preview",true)
    .putBoolean("live_screen_default_353_27",true).commit();
-  // Screenshot mode stays unavailable until explicitly unlocked with the 10s gesture.
-  ScreenshotModeAccess.enforce(prefs);
-  // Split legacy direction-only styles into independent appearance and behavior.
-  String oldMode=prefs.getString("animation_mode",AnimationModePolicy.DEFAULT);
-  prefs.edit().putString("animation_behavior",AnimationModePolicy.initialBehavior(prefs.getString("animation_behavior",null),oldMode))
-   .putString("animation_mode",AnimationModePolicy.style(oldMode)).commit();
+  // Duo is the default once on upgrade; subsequent explicit mode choices persist.
+  FoldingModeSettings.initialize(prefs,screenshotMode);
+  GlassEffectSettings.initialize(prefs);
+  AdaptiveResolution.start(this);
+  // Retire old appearance presets while preserving direction and glass/gyro settings.
+  AnimationModePolicy.initialize(prefs);
   // Endpoint cover-up experiments are parked; clear legacy values as well as gating execution.
   if(prefs.getBoolean("incoming_app_hold",true)||prefs.getBoolean("screenshot_endpoint_fade",false))
    prefs.edit().putBoolean("incoming_app_hold",false).putBoolean("screenshot_endpoint_fade",false).commit();

@@ -11,6 +11,10 @@ public class DisplayCaptureApiTest {
   public void setExcludeLayers(Object[] exclusions){}
   public Args build(){return new Args();}
  }
+ public static class OwnerBuilder extends Builder {
+  long owner=-1;
+  public void setUid(long uid){owner=uid;}
+ }
  public static class Listener {public Listener(ObjIntConsumer<Object> callback){}}
  public static class OldListener {public OldListener(Consumer<Object> callback){}}
  public static class Wm {public void captureDisplay(int id,Args args,Listener listener){}}
@@ -36,5 +40,19 @@ public class DisplayCaptureApiTest {
  @Test public void rejectsWrongWindowManagerSignature()throws Exception{
   try{DisplayCaptureApi.resolve(n->shape(n,false),OldWm.class,Object.class,Object[].class);fail();}
   catch(ClassNotFoundException e){assertTrue(e.getMessage().contains("captureDisplay"));}
+ }
+ @Test public void restrictsCaptureToExactOwner()throws Exception{
+  DisplayCaptureApi api=DisplayCaptureApi.resolve(n->n.endsWith("$Builder")?OwnerBuilder.class:shape(n,false),Wm.class,Object.class,Object[].class);
+  OwnerBuilder builder=new OwnerBuilder();api.restrictOwner(builder,10345);assertEquals(10345,builder.owner);
+  // The full-width/full-height capture request and layer exclusions are still
+  // configured by the caller; owner filtering changes only eligible layers.
+ }
+ @Test public void neverFallsBackToUnfilteredOnMissingApi()throws Exception{
+  DisplayCaptureApi api=DisplayCaptureApi.resolve(n->shape(n,false),Wm.class,Object.class,Object[].class);
+  try{api.restrictOwner(new Builder(),10345);fail();}catch(NoSuchMethodException expected){}
+ }
+ @Test public void rejectsAllOwnersSentinel()throws Exception{
+  DisplayCaptureApi api=DisplayCaptureApi.resolve(n->n.endsWith("$Builder")?OwnerBuilder.class:shape(n,false),Wm.class,Object.class,Object[].class);
+  OwnerBuilder builder=new OwnerBuilder();try{api.restrictOwner(builder,-1);fail();}catch(IllegalArgumentException expected){}assertEquals(-1,builder.owner);
  }
 }

@@ -8,25 +8,27 @@ internal class FoldAwakeGuard(private val context:Context){
  private val keyguard=context.getSystemService(KeyguardManager::class.java)
  companion object {@JvmField var status="Fold wake guard waiting for closing motion"}
  private var blocked=false
+ private val physicalEpisode=FoldWakeEpisode()
  private var previous=Float.NaN;private var peak=Float.NaN;private var lowest=180f;private var sessionStarted=0L;private var lastRenew=0L
  private var until=0L;private var armed=0L;private var pending=false;private var attempted=false
  private var wakeConnection:FoldWakeConnection?=null
  private var episode=0L
  private var lock:PowerManager.WakeLock?=null
- private val listener=LiveAngles.Listener{angle,_->main.post{sample(angle)}}
- fun start(){LiveAngles.add(listener)}
- private fun sample(angle:Float){
-  if(!LiveAngles.fresh())return
+ private val baseListener=LiveAngles.BaseListener{base->physicalEpisode.observe(base)}
+ private val listener=LiveAngles.Listener{angle,_->val base=LiveAngles.freshPhysicalBase();main.post{sample(angle,base)}}
+ fun start(){LiveAngles.addBase(baseListener);LiveAngles.add(listener)}
+ private fun sample(angle:Float,base:Int){
+  if(!LiveAngles.fresh() || !angle.isFinite())return
   val now=SystemClock.uptimeMillis()
   val enabled=RuntimeConsent.ready(context) && FoldAwakeDefault.enabled(context) && context.getSharedPreferences("standalone",0).getBoolean("enabled",false)
   if(!enabled){release();previous=angle;peak=angle;return}
   if(blocked && (angle>=172f || angle>lowest+5f)){blocked=false;peak=angle}
   if(!peak.isFinite() || angle>peak)peak=angle
-  if(!blocked && until==0L && previous.isFinite() && peak-angle>=1f && peak>20f && power.isInteractive && !keyguard.isKeyguardLocked){
+  if(!blocked && until==0L && previous.isFinite() && FoldWakePolicy.closingMotion(peak,angle) && power.isInteractive && !keyguard.isKeyguardLocked && base>0 && physicalEpisode.take()){
    armed=now;sessionStarted=now;lastRenew=now;lowest=angle;until=now+5000;attempted=false;status="Fold wake hold active"
    try{lock=power.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK,"Duo:fold-handoff").apply{setReferenceCounted(false);acquire(5000)}}catch(e:Exception){RecoveryLog.add("Fold wake hold unavailable: ${e.message}")}
    episode++;wakeConnection?.close();wakeConnection=FoldWakeConnection(context)
-   FoldAwakeDefault.reconnect();FoldAwakeDefault.tick(context)
+   FoldAwakeDefault.tick(context)
    RecoveryLog.add("Fold wake hold armed; renews during closing, maximum 30 seconds")
    main.removeCallbacks(tick);main.post(tick)
   }
@@ -52,5 +54,5 @@ internal class FoldAwakeGuard(private val context:Context){
   main.postDelayed(this,if(lowest<=20f)20 else 100)
  }}
  private fun release(){if(until>0 && !attempted)status="Fold wake hold released; no sleep observed during hold";until=0;episode++;pending=false;wakeConnection?.close();wakeConnection=null;main.removeCallbacks(tick);runCatching{lock?.let{if(it.isHeld)it.release()}};lock=null}
- fun close(){LiveAngles.remove(listener);release();main.removeCallbacksAndMessages(null)}
+ fun close(){LiveAngles.removeBase(baseListener);LiveAngles.remove(listener);release();main.removeCallbacksAndMessages(null)}
 }

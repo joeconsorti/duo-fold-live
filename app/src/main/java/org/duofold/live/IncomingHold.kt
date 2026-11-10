@@ -45,6 +45,7 @@ internal object IncomingHold {
  @JvmStatic fun update(ctx:Context,info:Bundle?,angle:Float,fresh:Boolean,allowed:Boolean){
   val now=SystemClock.elapsedRealtime();lastUpdate=now;context=ctx.applicationContext
   val prefs=ctx.getSharedPreferences("standalone",0)
+  if(prefs.getBoolean("screenshot_native_test",false)){if(engaged)clear("native incoming app test");return}
   if(!allowed||!fresh||!prefs.getBoolean("enabled",false)||!prefs.getBoolean("dual",false)||!prefs.getBoolean("screenshot_camera_startup",false)||ctx.getSystemService(KeyguardManager::class.java).isKeyguardLocked||!ctx.getSystemService(PowerManager::class.java).isInteractive){clear("disabled, stale, or locked");return}
   val next=info?.getLong("session")?:0L
   if(next!=session){clear("new session");session=next;attempted=false}

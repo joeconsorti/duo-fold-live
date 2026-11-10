@@ -1,0 +1,2 @@
+package android.content;
+public final class ComponentName {private final String pkg,name;public ComponentName(String p,String n){pkg=p;name=n;}public String getPackageName(){return pkg;}public boolean equals(Object o){return o instanceof ComponentName&&pkg.equals(((ComponentName)o).pkg)&&name.equals(((ComponentName)o).name);}public int hashCode(){return pkg.hashCode()+name.hashCode();}public String toString(){return pkg+"/"+name;}}

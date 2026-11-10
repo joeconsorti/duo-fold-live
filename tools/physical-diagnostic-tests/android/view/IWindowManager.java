@@ -1,0 +1,1 @@
+package android.view;import android.os.*;public class IWindowManager{public static boolean locked;public boolean isKeyguardLocked(){return locked;}public static class Stub{public static IWindowManager asInterface(IBinder b){return new IWindowManager();}}}

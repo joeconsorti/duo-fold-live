@@ -27,7 +27,7 @@ internal object CoverBridge {
   if(d==null || identity(d)!=target || !CoverBridgePolicy.active(SystemClock.elapsedRealtime(),started)){held=null;return null}
   return held?.takeIf{it.rotation==d.rotation}
  }
- fun identity(d:Display?)=if(d==null)"unknown" else runCatching{Display::class.java.getMethod("getUniqueId").invoke(d).toString()}.getOrDefault("unknown")
+ fun identity(d:Display?)=PanelIdentity.identity(d)
  fun size(d:Display?,point:Point){
   if(d==null)return
   d.getRealSize(point)

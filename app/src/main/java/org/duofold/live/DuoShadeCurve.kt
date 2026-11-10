@@ -5,6 +5,8 @@ import kotlin.math.pow
 internal object DuoShadeCurve {
  fun progress(angle:Float,inner:Boolean,openThreshold:Float=172f):Float = if(!angle.isFinite())0f else
   (if(inner)(FoldThreshold.sanitize(openThreshold)-angle)/(FoldThreshold.sanitize(openThreshold)-90f) else angle/110f).coerceIn(0f,1f)
+ fun presentationProgress(visual:Float,raw:Float,inner:Boolean,openThreshold:Float):Float =
+  if(inner&&raw>=FoldThreshold.sanitize(openThreshold))0f else progress(visual,inner,openThreshold)
  fun alpha(progress:Float,edge:Float,intensity:Float=1f):Float {
   val p=progress.coerceIn(0f,1f)
   val motion=p*p*(3f-2f*p)

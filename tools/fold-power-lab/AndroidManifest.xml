@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.duofold.powerlab" android:versionCode="6" android:versionName="0.3.0">
+ <uses-sdk android:minSdkVersion="34" android:targetSdkVersion="36"/>
+ <uses-permission android:name="moe.shizuku.manager.permission.API_V23"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+ <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+ <application android:label="Fold Power Lab" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="true">
+  <meta-data android:name="moe.shizuku.client.V3_SUPPORT" android:value="true"/>
+  <provider android:name="rikka.shizuku.ShizukuProvider" android:authorities="org.duofold.powerlab.shizuku" android:exported="true" android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"/>
+  <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density" android:resizeableActivity="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+  <service android:name=".RecorderService" android:exported="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User initiated, bounded 10 to 30 second local display transition diagnostic recording"/></service>
+ </application>
+</manifest>

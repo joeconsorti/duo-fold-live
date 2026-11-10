@@ -2,22 +2,32 @@ package org.duofold.live;
 import android.os.*;
 import java.lang.reflect.Method;
 import java.util.ArrayDeque;
-/** Read-only, throttled shell-side base/current state snapshots. */
+/** Read-only shell-side base state shared by motion admission and diagnostics. */
 final class ClosureDeviceState {
- private Object service;private Method read;private long next,lastSample;private String previous="";
+ private Object service;private Method read;private long next,lastSample,gap;private String previous="",state="unavailable";
+ private int base=-1;
  private final ArrayDeque<String> events=new ArrayDeque<>();
- void sample(float raw,float filtered,boolean fresh,boolean dual,boolean unlocked){
-  long now=SystemClock.elapsedRealtime();if(now<next)return;next=now+(fresh&&raw<=20?100:500);
-  long gap=lastSample==0?0:now-lastSample;lastSample=now;
+ int refresh(long now){
+  if(now<next)return base;
+  next=now+100;gap=lastSample==0?0:now-lastSample;
   long identity=Binder.clearCallingIdentity();
   try{
    if(service==null){IBinder b=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"device_state");service=Class.forName("android.hardware.devicestate.IDeviceStateManager$Stub").getMethod("asInterface",IBinder.class).invoke(null,b);read=Class.forName("android.hardware.devicestate.IDeviceStateManager").getMethod("getDeviceStateInfo");}
-   Object info=read.invoke(service);String state="route="+(dual?"screenshot":"normal")+" base="+label(info.getClass().getField("baseState").get(info))+" current="+label(info.getClass().getField("currentState").get(info))+" unlocked="+unlocked;
-   if(!state.equals(previous)||gap>1000){previous=state;add(now+" ms DEVICE_STATE "+state+" raw="+raw+" filtered="+filtered+" fresh="+fresh+" sampleGapMs="+gap);}
-  }catch(Exception e){String error="DEVICE_STATE_UNAVAILABLE "+e.getClass().getSimpleName();if(!error.equals(previous)){previous=error;add(now+" ms "+error);}next=now+5000;}
+   Object info=read.invoke(service),physical=info.getClass().getField("baseState").get(info);
+   base=identifier(physical);lastSample=SystemClock.elapsedRealtime();
+   state="base="+label(physical)+" current="+label(info.getClass().getField("currentState").get(info));
+  }catch(Exception e){base=-1;lastSample=0;service=null;state="DEVICE_STATE_UNAVAILABLE "+e.getClass().getSimpleName();next=now+1000;}
   finally{Binder.restoreCallingIdentity(identity);}
+  return base;
  }
- private String label(Object state)throws Exception{if(state instanceof Number)return state.toString();return state.getClass().getMethod("getIdentifier").invoke(state)+":"+state.getClass().getMethod("getName").invoke(state);}
+ long sampledAt(){return lastSample;}
+ String state(){return state;}
+ void sample(float raw,float filtered,boolean fresh,boolean dual,boolean unlocked){
+  String value="route="+(dual?"screenshot":"normal")+" "+state+" unlocked="+unlocked;
+  if(!value.equals(previous)){previous=value;add(SystemClock.elapsedRealtime()+" ms DEVICE_STATE "+value+" raw="+raw+" filtered="+filtered+" fresh="+fresh+" sampleGapMs="+gap);}
+ }
+ private int identifier(Object state)throws Exception{return state instanceof Number?((Number)state).intValue():(int)state.getClass().getMethod("getIdentifier").invoke(state);}
+ private String label(Object state)throws Exception{return state instanceof Number?state.toString():identifier(state)+":"+state.getClass().getMethod("getName").invoke(state);}
  private synchronized void add(String s){events.addLast(s);while(events.size()>80)events.removeFirst();}
- synchronized String report(){return "Base/current fold state (sampled 100 ms near close, 500 ms otherwise; gaps are not exact transition times):\n"+String.join("\n",events);}
+ synchronized String report(){return "Base/current fold state (100 ms target; CLOSED vetoes wallpaper motion; callback/poll times are not optical timing):\n"+String.join("\n",events);}
 }

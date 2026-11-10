@@ -1,0 +1,1 @@
+package android.os;import java.util.concurrent.*;public class Handler{public static final BlockingQueue<Runnable> queue=new LinkedBlockingQueue<>();public Handler(Looper l){}public boolean post(Runnable r){queue.add(r);return true;}}

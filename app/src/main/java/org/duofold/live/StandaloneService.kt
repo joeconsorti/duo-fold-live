@@ -47,6 +47,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         displays.getDisplay(0)?.let{HandoffStartupTrace.observe(it)}
         if(displayEventAt.compareAndSet(0L,SystemClock.elapsedRealtime()))handler.post(displayUpdate)
     }
+    private var deferredPrimaryUpdate=false
     private var view: ComposeView?=null
     private var screenshotWindow:ScreenshotStartupWindow?=null
     private var screenshotKey=""
@@ -92,7 +93,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
     private val captureTask=Runnable { captureQueued=false }
     private val screenReceiver=object:BroadcastReceiver(){override fun onReceive(c:Context,i:Intent){
         RecoveryLog.add("Overlay received ${i.action}");diagnosticState("broadcast ${i.action}",true)
-        if(i.action==Intent.ACTION_SCREEN_OFF){GlassFrames.suspendCapture();handler.postDelayed({if(!usable())HandoffFrames.clear()},300);owner?.registry?.currentState=Lifecycle.State.CREATED;clearUnavailableEffect()}
+        if(i.action==Intent.ACTION_SCREEN_OFF){B8SystemBars.clearCache();GlassFrames.suspendCapture();handler.postDelayed({if(!usable())HandoffFrames.clear()},300);owner?.registry?.currentState=Lifecycle.State.CREATED;clearUnavailableEffect()}
         else if(i.action==Intent.ACTION_USER_PRESENT){
             // Recreate the composition after unlock: old window IDs and stopped frame clocks are invalid.
             handler.postDelayed({if(instance===this@StandaloneService && settings().getBoolean("enabled",false)){restart();RecoveryLog.add("Overlay rebuilt after unlock")}},150)
@@ -101,7 +102,8 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
     private fun motionUsable()=RuntimeConsent.ready(this) && getSystemService(PowerManager::class.java).isInteractive && !getSystemService(KeyguardManager::class.java).isKeyguardLocked
     private val motionListener=LiveAngles.Listener { value,_ -> MotionGlass.angle(value);if(settings().getBoolean("motion_glass",true) || settings().getBoolean("motion_glass_cover_enabled",false))MotionGlass.refresh(this,motionUsable()) }
     private fun usable()=RuntimeConsent.ready(this) && ::displays.isInitialized && displays.getDisplay(Display.DEFAULT_DISPLAY)?.state==Display.STATE_ON && !getSystemService(KeyguardManager::class.java).isKeyguardLocked()
-    private fun previewMode()=AnimationModePolicy.mirrors(settings().getString("animation_mode",AnimationModePolicy.DEFAULT)) && LiveAngles.effectAllowed && settings().getBoolean("cover_preview",true) && !settings().getBoolean("dual",false)
+    private fun coordinatedRoute()=settings().getBoolean("live_b8_enabled",false)&&!settings().getBoolean("dual",false)
+    private fun previewMode()=!coordinatedRoute() && AnimationModePolicy.mirrors(settings().getString("animation_mode",AnimationModePolicy.DEFAULT)) && LiveAngles.effectAllowed && settings().getBoolean("cover_preview",true) && !settings().getBoolean("dual",false)
     private val runtimeSettings by lazy { RuntimeSettings.get(this) }
     private fun settings()=runtimeSettings
     override fun onServiceConnected(){
@@ -113,10 +115,12 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         restart()
     }
     fun restart(){
+        deferredPrimaryUpdate=false
         retainedPrimaryHost=false
         removeHost()
         if(!RuntimeConsent.ready(this) || !settings().getBoolean("enabled",false)){note("Off — turn on Enable fold animation");return}
         runCatching { startForegroundService(Intent(this, FoldBackgroundService::class.java)) }.onFailure { note("Open Duo and tap Start background animation") }
+        B8Presentation.prepareGlass(this)
         val display=displays.getDisplay(Display.DEFAULT_DISPLAY)?:return
         primaryKey=primaryHostKey(display)
         val context=createDisplayContext(display).createWindowContext(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,null)
@@ -139,7 +143,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
             }
             true
         }
-        compose.viewTreeObserver.addOnDrawListener{
+        compose.viewTreeObserver.addOnPreDrawListener{
 
             val inner=minOf(screenWidth,screenHeight).toFloat()/maxOf(screenWidth,screenHeight)>.7f
             val stamp=composedScreenshotStamp
@@ -157,6 +161,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
             // The glass SurfaceView supplies its own frame-bound completion.
             val glass=!AnimationModePolicy.blackFade(settings().getString("animation_mode",AnimationModePolicy.DEFAULT),settings().getBoolean("debug_mode",false))
             if(compose.alpha>0f && (!inner || !glass))HandoffFadeFrames.drawn(inner)
+            true
         }
         compose.post(object:Runnable{override fun run(){
             if(view!==compose||!compose.isAttachedToWindow)return
@@ -171,7 +176,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         }})
         compose.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         compose.setViewTreeLifecycleOwner(lifecycle);compose.setViewTreeSavedStateRegistryOwner(lifecycle)
-        val intensity=settings().getFloat("intensity",.4f)
+        val intensity=settings().getFloat("intensity",RenderQuality.DEFAULT_GLASS)
         compose.setContent {
             CompositionLocalProvider(LocalConfiguration provides config, LocalHinge provides rememberWindowHinge(context)) {
                 val screenshot=settings().getBoolean("dual",false)&&settings().getBoolean("screenshot_camera_startup",false)
@@ -230,12 +235,13 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         closeScreenshotWindow();dismissSecondary();hide();strength=0f;generation++;pending=false;image=null
     }
     private val sourceGuard=object:Runnable {override fun run(){
+        if(deferredPrimaryUpdate)updateDisplay("resolved remap retry")
         // SCREEN_ON may arrive before keyguard unlock; retry independently of broadcasts.
         if(settings().getBoolean("enabled",false))resumeIfUsable()
         MotionGlass.refresh(this@StandaloneService,motionUsable())
         diagnosticState("poll")
         val fresh=LiveAngles.fresh()
-        if(!fresh && (active || sourceWasFresh)){hide();note("Effect paused — waiting for fresh angles; panel session retained")}
+        if(!fresh && (active || sourceWasFresh)){hide();note("Effect paused — waiting for fresh angles; see handoff trace for display hold")}
         sourceWasFresh=fresh
         refreshSecondary()
         handler.postDelayed(this,250)
@@ -254,6 +260,10 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
             LiveAngles.fresh(),LiveAngles.effectAllowed,
             getSystemService(KeyguardManager::class.java).isKeyguardLocked)
         if(liveRetention && display.state!=Display.STATE_ON)return
+        // B8 owns the visible scene. Do not rebuild its hidden legacy host for an
+        // intermediate unknown identity; the next resolved display event updates it.
+        if((B8Presentation.ownsRendering()||deferredPrimaryUpdate)&&!PanelIdentityPolicy.known(displayIdentity(display))){deferredPrimaryUpdate=true;return}
+        deferredPrimaryUpdate=false
         if(primaryHostKey(display)!=primaryKey){
             val size=android.graphics.Point();CoverBridge.size(display,size)
             val screenshotRetain=settings().getBoolean("dual",false)&&settings().getBoolean("screenshot_camera_startup",false)&&LiveAngles.dualActive&&LiveAngles.fresh()&&usable()&&LiveAngles.effectAllowed
@@ -302,9 +312,10 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         if(instance===this)refreshSecondary()
     }
     fun requestSecondaryRefresh(){
-        if(!secondaryRefreshPending){secondaryRefreshPending=true;android.view.Choreographer.getInstance().postFrameCallback(secondaryRefreshFrame)}
+        if(!coordinatedRoute()&&!secondaryRefreshPending){secondaryRefreshPending=true;android.view.Choreographer.getInstance().postFrameCallback(secondaryRefreshFrame)}
     }
     fun refreshSecondary(){
+        GlassFrames.configure(this)
         if(secondaryRefreshPending){secondaryRefreshPending=false;android.view.Choreographer.getInstance().removeFrameCallback(secondaryRefreshFrame)}
         if(!::displays.isInitialized)return
         val current=displays.getDisplay(0)
@@ -334,8 +345,9 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
             return
         }
         closeScreenshotWindow()
-        val blackHold=settings().getString("animation_mode","")=="plain_fade" && !primaryInner && !settings().getBoolean("dual",false)
+        val blackHold=false
         val native=LiveAngles.continuityNative && !primaryInner && !blackHold
+        if(coordinatedRoute()){dismissSecondary();return}
         val preview=AnimationModePolicy.mirrors(settings().getString("animation_mode",AnimationModePolicy.DEFAULT)) && !settings().getBoolean("dual",false) && settings().getBoolean("cover_preview",true) && LiveAngles.coverPreview
         if(!LiveAngles.effectAllowed||!settings().getBoolean("enabled",false)||(!blackHold && !native && !preview && (!settings().getBoolean("dual",false)||!LiveAngles.dualActive))||!usable()){dismissSecondary();return}
         val target=displays.displays.firstOrNull{it.displayId==1 && BuiltInPanel.accepts(it)}
@@ -346,7 +358,7 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
             if(SystemClock.elapsedRealtime()<secondaryRetry)return
             dismissSecondary()
             try{
-                val overlay=NativeInnerOverlay(this,target,settings().getFloat("intensity",.4f));nativeOverlay=overlay
+                val overlay=NativeInnerOverlay(this,target,settings().getFloat("intensity",RenderQuality.DEFAULT_GLASS));nativeOverlay=overlay
                 overlay.show();secondaryKey=key;secondaryError="";RecoveryLog.add("Native inner accessibility overlay attached on display 1")
             }catch(e:Exception){dismissSecondary();secondaryError="${e.javaClass.simpleName}: ${e.message}";secondaryRetry=SystemClock.elapsedRealtime()+1500;RecoveryLog.add("Native inner overlay error: $secondaryError")}
             return
@@ -356,12 +368,12 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
         if(SystemClock.elapsedRealtime()<secondaryRetry)return
         dismissSecondary()
         try{
-            val next=SecondaryShade(this,target,settings().getFloat("intensity",.4f),preview,native,blackHold){RecoveryLog.add(it)}
+            val next=SecondaryShade(this,target,settings().getFloat("intensity",RenderQuality.DEFAULT_GLASS),preview,native,blackHold){RecoveryLog.add(it)}
             next.setOnDismissListener{RecoveryLog.add("Secondary Presentation dismissed");if(secondary===next){secondary=null;secondaryReadySnapshot=false}}
             secondary=next;secondaryKey=physicalKey(target)+":"+preview+":"+native+":"+blackHold;next.show();secondaryError="";RecoveryLog.add("Secondary Presentation shown, display ${target.displayId}")
         }catch(e:Exception){dismissSecondary();secondaryError="${e.javaClass.simpleName}: ${e.message}";secondaryRetry=SystemClock.elapsedRealtime()+1500;RecoveryLog.add("Secondary Presentation error: $secondaryError")}
     }
-    private fun displayIdentity(d:Display?):String=if(d==null)"none" else runCatching{Display::class.java.getMethod("getUniqueId").invoke(d).toString()}.getOrDefault("unavailable")
+    private fun displayIdentity(d:Display?):String=PanelIdentity.identity(d)
     private val diagnosticHistory=ArrayDeque<String>()
     private var lastDiagnosticState=""
     private var diagnosticDual=false
@@ -383,10 +395,10 @@ class StandaloneService : AccessibilityService(), DisplayManager.DisplayListener
     private fun displayReport()=if(!::displays.isInitialized)"unavailable" else (displays.displays.toList()+displays.getDisplays("com.samsung.android.hardware.display.category.BUILTIN").toList()).distinctBy{it.displayId}.joinToString("; "){d->
         "id=${d.displayId} state=${d.state} mode=${d.mode.physicalWidth}x${d.mode.physicalHeight} rotation=${d.rotation}"
     }
-    fun screenshotReport()="Duo Fold Live ${BuildConfig.VERSION_NAME}\nPrimary handoff: endpoint only; mid-fold ON override inactive\nScreenshot mode: ${settings().getBoolean("dual",false)}; window-first: ${settings().getBoolean("screenshot_camera_startup",false)}\n${LiveAngles.handoffStatus}\n${HandoffFrames.status}\n${IncomingAnimationFrame.report()}\n${IncomingGhostDiagnostic.report()}\n${IncomingHold.report()}\n${screenshotWindow?.windowReport ?: "Secondary window not attached"}\nOutgoing committed=${screenshotFrameReady()}; destination attached=$screenshotPrepared; secondary ready=${secondaryReady()}\nRenderer=${screenshotWindow?.rendererRoute ?: "none"}; draws=${screenshotWindow?.draws ?: 0}; error=$secondaryError\nDisplays: ${displayReport()}\nSoftware observations only; not optical proof.\n${LiveAngles.screenshotTrace}"
-    fun report(includeHealthHistory:Boolean=true)="Duo Fold Live ${BuildConfig.VERSION_NAME}\nSelectable glass / live angles\n${Build.MODEL} / Android ${Build.VERSION.RELEASE}\n$status\n${LiveAngles.status}\n${FoldAwakeDefault.status}\n${FoldAwakeGuard.status}\n${RotationMigration.status}\n${org.duofold.live.wallpaperlayer.WakePreparationTest.report(this)}\nCustom wallpaper: ${org.duofold.live.wallpaperlayer.WallpaperRestore.status}\nBackground service: ${FoldBackgroundService.running}\n${FoldBackgroundService.connectionReport()}\nReader connection: ${LiveAngles.readerDiagnostics}\n${LiveAngles.latencyReport()}\nAngle age: ${LiveAngles.ageMs()} ms\nClosed-hinge jitter protection setting: ${settings().getBoolean("closed_hinge_jitter_protection",true)}\n${LiveAngles.closedHingeReport}\nCover preview: ${settings().getBoolean("cover_preview",true)}\nHandoff path: ${if(settings().getBoolean("dual",false)) "dual-screen screenshot" else "normal (dual OFF)"}\nWindow-first setting: ${settings().getBoolean("screenshot_camera_startup",false)}; effective: ${settings().getBoolean("dual",false)&&settings().getBoolean("screenshot_camera_startup",false)}\nSamsung ON hold: inactive on endpoint-only screenshot route\nClosing app-first return setting: ${settings().getBoolean("closing_app_return",false)}\nScreenshot endpoint black fade: smooth final 12°; primary handoff at endpoint\nIncoming app screenshot hold: disabled internally\n${IncomingHold.report()}\nHistorical traces below can include earlier settings; use the route-labelled motion entries for this test.\nPreview bridge: ${LiveAngles.expansionStatus}\nPreview preparation: ${PreviewTransition.status}\nBridge trace: ${LiveAngles.bridgeTrace}\nSmoothing: ${settings().getFloat("smoothing_ms",FrameSmoothing.DEFAULT_MS)} ms; full-resolution glass: ${settings().getBoolean("full_resolution_glass",false)}\nMode: ${if(AnimationModePolicy.blackFade(settings().getString("animation_mode",AnimationModePolicy.DEFAULT),settings().getBoolean("debug_mode",false))) "Debug black fade" else "Projected glass"}\n${LiveAngles.handoffStatus}\n${LiveAngles.handoffFade}\n${LiveAngles.rotationHold}\n${LiveAngles.continuityStatus}\n${InnerDecorRecovery.apiStatus}\n${InnerDecorRecovery.status}\n${LiveAngles.continuityTrace}\nHandoff angle: ${HandoffSettings.angle(settings().getFloat("handoff_angle",HandoffSettings.DEFAULT))}°\nScreen placement: ${if(settings().getBoolean("window_reveal_v2",true)) "V2 Window Reveal" else "Original"}\nCover startup easing: ${settings().getBoolean("startup_easing",true)}\nCover early stretch (%): ${settings().getFloat("early_stretch",2.7f)*100f/3f}; enhanced end=${settings().getBoolean("enhanced_end_stretch",true)}; end stretch=${settings().getFloat("end_stretch",1.25f)*100f}%\nInner startup easing: ${settings().getBoolean("inner_startup_easing",true)}; early stretch=${settings().getFloat("inner_early_stretch",.9f)*100f/3f}%; enhanced end=${settings().getBoolean("inner_enhanced_end_stretch",true)}; end stretch=${settings().getFloat("inner_end_stretch",.6f)*100f}%\nVertical compression: cover=${settings().getFloat("cover_vertical_compression",.9f)*100f}%; inner=${settings().getFloat("inner_vertical_compression",.4f)*100f}%\nAA method: ${settings().getInt("antialias_method_v2",0)} (0=lightweight, 1=edge post-process, 2=4x buffer); enabled=${settings().getBoolean("antialias_enabled",true)}; strength=${settings().getFloat("antialias_strength",.35f)}\nGlass strength: ${settings().getFloat("intensity",.4f)*100f}%; blur amount: ${RenderQuality.blur(settings().getFloat("blur_strength",.3f))}\n${GlassRenderOptions.report(this)}\nGlass: ${GlassFrames.status}\n${GlassFrames.pipelineReport()}\n${MotionGlass.report()}\nHandoff: ${HandoffFrames.status}\nScreenshot window-first: ${settings().getBoolean("screenshot_camera_startup",false)}; attached=$screenshotPrepared; anchor draws=${screenshotWindow?.draws ?: 0}; outgoing frame committed=${screenshotFrameReady()}\n${IncomingAnimationFrame.report()}\nScreenshot secondary renderer: ${screenshotWindow?.rendererRoute ?: "none"}; strength=${screenshotWindow?.strength ?: 0f}\nScreenshot content: ${if(settings().getBoolean("dual",false)&&settings().getBoolean("screenshot_camera_startup",false)) "outgoing=frozen screenshot; incoming=live physical-panel capture animation after exact app verification; incoming endpoint fade with bounded ready-app reveal" else "window-first diagnostic path inactive; retained screenshot traces may describe earlier tests"}\n${FoldWakeConnection.report()}\n${ClosureDiagnostics.report()}\n${LiveAngles.screenshotTrace}\nScreenshot power/keyguard events:\n${diagnosticHistory.joinToString("\n")}\nSecondary ready: ${secondaryReady()}; draws: ${nativeOverlay?.draws ?: secondary?.draws ?: 0}\nSecondary layer: ${if(nativeOverlay!=null)"Native inner accessibility overlay" else secondary?.layer ?: "none"}; strength: ${nativeOverlay?.strength ?: secondary?.strength ?: 0f}\nSecondary error: $secondaryError\nDisplays: ${displayReport()}\nFolding Mode: ${if(settings().getBoolean("dual",false)) "Screenshot Mode" else "Live Screen"}\nAnimation: ${AnimationModePolicy.label(settings().getString("animation_mode",AnimationModePolicy.DEFAULT))}\n${HandoffStartupTrace.report()}\nLegacy cover trace (geometry-based; may misclassify remaps):\n${CoverStartupTrace.report()}\n${FrameTelemetry.report()}\nStrength: $strength\n"+history.joinToString("\n")+"\n"+PlainFadeSettings.report(getSharedPreferences("standalone",0))+"\nLifecycle / connection events:\n"+RecoveryLog.report()+(if(includeHealthHistory)"\n24-hour health samples (app process only):\n"+HealthTrace.report(this) else "")
+    fun screenshotReport()="Duo Fold Live ${BuildConfig.VERSION_NAME}\nPrimary handoff: endpoint only; mid-fold ON override inactive\nScreenshot mode: ${settings().getBoolean("dual",false)}; window-first: ${settings().getBoolean("screenshot_camera_startup",false)}\n${LiveAngles.handoffStatus}\n${HandoffFrames.status}\n${IncomingAnimationFrame.report()}\n${IncomingGhostDiagnostic.report()}\n${IncomingHold.report()}\n${LegacyEndpointCoverage.report()}\n${screenshotWindow?.windowReport ?: "Secondary window not attached"}\nOutgoing committed=${screenshotFrameReady()}; destination attached=$screenshotPrepared; secondary ready=${secondaryReady()}\nRenderer=${screenshotWindow?.rendererRoute ?: "none"}; draws=${screenshotWindow?.draws ?: 0}; error=$secondaryError\nDisplays: ${displayReport()}\nSoftware observations only; not optical proof.\n${LiveAngles.screenshotTrace}"
+    fun report(includeHealthHistory:Boolean=true)="Duo Fold Live ${BuildConfig.VERSION_NAME}\nSelectable glass / live angles\n${Build.MODEL} / Android ${Build.VERSION.RELEASE}\n$status\n${LiveAngles.status}\n${FoldAwakeDefault.status}\n${FoldAwakeGuard.status}\n${RotationMigration.status}\n${org.duofold.live.wallpaperlayer.WakePreparationTest.report(this)}\nCustom wallpaper: ${org.duofold.live.wallpaperlayer.WallpaperRestore.status}\nBackground service: ${FoldBackgroundService.running}\n${FoldBackgroundService.connectionReport()}\nReader connection: ${LiveAngles.readerDiagnostics}\n${LiveAngles.latencyReport()}\nAngle age: ${LiveAngles.ageMs()} ms\nHinge jitter protection setting: ${settings().getBoolean("closed_hinge_jitter_protection",true)}\n${LiveAngles.closedHingeReport}\n${LiveAngles.hingePauseReport}\n${FoldDiagnostics.report()}\nCover preview: ${settings().getBoolean("cover_preview",true)}\nHandoff path: ${if(settings().getBoolean("b8_snapshot_test",false)&&settings().getBoolean("live_b8_enabled",false)) "coordinated app snapshots (independent moving layers on Android 15+; no live mirrors)" else if(settings().getBoolean("dual",false)) "legacy screenshot / native incoming app" else "Live Screen Mode (Legacy)"}\nRetired screenshot diagnostics (inactive in the new Duo Mode):\nWindow-first setting: ${settings().getBoolean("screenshot_camera_startup",false)}; effective: ${settings().getBoolean("dual",false)&&settings().getBoolean("screenshot_camera_startup",false)}\nSamsung ON hold: bounded endpoint lease in legacy mode; see trace for acceptance and cleanup\nClosing app-first return setting: ${settings().getBoolean("closing_app_return",false)}\nLegacy screenshot endpoint black fade: ${if(settings().getBoolean("screenshot_native_test",false)) "disabled; native incoming app test" else "smooth final 12°"}; primary handoff at endpoint\nIncoming app screenshot hold: disabled internally\n${IncomingHold.report()}\n${LegacyEndpointCoverage.report()}\nHistorical traces below can include earlier settings; use the route-labelled motion entries for this test.\nPreview bridge: ${LiveAngles.expansionStatus}\nPreview preparation: ${PreviewTransition.status}\nBridge trace: ${LiveAngles.bridgeTrace}\n${LiveAngles.b8StartGates}\n${AdaptiveResolution.report()}\n${B8Presentation.report()}\nCoordinated glass: display-vsync paced, seamless refresh request up to 120 Hz (same as Live); actual submitted/callback FPS measured per session; inner left black through 60°, fade 60–85°; feather across first fifth of right half; animation starts at current hinge pose; no speed/time cutoff\nSmoothing: ${settings().getFloat("smoothing_ms",FrameSmoothing.DEFAULT_MS)} ms; effect resolution: ${RenderQuality.resolution(settings().getInt(GlassEffectSettings.RESOLUTION_KEY,RenderQuality.DEFAULT_RESOLUTION))}% per dimension\nMode: ${if(AnimationModePolicy.blackFade(settings().getString("animation_mode",AnimationModePolicy.DEFAULT),settings().getBoolean("debug_mode",false))) "Debug black fade" else "Projected glass"}\n${LiveAngles.handoffStatus}\n${LiveAngles.handoffFade}\n${LiveAngles.rotationHold}\n${LiveAngles.continuityStatus}\n${InnerDecorRecovery.apiStatus}\n${InnerDecorRecovery.status}\n${LiveAngles.continuityTrace}\nSaved handoff angle: ${HandoffSettings.angle(settings().getFloat("handoff_angle",HandoffSettings.DEFAULT))}°\nScreen placement: ${if(settings().getBoolean("window_reveal_v2",true)) "V2 Window Reveal" else "Original"}\nCover startup easing: ${settings().getBoolean("startup_easing",true)}\nCover early stretch (%): ${settings().getFloat("early_stretch",2.7f)*100f/3f}; enhanced end=${settings().getBoolean("enhanced_end_stretch",true)}; end stretch=${settings().getFloat("end_stretch",1.25f)*100f}%\nInner startup easing: ${settings().getBoolean("inner_startup_easing",true)}; early stretch=${settings().getFloat("inner_early_stretch",.9f)*100f/3f}%; enhanced end=${settings().getBoolean("inner_enhanced_end_stretch",true)}; end stretch=${settings().getFloat("inner_end_stretch",.6f)*100f}%\nVertical compression: cover=${settings().getFloat("cover_vertical_compression",.9f)*100f}%; inner=${settings().getFloat("inner_vertical_compression",.4f)*100f}%\nAA method: ${settings().getInt("antialias_method_v2",0)} (0=lightweight, 1=edge post-process, 2=4x buffer); enabled=${settings().getBoolean("antialias_enabled",true)}; strength=${settings().getFloat("antialias_strength",.35f)}\nGlass strength: ${settings().getFloat("intensity",RenderQuality.DEFAULT_GLASS)*100f}%; blur amount: ${RenderQuality.blur(settings().getFloat("blur_strength",RenderQuality.DEFAULT_BLUR))}\n${GlassRenderOptions.report(this)}\nGlass: ${GlassFrames.status}\n${GlassFrames.pipelineReport()}\n${MotionGlass.report()}\nHandoff: ${HandoffFrames.status}\nScreenshot window-first: ${settings().getBoolean("screenshot_camera_startup",false)}; attached=$screenshotPrepared; anchor draws=${screenshotWindow?.draws ?: 0}; outgoing frame committed=${screenshotFrameReady()}\n${IncomingAnimationFrame.report()}\nScreenshot secondary renderer: ${screenshotWindow?.rendererRoute ?: "none"}; strength=${screenshotWindow?.strength ?: 0f}\nScreenshot content: ${if(settings().getBoolean("dual",false)&&settings().getBoolean("screenshot_camera_startup",false)) "outgoing=frozen screenshot; incoming=${if(settings().getBoolean("screenshot_native_test",false)) "native app, no capture animation or endpoint black fade" else "live capture animation"}" else "window-first diagnostic path inactive; retained screenshot traces may describe earlier tests"}\n${FoldWakeConnection.report()}\n${ClosureDiagnostics.report()}\n${LiveAngles.screenshotTrace}\nScreenshot power/keyguard events:\n${diagnosticHistory.joinToString("\n")}\nSecondary ready: ${secondaryReady()}; draws: ${nativeOverlay?.draws ?: secondary?.draws ?: 0}\nSecondary layer: ${if(nativeOverlay!=null)"Native inner accessibility overlay" else secondary?.layer ?: "none"}; strength: ${nativeOverlay?.strength ?: secondary?.strength ?: 0f}\nSecondary error: $secondaryError\nDisplays: ${displayReport()}\nFolding Animation Style: ${if(settings().getBoolean("b8_snapshot_test",false)&&settings().getBoolean("live_b8_enabled",false)) "Duo Mode" else if(settings().getBoolean("dual",false)) "Legacy screenshot / native incoming app" else "Live Screen Mode (Legacy)"}\n${if(settings().getBoolean("b8_snapshot_test",false)&&settings().getBoolean("live_b8_enabled",false)) "Screenshot Windowed Glass: "+settings().getBoolean(HandoffVisualPolicy.KEY,false)+"; applied at session start" else HandoffVisualPolicy.REPORT}\nSaved animation: ${AnimationModePolicy.label(settings().getString("animation_mode",AnimationModePolicy.DEFAULT))}\n${HandoffStartupTrace.report()}\nLegacy cover trace (geometry-based; may misclassify remaps):\n${CoverStartupTrace.report()}\n${FrameTelemetry.report(SystemClock.elapsedRealtimeNanos())}\nStrength: $strength\n"+history.joinToString("\n")+"\nLifecycle / connection events:\n"+RecoveryLog.report()+(if(includeHealthHistory)"\n24-hour health samples (app process only):\n"+HealthTrace.report(this) else "")
     override fun onInterrupt(){hide();image=null;note("Feedback interrupted — overlay remains attached")}
-    override fun onDestroy(){LiveAngles.remove(motionListener);MotionGlass.stop();android.view.Choreographer.getInstance().removeFrameCallback(secondaryRefreshFrame);secondaryRefreshPending=false;IncomingHold.clear("service destroyed");PreviewTransition.update(false,false);removeHost();if(::displays.isInitialized)displays.unregisterDisplayListener(this);displayObserver?.quitSafely();displayObserver=null;runCatching {unregisterReceiver(screenReceiver)};handler.removeCallbacksAndMessages(null);instance=null;super.onDestroy()}
+    override fun onDestroy(){B8SystemBars.clearCache();B8Presentation.clear("service destroyed");LiveAngles.remove(motionListener);MotionGlass.stop();android.view.Choreographer.getInstance().removeFrameCallback(secondaryRefreshFrame);secondaryRefreshPending=false;IncomingHold.clear("service destroyed");PreviewTransition.update(false,false);removeHost();if(::displays.isInitialized)displays.unregisterDisplayListener(this);displayObserver?.quitSafely();displayObserver=null;runCatching {unregisterReceiver(screenReceiver)};handler.removeCallbacksAndMessages(null);instance=null;super.onDestroy()}
 }
 internal class OverlayOwner:LifecycleOwner,SavedStateRegistryOwner {
     val registry=LifecycleRegistry(this)

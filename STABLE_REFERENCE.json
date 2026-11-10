@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "project": "DUO FOLD LIVE - Z-Fold 8 Animation",
+  "designation": "latest_user_approved_stable_rollback_reference",
+  "designated_on": "2026-11-09",
+  "approved_by": "Joe Consorti",
+  "version_name": "3.5.9-alpha.107-reconstructed-local",
+  "version_code": 1360,
+  "application_id": "org.duofold.live.test",
+  "source_commit": "623561ad49f205a5e144dc31361e77520cfec515",
+  "git_tag": "stable-reference/3.5.9-alpha.107",
+  "reference_policy": {
+    "preserve_exact_apk_and_source": true,
+    "preserve_tag_at_tested_commit": true,
+    "future_changes_use_new_version": true,
+    "replacement_stable_reference_requires_user_acceptance": true,
+    "public_release": false,
+    "runtime_changes_for_designation": false
+  },
+  "artifacts": {
+    "apk": {
+      "filename": "Duo-Fold-Live-3.5.9-alpha.107-reconstructed-local.apk",
+      "sha256": "01994d59a5074b01a676e0ec349397cfc69e8fe99ce00de95a651c46cb726469",
+      "size_bytes": 27511228,
+      "library_file_id": "libfile_64ca7212411c819184569a15b3c2d00f",
+      "url": "https://chatgpt.com/library?file_id=libfile_64ca7212411c819184569a15b3c2d00f&account_id=personal",
+      "preserved_original": true
+    },
+    "source": {
+      "filename": "Duo-Fold-Live-3.5.9-alpha.107-reconstructed-source.zip",
+      "sha256": "845813d7fc05b390621d5db5559495720fd12cec76d7cff62c7a12d8026dac07",
+      "size_bytes": 3626004,
+      "library_file_id": "libfile_3c05ab24ec7c819195e2132ce62b1935",
+      "url": "https://chatgpt.com/library?file_id=libfile_3c05ab24ec7c819195e2132ce62b1935&account_id=personal",
+      "preserved_original": true
+    },
+    "build_manifest": {
+      "filename": "Duo-Fold-Live-3.5.9-alpha.107-build-manifest.json",
+      "sha256": "c6a914d9ae4af85e323750f0aadffca40eb46dff6c0f273e1d3c3733ff40659e",
+      "size_bytes": 1174,
+      "library_file_id": "libfile_dc9c95a18b08819198dfbcd7f9f001fa",
+      "url": "https://chatgpt.com/library?file_id=libfile_dc9c95a18b08819198dfbcd7f9f001fa&account_id=personal",
+      "preserved_original": true
+    }
+  },
+  "handset_acceptance": {
+    "basis": "User report and user-supplied diagnostics; no assistant-operated handset test.",
+    "device": "SM-F971U",
+    "android_version": "17",
+    "user_report": [
+      "Smooth folds and unfolds",
+      "No noticeable heat",
+      "No inner-display glitches",
+      "No crashes so far"
+    ],
+    "health_sample_span": {
+      "pid": 27602,
+      "first_wall_ms": 1794189565145,
+      "last_wall_ms": 1794243573433,
+      "span_ms": 54008288,
+      "scope": "Same PID in provided alpha.107 samples across approximately 15 hours, including idle periods and sampling gaps."
+    },
+    "latest_complete_fold": {
+      "session": 79776296,
+      "direction": "closing",
+      "scene": "Home",
+      "handoff_complete": true,
+      "endpoint_check": "OK native state, panel and layout",
+      "effect_resolution_percent": 100,
+      "duration_ms": 1796,
+      "app_cpu_ms": 432,
+      "app_cpu_one_core_percent": 24.05,
+      "sampled_peak_thermal": 0,
+      "battery_start_c": 25.4,
+      "battery_peak_c": 25.4,
+      "inner": {
+        "submitted_fps": 56.9,
+        "presentation_callback_fps": 57.2,
+        "buffer_misses": 0,
+        "fence_timeouts": 0
+      },
+      "cover": {
+        "submitted_fps": 53.2,
+        "presentation_callback_fps": 53.5,
+        "buffer_misses": 0,
+        "fence_timeouts": 0
+      }
+    },
+    "evidence_limits": [
+      "Earlier alpha.106 crash/recovery sections are historical, not current alpha.107 failures.",
+      "Software callback FPS and endpoint state are not optical panel measurements.",
+      "CPU measurements cover the app process, excluding shell helpers, GPU and compositor.",
+      "User acceptance records observed behavior so far, not exhaustive device certification."
+    ]
+  },
+  "settings_observed": {
+    "source": "User diagnostic report on approval; manual settings reference, not a preferences backup.",
+    "folding_animation_style": "Duo Mode",
+    "saved_animation": "Windowed Glass",
+    "screenshot_windowed_glass": true,
+    "screen_placement": "V2 Window Reveal",
+    "handoff_angle_degrees": 85.0,
+    "keep_awake_policy": "stay_awake_on_fold_key",
+    "custom_wallpaper_enabled": false,
+    "wallpaper_host_running": false,
+    "wallpaper_wake_preparation_test": true,
+    "closed_hinge_jitter_protection": true,
+    "jitter_start_degrees": 4.0,
+    "jitter_reset_degrees": 2.0,
+    "physical_closed_veto": true,
+    "hinge_pause_seconds": 1.5,
+    "pause_jitter_tolerance_degrees": 5.0,
+    "unwind_ms": 280,
+    "screenshot_dissolve_ms": 160,
+    "cover": {
+      "startup_easing": true,
+      "early_stretch_percent": 90.0,
+      "enhanced_end": true,
+      "end_stretch_percent": 125.0,
+      "vertical_compression_percent": 90.0
+    },
+    "inner": {
+      "startup_easing": true,
+      "early_stretch_percent": 30.0,
+      "enhanced_end": true,
+      "end_stretch_percent": 60.000004,
+      "vertical_compression_percent": 40.0
+    },
+    "anti_aliasing": {
+      "method": 0,
+      "enabled": true,
+      "strength": 0.35
+    },
+    "glass_strength_percent": 50.0,
+    "blur_amount": 0.75,
+    "rendering": "Lightweight glass (default)",
+    "system_blur_requested": false,
+    "continuous_capture": false,
+    "motion_glass": {
+      "inner_enabled": true,
+      "cover_experiment_enabled": false,
+      "cover_response_percent": 100,
+      "inner_response_percent": 100,
+      "smoothing_ms": 90,
+      "inverted": false,
+      "dead_zone_degrees": 1.5
+    },
+    "closing_prewarm_state_request": true,
+    "cover_close_continuity": "Android release with 1000 ms fallback",
+    "samsung_on_override_experiment_armed": false
+  },
+  "build_time_validation": {
+    "jvm": {
+      "tests": 740,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "controller_lifecycle_readiness_checks": 6571,
+    "real_task_routing_checks_fake_framework": 114,
+    "brightness_refresh_checks": 95,
+    "brightness_preparation_writer_checks": 83,
+    "brightness_stream_checks": 17,
+    "physical_scene_checks_fake_compositor": 28,
+    "power_token_checks_fake_platform": 19,
+    "lab_baseline_files_verified": 20,
+    "same_signing_certificate_as_alpha106": true,
+    "source_archive_crc_verified": true,
+    "handset_verified": false
+  },
+  "build_time_validation_note": "Original manifest remains unchanged. Its handset_verified=false describes build-time validation; later user acceptance is recorded separately above.",
+  "restore": {
+    "binary": "Use original APK and verify SHA-256. Do not rebuild as a substitute for the tested binary.",
+    "source": "Use original source archive or check out the exact tagged code commit from the accompanying complete Git bundle.",
+    "settings": "Compare/reapply settings_observed. No Android preference export was supplied.",
+    "installation": "Determine rollback install method on the device when needed; a lower versionCode may be rejected over a newer installed build. Do not uninstall automatically."
+  }
+}

@@ -9,7 +9,7 @@ public final class RuntimeControls {
   return RuntimeConsent.ready(c)&&(p.getBoolean("enabled",false)||WallpaperRestore.enabled(c)||FoldAwakeDefault.enabled(c));
  }
  public static void stopAll(Context c){
-  c.getSharedPreferences("standalone",0).edit().putBoolean("enabled",false).putBoolean("custom_wallpaper_enabled",false).commit();
+  c.getSharedPreferences("standalone",0).edit().putBoolean("enabled",false).putBoolean("b8_lab_enabled",false).putBoolean("custom_wallpaper_enabled",false).commit();
   FoldAwakeDefault.setEnabled(c,false);
   try{WallpaperRestore.setEnabled(c,false);}catch(java.io.IOException e){RecoveryLog.add("Wallpaper stop: "+e.getMessage());}
   WallpaperRestore.reconnect();

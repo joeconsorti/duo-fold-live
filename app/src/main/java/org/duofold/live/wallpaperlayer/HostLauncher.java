@@ -51,8 +51,8 @@ public class HostLauncher extends Binder {
    java.lang.Process observer=null;
    try{
     if(android.os.Process.myUid()!=2000 && android.os.Process.myUid()!=0)throw new IllegalStateException("Shizuku ADB mode required");
-    observer=startObserver();
-    test=new ProcessBuilder("am","instrument","-w","-r","--no-restart","--no-hidden-api-checks","org.duofold.live/org.duofold.live.wallpaperlayer.PhotoInstrumentation").redirectErrorStream(true).start();
+    // Alpha19: angle reader already owns observation; no duplicate logcat process.
+    test=new ProcessBuilder("am","instrument","-w","-r","--no-restart","--no-hidden-api-checks",org.duofold.live.BuildConfig.APPLICATION_ID+"/org.duofold.live.wallpaperlayer.PhotoInstrumentation").redirectErrorStream(true).start();
     try(BufferedReader r=new BufferedReader(new InputStreamReader(test.getInputStream()))){String line;while((line=r.readLine())!=null){
      String prefix="INSTRUMENTATION_STATUS: duo_report=";
      if(line.startsWith(prefix)){report=new String(Base64.decode(line.substring(prefix.length()),Base64.DEFAULT),StandardCharsets.UTF_8);}

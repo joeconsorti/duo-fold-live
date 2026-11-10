@@ -10,11 +10,13 @@ def function(name):
  return source[start:end]
 code='''
 #include <cmath>
+#include <initializer_list>
 #include <cassert>
 #include <cstdio>
 float min(float a,float b){return a<b?a:b;}
 float clamp(float x,float a,float b){return x<a?a:(x>b?b:x);}
-'''+function('windowShadeEdge')+function('windowShadeAmount')+'''
+float smoothstep(float lo,float hi,float value){float s=clamp((value-lo)/(hi-lo),0,1);return s*s*(3-2*s);}
+'''+function('windowShadeEdge')+function('windowShadeAmount')+function('coverAt')+function('coverBackdropWeight')+'''
 int main(){
  for(int inner=0;inner<=1;inner++)for(int fallback=0;fallback<=1;fallback++)
  for(int pos=0;pos<=100;pos++)for(int strength=0;strength<=15;strength++){
@@ -32,6 +34,15 @@ int main(){
  // Canonical edge orientation: inner left outer edge; cover right outer edge.
  assert(windowShadeEdge(0,1,0)==1&&windowShadeEdge(.5f,1,0)==0);
  assert(windowShadeEdge(0,0,0)==0&&windowShadeEdge(1,0,0)==1);
+ // Committed cover poses for the near-black YouTube frames in alpha.86.
+ for(float pose : {140.67693f,126.4552f,115.29815f,108.86549f}){
+  float coord=coverAt(.5f,pose*3.14159265f/180.f)/1.5625f;
+  assert(coord<-.01f);
+  assert(coverBackdropWeight(coord,.01f,0.f)==1.f);
+ }
+ assert(coverBackdropWeight(.4f,.01f,0.f)==0.f); // Other edges retain normal projection.
+ assert(coverBackdropWeight(-.5f,.01f,1.f)==0.f);
+ assert(coverBackdropWeight(-.5f,.01f,.25f)==.75f); // Partially valid filter footprint.
  puts("Windowed Glass: bounded, monotonic shading across panel positions and strengths");
 }
 '''

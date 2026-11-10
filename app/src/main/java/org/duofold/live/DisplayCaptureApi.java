@@ -5,6 +5,12 @@ import java.util.function.*;
 final class DisplayCaptureApi {
  final String name;final Class<?> builder;final Constructor<?> constructor,listenerConstructor;final Method capture;
  final boolean statusCallback;
+ void restrictOwner(Object argsBuilder,long uid)throws ReflectiveOperationException{
+  if(uid<0)throw new IllegalArgumentException("A verified app owner is required");
+  // Fail closed if firmware lacks filtering. Never silently return wallpaper
+  // from an unfiltered display as a selected-app image.
+  builder.getMethod("setUid",long.class).invoke(argsBuilder,uid);
+ }
  private DisplayCaptureApi(String n,Class<?> b,Constructor<?> c,Constructor<?> l,Method m,boolean status){name=n;builder=b;constructor=c;listenerConstructor=l;capture=m;statusCallback=status;}
  static DisplayCaptureApi resolve(CaptureApi.Lookup lookup,Class<?> wm,Class<?> rect,Class<?> surfaces)throws ReflectiveOperationException{
   StringBuilder errors=new StringBuilder();

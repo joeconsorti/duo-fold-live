@@ -4,5 +4,5 @@
  android:accessibilityFeedbackType="feedbackVisual"
  android:notificationTimeout="250"
  android:canRetrieveWindowContent="false"
- android:canTakeScreenshot="false"
+ android:canTakeScreenshot="true"
  android:settingsActivity="org.duofold.live.MainActivity"/>

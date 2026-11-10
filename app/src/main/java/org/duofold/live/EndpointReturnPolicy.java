@@ -7,5 +7,7 @@ final class EndpointReturnPolicy {
     &&Math.min(expectedWidth,expectedHeight)==Math.min(width,height)
     &&Math.max(expectedWidth,expectedHeight)==Math.max(width,height);
  }
+ static boolean safeToReturn(boolean unlocked,boolean mappedAndOn){return unlocked&&mappedAndOn;}
+ static boolean armPower(boolean closing,float angle,float open){return Float.isFinite(angle)&&(closing?angle<=12f:angle>=open-12f);}
  static boolean shouldWait(long now,long deadline,boolean allowed,boolean mappedAndOn){return allowed&&!mappedAndOn&&now<deadline;}
 }

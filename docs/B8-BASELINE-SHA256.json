@@ -1,0 +1,22 @@
+{
+  "PowerExperiment.java": "6844284c2f84c9dc8ef6ab05bc5fd3b6f36a7bf1d3857548a7edb8c03cd75d4b",
+  "PhysicalBrightnessHold.java": "ddb8adc91a19ac6a6d910883119b1f21c04e475176d09260bc1128960e22d446",
+  "BrightnessRefresh.java": "f854f94af72c668f645c6501333ab851ebb6c27f72ae93a36932dedba9cc613c",
+  "BrightnessSamples.java": "383b8a20bda3400b1548303c69f03164a1059dfbd1d651ceecbf53bd264a545e",
+  "TaskMover.java": "9b83c955fc3611d1b54057e004447f4e49634d129544d78a8d4bf3a96f510b51",
+  "TaskGuard.java": "5b4a8caf2e9dfd65d444ba4d59b32c13707a6a3fdd5745869f45635cd75de875",
+  "LiveWindowBridge.java": "ac904fb4909aa3493567cd809d8ca1b43e8b597d05bab807b5d1212c3c8188d4",
+  "ScreenshotOnlyBridge.java": "96ad08b3c9e2ad23f2e1d4386551566000d1bacfa5c4135fb6b0a10f32a61f9e",
+  "ShieldBridge.java": "44c3212037b678011b174423e83f5d59f1862806b12799c0b1f4cb29d14ecded",
+  "BridgePlan.java": "5aadecc59fe3dccb0ecc2bdd9da66d5748894d0444fea7bc10d20e770cd246a2",
+  "HandoffPlan.java": "6a6d73b50a1fab5c2c16a25849ec4d5b75dd76db8e5743e2dd86a4dc7491722e",
+  "RoutePlan.java": "133b8fa2592f1d4db6950b3b9c4431ccb59d5daf776cd0f1cb4b377d4e2f9ee6",
+  "ExperimentConfig.java": "a9a82ca0e5701a49719fd64d108dfe24c81fbb54c903e74fa7147f7797b6ccdd",
+  "NavigationProbe.java": "ede0fb9d4cfbbe11e2b2a653a7f55ab13cd3a10d7e1aa37554d40c52302993fe",
+  "AnimatorLease.java": "80f9daf7b2263d77d6a3ff6ce1516bbf8e68d3dcda22cadda4229e470ea6f026",
+  "AnimatorRestorePlan.java": "2ce5184409f20698e0dae943cb42f8c64f24193b315810b4ddcdac582ec88745",
+  "DesktopLease.java": "049c41125fe4504d5f5cc41a0b5e14f3254843c705d19268a83fb7c73db7b6f2",
+  "DesktopRestorePlan.java": "23fae4f1117a2a682d572ecbce396426fc1fbc0ff5d182b4362fe9c0fed963cb",
+  "DisplayCaptureApi.java": "f82e490c0d9110dbe1445b5416251e7a00f301a8e0561925f12ea1a979497f2f",
+  "CaptureCompletion.java": "7592d337b25d424e744472a64df566ce7a779fa2eddd52b903571baa251127f7"
+}

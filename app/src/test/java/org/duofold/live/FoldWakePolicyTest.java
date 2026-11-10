@@ -12,4 +12,11 @@ public class FoldWakePolicyTest {
   assertFalse(FoldWakePolicy.validLease(1000,999,1750));
   assertTrue(FoldWakePolicy.validLease(1000,5999,6000));
  }
+ @Test public void openEndpointNoiseCannotArmButDeliberateClosingCan(){
+  for(float angle:new float[]{180,179,178,177})assertFalse(FoldWakePolicy.closingMotion(180,angle));
+  assertTrue(FoldWakePolicy.closingMotion(180,176));
+  assertTrue(FoldWakePolicy.closingMotion(100,96));
+  assertFalse(FoldWakePolicy.closingMotion(20,10));
+  assertFalse(FoldWakePolicy.closingMotion(Float.NaN,170));
+ }
 }

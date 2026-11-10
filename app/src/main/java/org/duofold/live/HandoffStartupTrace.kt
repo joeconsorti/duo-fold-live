@@ -12,8 +12,8 @@ internal object HandoffStartupTrace {
  private var serial=0
  private var snapshot=""
  @Synchronized fun observe(d:Display){
-  val id=runCatching{Display::class.java.getMethod("getUniqueId").invoke(d).toString()}.getOrDefault("unavailable")
-  if(id=="unavailable")return
+  val id=PanelIdentity.identity(d)
+  if(!PanelIdentityPolicy.known(id))return
   val mode=d.mode
   if(id!=physical){
    physical=id

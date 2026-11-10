@@ -16,7 +16,7 @@ public class FoldBackgroundService extends Service {
  private boolean lastReachable=false;
  private final rikka.shizuku.Shizuku.OnBinderReceivedListener binderReady=()->main.post(()->{if(PrivilegedAccess.rootSelected())return;RecoveryLog.add("Shizuku Binder received");resetHelpers("Shizuku connection refreshed");kick();});
  private final rikka.shizuku.Shizuku.OnBinderDeadListener binderDead=()->main.post(()->{if(PrivilegedAccess.rootSelected())return;RecoveryLog.add("Shizuku Binder death notification");resetHelpers("Shizuku disconnected");kick();});
- private final BroadcastReceiver screen=new BroadcastReceiver(){public void onReceive(Context c,Intent i){ClosureDiagnostics.screen(i.getAction());RecoveryLog.add("Background received "+i.getAction());if(Intent.ACTION_SCREEN_OFF.equals(i.getAction()))clearEffect();else nextReaderAttempt=0;FoldAwakeDefault.reconnect();kick();}};
+ private final BroadcastReceiver screen=new BroadcastReceiver(){public void onReceive(Context c,Intent i){ClosureDiagnostics.screen(i.getAction());RecoveryLog.add("Background received "+i.getAction());if(Intent.ACTION_SCREEN_OFF.equals(i.getAction()))clearEffect();else nextReaderAttempt=0;kick();}};
  private final android.database.ContentObserver foldSettingObserver=new android.database.ContentObserver(main){
   @Override public void onChange(boolean selfChange){FoldAwakeDefault.reconnect();kick();}
  };
