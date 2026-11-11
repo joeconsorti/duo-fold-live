@@ -1,5 +1,7 @@
 # Duo Fold source preservation
 
+- Public stable promotion approved **2026-11-11**: publish alpha.111's unchanged runtime as **3.6.0-reconstructed**, tag **v3.6.0**, on **main**, with the existing public package/signer and GitHub Latest status. Include prominent in-app rotation-repair instructions in the README. See `docs/3.6.0-reconstructed-CHANGELOG.md`. Preserve all earlier release and rollback references.
+
 - Public stable promotion approved **2026-11-09**: publish alpha.109's runtime as **3.5.9-reconstructed**, tag **v3.5.9**, public package **org.duofold.live**, with the existing public signer and GitHub Latest status. Preserve the historical alpha.107 rollback reference below. See `docs/3.5.9-reconstructed-CHANGELOG.md`.
 
 - Latest user-approved stable rollback reference: **3.5.9-alpha.107-reconstructed-local**, versionCode **1360**, approved **2026-11-09**. See `STABLE_REFERENCE.json` and `docs/STABLE-REFERENCE.md` for the exact code commit, artifact hashes, original APK/source identities, and observed settings.

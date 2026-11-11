@@ -56,8 +56,8 @@ jobs:
           import os, re
           from pathlib import Path
           p = Path('app/build.gradle.kts')
-          if not re.search(r'versionName\s*=\s*"(?:[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+(?:-reconstructed)?|3\.5\.[012345678]|3\.5\.9-reconstructed)"', p.read_text()):
-              raise SystemExit('Release policy: only alpha versions and owner-approved stable versions through 3.5.9-reconstructed are allowed')
+          if not re.search(r'versionName\s*=\s*"(?:[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+(?:-reconstructed)?|3\.5\.[012345678]|3\.5\.9-reconstructed|3\.6\.0-reconstructed)"', p.read_text()):
+              raise SystemExit('Release policy: only alpha versions and owner-approved stable versions through 3.6.0-reconstructed are allowed')
           current = int(re.search(r'\bversionCode\s*=\s*(\d+)', p.read_text()).group(1))
           code = max(current, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
           text, count = re.subn(r'\bversionCode\s*=\s*\d+', f'versionCode = {code}', p.read_text())
@@ -90,6 +90,7 @@ jobs:
             if [ -f "$report" ]; then cat "$report"; fi
             exit 1
           fi
+          python3 tools/check_home_frames.py --variant githubRelease
 
       - name: Audit release manifests and test counts
         run: python3 tools/check_release_outputs.py --variant github
@@ -126,6 +127,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="ci-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          title=""
           printf 'Automated build of %s at %s.\nVersion code: %s\n' \
             "$GITHUB_REF_NAME" "$GITHUB_SHA" "$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts)" > "$RUNNER_TEMP/release-notes.txt"
           version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
@@ -167,9 +169,15 @@ jobs:
             tag="v3.5.9"
             release_flags=(--latest)
           fi
+          # Owner approved alpha.111 for public stable promotion on 2026-11-11.
+          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.6.0-reconstructed ]; then
+            tag="v3.6.0"
+            title="Duo Fold Live 3.6.0"
+            release_flags=(--latest)
+          fi
           gh release create "$tag" dist/Duo-Fold-Live-github-*.apk dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Duo Fold Live $version" "${release_flags[@]}" \
+            --title "${title:-Duo Fold Live $version}" "${release_flags[@]}" \
             --notes-file "$RUNNER_TEMP/release-notes.txt"
 
       - name: Remove temporary signing files

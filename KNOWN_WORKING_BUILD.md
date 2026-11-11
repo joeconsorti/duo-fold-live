@@ -1,4 +1,8 @@
-# Current public promotion — 3.5.9
+# Current public promotion — 3.6.0
+
+Owner approved alpha.111 for the public stable release on 2026-11-11. Version `3.6.0-reconstructed` (versionCode at least 1366), tag `v3.6.0`, public package `org.duofold.live`. Runtime matches alpha.111 (`8bc14e2828210ca8fa9cccb78d438a9eec9e19eb`) exactly: the added preview darkening is removed, and existing frost, animation, handoff, jitter and rotation-recovery behavior is retained. Public signing must match v3.5.8/v3.5.9. See `docs/3.6.0-reconstructed-CHANGELOG.md`. User-reported rotation recovery in issue #30 is not a universal device/firmware verification.
+
+## Previous public promotion — 3.5.9
 
 Owner approved alpha.109 for the public stable release on 2026-11-09. Version `3.5.9-reconstructed` (versionCode at least 1363), tag `v3.5.9`, public package `org.duofold.live`. Runtime matches alpha.109; promotion changes version metadata, release workflow and documentation only. Release signing must match the public v3.5.8 certificate. The reconstructed-source label is retained, and automated tests are not handset/optical proof.
 

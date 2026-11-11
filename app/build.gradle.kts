@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 android {
  namespace = "org.duofold.live"
  compileSdk = 36
- defaultConfig { manifestPlaceholders["appLabel"]="Duo Fold Live"; applicationId = "org.duofold.live"; minSdk = 34; targetSdk = 36; versionCode = 1363; versionName = "3.5.9-reconstructed" }
+ defaultConfig { manifestPlaceholders["appLabel"]="Duo Fold Live"; applicationId = "org.duofold.live"; minSdk = 34; targetSdk = 36; versionCode = 1366; versionName = "3.6.0-reconstructed" }
  flavorDimensions += "distribution"
  productFlavors {
   create("github") { dimension="distribution"; buildConfigField("boolean","IS_PLAY","false") }

@@ -1,9 +1,16 @@
 """Exercise production Home capture concurrency and rejection using fake Android APIs, not pixels."""
 from pathlib import Path
-import os, subprocess, tempfile
+import argparse, os, subprocess, tempfile
 root=Path(__file__).resolve().parents[1]
-production=root/'app/build/tmp/kotlin-classes/githubDebug'
-stdlib=list((Path(os.environ['GRADLE_BIN']).resolve().parent.parent/'lib').glob('kotlin-stdlib-*.jar'))
+parser=argparse.ArgumentParser()
+parser.add_argument('--variant',choices=('githubDebug','githubRelease'),default='githubDebug')
+production=root/'app/build/tmp/kotlin-classes'/parser.parse_args().variant
+assert production.is_dir(),f'Compile {production.name} before running this harness'
+if os.environ.get('GRADLE_BIN'):
+ stdlib=list((Path(os.environ['GRADLE_BIN']).resolve().parent.parent/'lib').glob('kotlin-stdlib-*.jar'))
+else:
+ cache=Path(os.environ.get('GRADLE_USER_HOME',str(Path.home()/'.gradle')))
+ stdlib=list((cache/'wrapper/dists').glob('gradle-8.13-*/**/lib/kotlin-stdlib-*.jar'))
 assert len(stdlib)==1
 with tempfile.TemporaryDirectory(prefix='home-frames-') as tmp:
  classes=Path(tmp)/'classes';classes.mkdir()

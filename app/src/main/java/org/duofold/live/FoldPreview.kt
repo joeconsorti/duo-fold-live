@@ -10,13 +10,6 @@ internal class FoldPreview(private val source:GlassFrame,val width:Int,val heigh
  private val policy=FoldPreviewPolicy()
  private var texture:GlassFrame?=null
  private var appLayer:AppFrostLayer?=null
- // One cached elliptical tint: 30% black through the center, 45% at the edges.
- // It shares the frost's opacity layer, so both disappear on the same frame.
- private val dim by lazy { Paint().apply {
-  shader=RadialGradient(0f,0f,1f,intArrayOf(0x4d000000,0x4d000000,0x73000000),floatArrayOf(0f,.55f,1f),Shader.TileMode.CLAMP).apply {
-   setLocalMatrix(Matrix().apply {setScale(width/2f,height/2f);postTranslate(width/2f,height/2f)})
-  }
- } }
  private var alpha=0f
  private var stage="unused"
  private fun prepare():GlassFrame {
@@ -52,7 +45,6 @@ internal class FoldPreview(private val source:GlassFrame,val width:Int,val heigh
     val layer=appLayer?:AppFrostLayer(width,height).also{appLayer=it}
     layer.draw(canvas){target->render(target,image,FoldFrameStyle.APP_FROST)}
    }else render(canvas,image,FoldFrameStyle.FULL_WIDTH_HOME)
-   canvas.drawRect(0f,0f,width.toFloat(),height.toFloat(),dim)
   }finally{if(saved>=0)canvas.restoreToCount(saved)}
  }
  fun animating()=policy.animating()

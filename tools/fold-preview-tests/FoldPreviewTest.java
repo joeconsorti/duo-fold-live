@@ -12,6 +12,9 @@ import kotlin.jvm.functions.Function3;
 public class FoldPreviewTest {
  private static int checks;
  private static void check(boolean result,String why){checks++;if(!result)throw new AssertionError(why);}
+ private static void noAddedDarkening(){
+  check(!Canvas.draws.contains("preview-edges")&&!Canvas.draws.contains("preview-dim"),"preview contains neither added darkening overlay");
+ }
  private static GlassFrame frame(int w,int h,String panel){
   return new GlassFrame(new Bitmap(w/4,h/4),w,h,100,List.of(new Bitmap(18,24)),panel,0,0,"test",0,null,null,List.of(),0,true,1f);
  }
@@ -25,14 +28,14 @@ public class FoldPreviewTest {
   FoldFrameStyle nativeStyle=app?FoldFrameStyle.STANDARD:FoldFrameStyle.FULL_WIDTH_HOME;
   FoldFrameStyle frostStyle=app?FoldFrameStyle.APP_FROST:FoldFrameStyle.FULL_WIDTH_HOME;
   try(FoldPreview preview=new FoldPreview(source,w,h,0,app)){
-   int initial=Bitmap.all.size(),initialGradients=android.graphics.RadialGradient.created;SystemClock.fixed=100;Canvas.draws.clear();
+   int initial=Bitmap.all.size(),initialShaders=android.graphics.RuntimeShader.created,initialGradients=android.graphics.RadialGradient.created;SystemClock.fixed=100;Canvas.draws.clear();
    preview.draw(canvas,nativeFrame,true,40,172,draw);
    check(drawn.equals(List.of(nativeFrame))&&styles.equals(List.of(nativeStyle))&&Bitmap.all.size()==initial,"already native skips texture preparation");
-   check(!Canvas.draws.contains("preview-dim")&&android.graphics.RadialGradient.created==initialGradients,"already native skips dimming and gradient allocation");
+   check(!Canvas.draws.contains("preview-edges")&&android.graphics.RuntimeShader.created==initialShaders,"already native skips shading and shader allocation");
    drawn.clear();styles.clear();
    preview.draw(canvas,source,false,40,172,draw);
    check(drawn.size()==1&&styles.get(0)==frostStyle,"pending presents only frost");
-   check(Canvas.draws.get(Canvas.draws.size()-1).equals("preview-dim"),"pending dims on top of the existing frost");
+   noAddedDarkening();
    GlassFrame frost=drawn.get(0);Bitmap tiny=frost.getBitmap();
    check(Math.max(tiny.getWidth(),tiny.getHeight())<=24&&tiny.getWidth()>0&&tiny.getHeight()>0,"bounded texture");
    check(!B8SnapshotPolicy.matches("in",w,h,0,frost.getPhysicalId(),frost.getWidth(),frost.getHeight(),frost.getRotation()),"cosmetic texture cannot satisfy capture readiness");
@@ -43,23 +46,24 @@ public class FoldPreviewTest {
     for(String line:Canvas.draws)if(line.startsWith("node:"))check(Integer.parseInt(line.substring(5))<=96,"bounded blur layer");
    }
    int allocations=Bitmap.all.size();
-   for(int i=0;i<20;i++){drawn.clear();preview.draw(canvas,source,false,40+i,172,draw);check(drawn.equals(List.of(frost)),"reuses the same image while the hinge moves");}
+   for(int i=0;i<20;i++){drawn.clear();Canvas.draws.clear();preview.draw(canvas,source,false,40+i,172,draw);check(drawn.equals(List.of(frost)),"reuses the same image while the hinge moves");noAddedDarkening();}
    check(Bitmap.all.size()==allocations,"moving preview makes no new bitmaps");
-   check(android.graphics.RadialGradient.created==initialGradients+1,"moving preview reuses one cached gradient");
-   drawn.clear();styles.clear();preview.draw(canvas,nativeFrame,true,76,172,draw);
+   check(android.graphics.RuntimeShader.created==initialShaders&&android.graphics.RadialGradient.created==initialGradients,"moving preview allocates no added darkening shaders");
+   drawn.clear();styles.clear();Canvas.draws.clear();preview.draw(canvas,nativeFrame,true,76,172,draw);
    check(drawn.equals(List.of(nativeFrame,frost))&&styles.equals(List.of(nativeStyle,frostStyle)),"first native frame underneath cached frost");
+   noAddedDarkening();
    SystemClock.fixed+=60;drawn.clear();Canvas.draws.clear();preview.draw(canvas,nativeFrame,true,76,172,draw);
    check(drawn.equals(List.of(nativeFrame,frost))&&Canvas.draws.contains("alpha:127")&&Canvas.draws.contains("restore"),"half-way dissolve composites both frames");
-   int dimAt=Canvas.draws.lastIndexOf("preview-dim");
-   check(dimAt>Canvas.draws.indexOf("alpha:127")&&dimAt<Canvas.draws.lastIndexOf("restore"),"dim shares the frost's half-opacity layer");
+   noAddedDarkening();
    SystemClock.fixed+=60;drawn.clear();Canvas.draws.clear();preview.draw(canvas,nativeFrame,true,76,172,draw);
    check(drawn.equals(List.of(nativeFrame))&&!preview.animating(),"dissolve stops");
-   check(!Canvas.draws.contains("preview-dim"),"completed native image has no dim overlay");
+   noAddedDarkening();
    check(Bitmap.all.size()==allocations,"native transition reuses cached images");
    // Rejected native geometry returns to frost, even if the hinge reaches an endpoint.
-   drawn.clear();preview.draw(canvas,source,false,0,172,draw);check(drawn.equals(List.of(frost)),"missing content stays covered");
+   drawn.clear();Canvas.draws.clear();preview.draw(canvas,source,false,0,172,draw);check(drawn.equals(List.of(frost)),"missing content stays covered");
+   noAddedDarkening();
    drawn.clear();Canvas.draws.clear();preview.draw(canvas,nativeFrame,true,0,172,draw);check(drawn.equals(List.of(nativeFrame))&&!preview.animating(),"ready endpoint skips cosmetic delay");
-   check(!Canvas.draws.contains("preview-dim"),"ready endpoint clears dim without delay");
+   noAddedDarkening();
   }
  }
  public static void main(String[] args){

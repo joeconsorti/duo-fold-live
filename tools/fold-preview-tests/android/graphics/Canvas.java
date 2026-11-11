@@ -17,5 +17,12 @@ public class Canvas {
   if(node.effect==null||node.recording)throw new AssertionError("incomplete frost node");
   draws.add("blur");draws.add("node:"+Math.max(node.w,node.h));
  }
- public void drawRect(float l,float t,float r,float b,Paint paint){draws.add(paint.getShader() instanceof RadialGradient?"preview-dim":"tint");}
+ public void drawRect(float l,float t,float r,float b,Paint paint){
+  if(paint.getShader() instanceof RuntimeShader){
+   RuntimeShader s=(RuntimeShader)paint.getShader();
+   if(s.size==null||s.size.length!=2||s.size[0]!=r||s.size[1]!=b||l!=0||t!=0)throw new AssertionError("edge shade uses destination coordinates");
+   draws.add("preview-edges");
+  }else if(paint.getShader() instanceof RadialGradient)draws.add("preview-dim");
+  else draws.add("tint");
+ }
 }

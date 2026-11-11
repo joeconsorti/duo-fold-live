@@ -1,8 +1,8 @@
 ![DuoFold Live](docs/assets/duofold-live-logo.svg)
 
-# Duo Fold Live · 3.5.9
+# Duo Fold Live · 3.6.0
 
-**Current official release: 3.5.9 (reconstructed source).** Occasional unlock wallpaper flashing remains a known issue. For Keep Awake, disable Samsung’s “Lock when folded”; see troubleshooting. [Rollback baseline and release history](KNOWN_WORKING_BUILD.md).
+**Current official release: 3.6.0 (reconstructed source).** Occasional unlock wallpaper flashing remains a known issue. For Keep Awake, disable Samsung’s “Lock when folded”; see troubleshooting. [Rollback baseline and release history](KNOWN_WORKING_BUILD.md).
 
 ## 📺 Step-by-step installation tutorial
 **New here? [Watch the full setup walkthrough on YouTube](https://www.youtube.com/watch?v=8Ucm7ceBDN4).**
@@ -11,7 +11,18 @@ Created by a Duo Fold Live user—not by me. Huge thanks for putting this togeth
 
 An iPhone Duo-inspired folding animation for the **Samsung Galaxy Z Fold 8**, with windowed glass, live cover previews, and smooth black fades around Samsung’s display handoff. Free and open source. Runs over One UI and ordinary apps without replacing your launcher.
 
-**[Download 3.5.9](https://github.com/joeconsorti/duo-fold-live/releases/latest)** · [3.5.9 release notes](https://github.com/joeconsorti/duo-fold-live/releases/tag/v3.5.9) · [Report an issue](https://github.com/joeconsorti/duo-fold-live/issues)
+**[Download 3.6.0](https://github.com/joeconsorti/duo-fold-live/releases/latest)** · [3.6.0 release notes](https://github.com/joeconsorti/duo-fold-live/releases/tag/v3.6.0) · [Report an issue](https://github.com/joeconsorti/duo-fold-live/issues)
+
+# PHONE STUCK IN PORTRAIT OR LANDSCAPE?
+
+Open **Duo Fold Live**, turn **Enable animation** off, then use **Auto-rotate recovery → Repair auto-rotate** on the main settings screen. Shizuku must be running and authorized (or root access authorized). The repair releases rotation overrides and enables auto-rotate on both screens. If it says a hold is still releasing, keep animation off and retry. Test rotation on both screens before turning animation back on. If either remains stuck, keep animation off and share the repair result and **Copy status report** in [issue #30](https://github.com/joeconsorti/duo-fold-live/issues/30).
+
+## What's new in 3.6.0
+
+- **Original frosted preview restored:** removes the added center and edge darkening. Blur, preview dissolve, animation timing and handoff behavior are unchanged from alpha.111.
+- **Existing safeguards retained:** open/closed hinge jitter protection, rotation restoration and the in-app auto-rotate repair controls.
+
+[Full release notes](docs/3.6.0-reconstructed-CHANGELOG.md). The public APK updates existing public installations. Local test builds use a separate package; disable their animation before enabling the public app.
 
 **Only tested on the Z Fold 8 (SM-F971U).** Fold 8 Ultra, Fold 7, and other devices are unverified. Do not expect compatibility. Model recognition includes regional SM-F971, SM-F976, and SM-F966 families. Unknown models display a warning and may proceed. Android 17 and the existing Samsung wallpaper/API checks are still required. Recognition is not verified compatibility.
 
@@ -19,7 +30,7 @@ An iPhone Duo-inspired folding animation for the **Samsung Galaxy Z Fold 8**, wi
 
 - **Duo Mode:** coordinated app-snapshot animation across both displays, native app placement, and a return to an interactive screen when the hinge is held still.
 - **Open and closed jitter protection:** avoids false starts from small near-endpoint angle fluctuations. At the default 172° open endpoint, closing begins at 169°; no extra timer.
-- **Frosted incoming preview:** subtle center dimming and darker edges fade with the preview.
+- **Frosted incoming preview:** this release added center/edge darkening; that extra darkening is removed in 3.6.0.
 - **Adaptive resolution and existing appearance controls:** retained from the approved alpha.109 candidate.
 
 [Full release notes](docs/3.5.9-reconstructed-CHANGELOG.md). The public APK updates existing public installations. Local test builds use a separate package; disable their animation before enabling the public app.
@@ -108,7 +119,7 @@ Available in Live Screen Mode (Legacy). Duo Mode uses its own coordinated panel 
 
 - **Custom photo wallpaper:** choose a photo, preview its folded and unfolded crops, and keep it saved across compatible app updates.
 - **Works over One UI and ordinary apps** without replacing your launcher.
-- **Temporary orientation locking during transitions**, followed by release, plus an Advanced **Repair auto-rotate** button for recovery.
+- **Temporary orientation locking during transitions**, followed by release, plus **Auto-rotate recovery → Repair auto-rotate** on the main settings screen.
 - **Quick Settings tile:** toggle animation from Samsung’s pull-down panel; wallpaper and animation preferences are retained.
 - **Notification preferences:** manage the running-notification category and optional support notifications independently.
 - **Guided setup and connection recovery:** wallpaper checks, Shizuku authorization, accessibility guidance, and reconnect controls are built in.
@@ -179,11 +190,11 @@ Tips do not unlock features or promise fixes. Bug reports, testing, and pull req
 
 Install JDK 17, Android SDK platform 36, and Android build tools. Set `ANDROID_HOME` or a local `sdk.dir` in `local.properties`.
 
-The stable 3.5.9 reconstructed source is tagged **v3.5.9**. Check out that tag to reproduce this release.
+The stable 3.6.0 reconstructed source is tagged **v3.6.0**. Check out that tag to reproduce this release.
 
 ```sh
-git checkout v3.5.5
-./gradlew testReleaseUnitTest assembleRelease
+git checkout v3.6.0
+./gradlew testGithubReleaseUnitTest lintGithubRelease assembleGithubRelease
 ```
 
 Without signing environment variables this creates an **unsigned** release APK. Debug builds use your local Android debug key and cannot replace the official signed release.
