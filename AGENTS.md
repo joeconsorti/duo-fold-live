@@ -1,3 +1,16 @@
+# DuofoldX development guardrails
+
+- This repository is an independent fork of Duo Fold Live v3.6.0. Preserve the upstream MIT license, copyright headers, bundled license files and THIRD_PARTY_NOTICES.md in all distributions.
+- The approved first setup commit may be pushed to the dedicated `duofoldx/bootstrap` branch. This is not permission for subsequent pushes, merges, releases, APK publication, Play publication or deployment. Obtain explicit approval for each later remote publication action.
+- GitHub Actions must remain test-only with `contents: read`. Never add signing, artifact upload, release creation, deployment or other publishing permissions without explicit approval.
+- Keep the upstream stable branch and release history unchanged. Do all product development on DuofoldX branches.
+- Do not unlock the bootloader, root the target device, flash firmware, modify system partitions or replace Samsung System UI. Use non-root workflows and separately authorized Shizuku access only where necessary.
+- Keep signing keys and credentials private; never commit them, include them in archives or print them in logs.
+- Preserve complete source, tests, build configuration, licensing and recovery notes. Do not discard uncommitted work.
+- Distinguish software tests and submitted frames from actual optical panel behavior. Do not claim physical FPS, flicker elimination or SM-F976B compatibility without measured handset evidence.
+
+---
+
 # Duo Fold source preservation
 
 - Public stable promotion approved **2026-11-11**: publish alpha.111's unchanged runtime as **3.6.0-reconstructed**, tag **v3.6.0**, on **main**, with the existing public package/signer and GitHub Latest status. Include prominent in-app rotation-repair instructions in the README. See `docs/3.6.0-reconstructed-CHANGELOG.md`. Preserve all earlier release and rollback references.

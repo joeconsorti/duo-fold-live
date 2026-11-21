@@ -4,7 +4,7 @@ package org.duofold.live;
 public final class DeviceCompatibility {
  private DeviceCompatibility() {}
  public static boolean isFold8(String model) {
-  return model != null && model.matches("SM-F971[A-Z0-9]+(?:/DS)?");
+  return model != null && model.matches("SM-F(?:971|976)[A-Z0-9]+(?:/DS)?");
  }
  public static boolean isRecognized(String model) {
   return model != null && model.matches("SM-F(?:971|976|966)[A-Z0-9]+(?:/DS)?");

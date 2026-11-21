@@ -105,7 +105,7 @@ final class TaskMover {
   if(focused==null||num(focused,"displayId")!=0)throw new IllegalStateException("Selected app must be focused on D0");
   ComponentName top=(ComponentName)field(focused,"topActivity");
   if(top==null||!pkg.equals(top.getPackageName()))throw new IllegalStateException("Focused app differs from selection: "+top);
-  if(pkg.equals("org.duofold.live")&&!top.getClassName().endsWith(".TaskProbeActivity"))throw new IllegalStateException("Built-in task not launched; refusing Lab controls");
+  if((pkg.equals("org.duofold.live")||pkg.startsWith("com.duofoldx.app"))&&!top.getClassName().endsWith(".TaskProbeActivity"))throw new IllegalStateException("Built-in task not launched; refusing Lab controls");
   Object exact=null;
   for(Object t:(List<?>)call("getTasks",new Class<?>[]{int.class,boolean.class,boolean.class,int.class},64,false,false,0)){
    int candidate=num(t,"taskId");

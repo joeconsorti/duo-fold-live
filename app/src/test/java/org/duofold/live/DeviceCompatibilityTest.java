@@ -11,6 +11,11 @@ public class DeviceCompatibilityTest {
     assertEquals("",DeviceCompatibility.modelWarning(model));
    }
  }
+ @Test public void recognizesTheSpecificTargetModelAsFold8() {
+  assertTrue(DeviceCompatibility.isFold8("SM-F976B"));
+  assertTrue(DeviceCompatibility.isFold8("SM-F971U"));
+  assertFalse(DeviceCompatibility.isFold8("SM-F966W"));
+ }
  @Test public void unknownModelsWarnButProceed() {
   for(String model:new String[]{"SM-F956U","unknown","",null}) {
    assertFalse(DeviceCompatibility.isRecognized(model));

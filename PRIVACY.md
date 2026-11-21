@@ -1,6 +1,6 @@
-# Duo Fold Live privacy policy
+# DuofoldX privacy and data handling
 
-Effective October 29, 2026. Developer: Joe Consorti. This policy covers the GitHub and Google Play editions of Duo Fold Live (org.duofold.live).
+Effective November 22, 2026. DuofoldX is an independent development fork of Duo Fold Live v3.6.0. This document describes the inherited local-processing behavior; review and update it before any public release. Development package: com.duofoldx.app.debug.
 
 ## Screen processing and accessibility
 

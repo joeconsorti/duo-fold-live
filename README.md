@@ -1,23 +1,45 @@
-![DuoFold Live](docs/assets/duofold-live-logo.svg)
+# DuofoldX
 
-# Duo Fold Live · 3.6.0
+**An independent fold-animation project for Samsung foldables.**
 
-**Current official release: 3.6.0 (reconstructed source).** Occasional unlock wallpaper flashing remains a known issue. For Keep Awake, disable Samsung’s “Lock when folded”; see troubleshooting. [Rollback baseline and release history](KNOWN_WORKING_BUILD.md).
+DuofoldX begins from the MIT-licensed Duo Fold Live v3.6.0 source baseline
+(commit `bcbc560ab8edd6b02c82535ec1865589378719f7`). It retains the upstream
+copyright and third-party notices while developing an independent product
+identity, renderer roadmap and device-validation process.
 
-## 📺 Step-by-step installation tutorial
-**New here? [Watch the full setup walkthrough on YouTube](https://www.youtube.com/watch?v=8Ucm7ceBDN4).**
+- **Initial device target:** Samsung Galaxy Z Fold 8, model **SM-F976B**
+- **Target software:** Android 17 / One UI 9.0
+- **Operating model:** effect-only overlay and wallpaper experience; no launcher replacement
+- **Development package:** `com.duofoldx.app.debug` (separate from the upstream app)
+- **Status:** engineering baseline; not yet validated on the target handset
 
-Created by a Duo Fold Live user—not by me. Huge thanks for putting this together!
+Device-family recognition is not proof of firmware compatibility. Samsung
+wallpaper APIs, Shizuku authorization, display handoff and physical panel
+behavior must be verified on the actual SM-F976B before calling the build
+compatible. No root access, bootloader unlock, firmware flash or system
+partition modification is part of this project.
 
-An iPhone Duo-inspired folding animation for the **Samsung Galaxy Z Fold 8**, with windowed glass, live cover previews, and smooth black fades around Samsung’s display handoff. Free and open source. Runs over One UI and ordinary apps without replacing your launcher.
+## Development priorities
 
-**[Download 3.6.0](https://github.com/joeconsorti/duo-fold-live/releases/latest)** · [3.6.0 release notes](https://github.com/joeconsorti/duo-fold-live/releases/tag/v3.6.0) · [Report an issue](https://github.com/joeconsorti/duo-fold-live/issues)
+1. Improve the fold/unfold glass animation and visual fidelity.
+2. Investigate the Samsung display handoff interval, black frames and flicker.
+3. Measure and improve frame pacing, thermal behavior and rendering cost.
+
+The first engineering milestone is a reproducible debug build with automated
+tests. No production signing, APK distribution, GitHub release or Play Store
+publication is enabled by this setup.
+
+## Upstream reference
+
+The upstream release documentation and historical release notes are retained
+below as technical reference. They describe the original Duo Fold Live
+application and must not be interpreted as DuofoldX device-test results.
 
 # PHONE STUCK IN PORTRAIT OR LANDSCAPE?
 
 Open **Duo Fold Live**, turn **Enable animation** off, then use **Auto-rotate recovery → Repair auto-rotate** on the main settings screen. Shizuku must be running and authorized (or root access authorized). The repair releases rotation overrides and enables auto-rotate on both screens. If it says a hold is still releasing, keep animation off and retry. Test rotation on both screens before turning animation back on. If either remains stuck, keep animation off and share the repair result and **Copy status report** in [issue #30](https://github.com/joeconsorti/duo-fold-live/issues/30).
 
-## What's new in 3.6.0
+## Inherited upstream release history — 3.6.0
 
 - **Original frosted preview restored:** removes the added center and edge darkening. Blur, preview dissolve, animation timing and handoff behavior are unchanged from alpha.111.
 - **Existing safeguards retained:** open/closed hinge jitter protection, rotation restoration and the in-app auto-rotate repair controls.

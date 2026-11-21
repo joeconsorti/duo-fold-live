@@ -188,6 +188,9 @@ internal object DuoGlassShader {
   if(reflectedCover>0.5)blurEdge=max(blurEdge,(2.0*seamOffset-axis)/(1.0+2.0*seamOffset));
   float radius=72.0*motion*pow(clamp(blurEdge,0.0,1.0),1.35);
   radius*=blurStrength*(inner>0.5?1.25:1.0);
+  // The blur footprint is constant across all taps for this output pixel.
+  // Resolve its mip level once instead of repeating log2 in each sample path.
+  float blurLod=blurLod;
   float2 footprint=max((0.5+aaStrength)/texSize,float2(radius)*0.75/texSize);
   half3 color=half3(0);
   float support=0.0;
@@ -198,7 +201,7 @@ internal object DuoGlassShader {
   }else if(lightBlur>0.5){
    float2 coverage=smoothstep(-footprint,footprint,sourceUV)*(1.0-smoothstep(1.0-footprint,1.0+footprint,sourceUV));
    support=coverage.x*coverage.y;
-   color=sampleLevel(clamp(sourceUV,float2(0),float2(1))*texSize,log2(max(1.0,radius)))*half(support);
+   color=sampleLevel(clamp(sourceUV,float2(0),float2(1))*texSize,blurLod)*half(support);
   }else{
   for(int y=-2;y<=2;y++) {
    for(int x=-2;x<=2;x++) {
@@ -208,7 +211,7 @@ internal object DuoGlassShader {
     float2 coverage=smoothstep(-footprint,footprint,sampleUV)*(1.0-smoothstep(1.0-footprint,1.0+footprint,sampleUV));
     float weight=coverage.x*coverage.y*wx*wy/256.0;
     support+=weight;
-    color+=sampleLevel(clamp(sampleUV,float2(0),float2(1))*texSize,log2(max(1.0,radius)))*half(weight);
+    color+=sampleLevel(clamp(sampleUV,float2(0),float2(1))*texSize,blurLod)*half(weight);
    }
   }
   }
@@ -216,7 +219,7 @@ internal object DuoGlassShader {
    // All projected app samples use the same filtered texture as Home. Fill
    // any uncovered footprint from that frost so a passing hinge stays opaque.
    float2 backdropUV=(p-origin)/extent*sampleScale+sampleOffset;
-   color+=sampleLevel(clamp(backdropUV,float2(0),float2(1))*texSize,log2(max(1.0,radius)))*half(1.0-support);
+   color+=sampleLevel(clamp(backdropUV,float2(0),float2(1))*texSize,blurLod)*half(1.0-support);
   }else if(fillCoverHinge>0.5){
    float coordinate=mix(sourceUV.x,sourceUV.y,horizontal);
    coordinate=mix(coordinate,1.0-coordinate,reverse);
