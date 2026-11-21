@@ -1,83 +1,42 @@
-name: Android signed release
+name: DuofoldX Android verification
 
 on:
   push:
     branches: ['**']
-    paths-ignore:
-      - '**/*.md'
-      - 'tools/play-private/**'
-      - 'tools/archive_play_assets.py'
-      - '.github/workflows/archive-play.yml'
+  pull_request:
   workflow_dispatch:
-
-concurrency:
-  group: github-build-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_name != 'main' && !startsWith(github.ref_name, 'release/') }}
 
 permissions:
   contents: read
 
+concurrency:
+  group: duofoldx-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  release:
+  verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      contents: write
-    defaults:
-      run:
-        shell: bash
+    timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out source
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: 0
 
-      - uses: actions/setup-java@v6
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
-          cache-dependency-path: |
-            **/*.gradle.kts
-            gradle/wrapper/gradle-wrapper.properties
-          
+
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v3
 
       - name: Install Android SDK packages
-        run: |
-          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;35.0.0'
-          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
-          chmod +x gradlew
+        run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;35.0.0'
 
-      - name: Assign increasing CI version code
-        run: |
-          python3 - <<'PY'
-          import os, re
-          from pathlib import Path
-          p = Path('app/build.gradle.kts')
-          if not re.search(r'versionName\s*=\s*"(?:[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+(?:-reconstructed)?|3\.5\.[012345678]|3\.5\.9-reconstructed|3\.6\.0-reconstructed)"', p.read_text()):
-              raise SystemExit('Release policy: only alpha versions and owner-approved stable versions through 3.6.0-reconstructed are allowed')
-          current = int(re.search(r'\bversionCode\s*=\s*(\d+)', p.read_text()).group(1))
-          code = max(current, 1000 + int(os.environ['GITHUB_RUN_NUMBER']))
-          text, count = re.subn(r'\bversionCode\s*=\s*\d+', f'versionCode = {code}', p.read_text())
-          if count != 1:
-              raise SystemExit('Expected exactly one numeric versionCode in app/build.gradle.kts')
-          p.write_text(text)
-          PY
-
-      - name: Mark alpha 24 BROKEN without removing downloads
-        if: github.ref_name == 'alpha/3.0.4-alpha.25'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release edit ci-39-1 --repo "$GITHUB_REPOSITORY" --title "BROKEN — Duo Fold Live 3.0.4-alpha.24" --prerelease --latest=false --notes-file docs/3.0.4-alpha.24-CHANGELOG.md
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/ci-39-1" --jq '.assets[] | [.id, .name] | @tsv' > "$RUNNER_TEMP/broken-assets.tsv"
-          while IFS=$'\t' read -r asset_id asset_name; do
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" -f "label=BROKEN — $asset_name" > /dev/null
-          done < "$RUNNER_TEMP/broken-assets.tsv"
-
-      - name: Test and build unsigned release
+      - name: Verify inherited source and privacy baseline
         run: |
           cmp PRIVACY.md app/src/main/assets/privacy.txt
           python3 tools/check_inner_stretch.py
@@ -85,101 +44,11 @@ jobs:
           python3 tools/check_motion_projection.py
           python3 tools/check_b8_baseline.py
           python3 tools/check_live_b8.py
-          if ! ./gradlew --no-daemon testGithubReleaseUnitTest lintGithubRelease assembleGithubRelease; then
-            report=app/build/intermediates/lint_intermediate_text_report/githubRelease/lintReportGithubRelease/lint-results-githubRelease.txt
-            if [ -f "$report" ]; then cat "$report"; fi
-            exit 1
-          fi
-          python3 tools/check_home_frames.py --variant githubRelease
 
-      - name: Audit release manifests and test counts
-        run: python3 tools/check_release_outputs.py --variant github
-
-      - name: Sign and verify APK
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      - name: Run unit tests, lint and debug APK build
         run: |
-          set -euo pipefail
-          : "${KEYSTORE_BASE64:?Missing ANDROID_KEYSTORE_BASE64}"
-          : "${STORE_PASSWORD:?Missing ANDROID_KEYSTORE_PASSWORD}"
-          : "${KEY_ALIAS:?Missing ANDROID_KEY_ALIAS}"
-          : "${KEY_PASSWORD:?Missing ANDROID_KEY_PASSWORD}"
-          umask 077
-          key="$RUNNER_TEMP/duofold-live.jks"
-          trap 'rm -f "$key"' EXIT
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$key"
-          mkdir -p dist
-          tools="$ANDROID_HOME/build-tools/35.0.0"
-          apk="dist/Duo-Fold-Live-github-ci-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}.apk"
-          "$tools/zipalign" -f -P 16 4 app/build/outputs/apk/github/release/app-github-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
-          "$tools/apksigner" sign --ks "$key" --ks-key-alias "$KEY_ALIAS" --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD --out "$apk" "$RUNNER_TEMP/aligned.apk"
-          "$tools/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-signature.txt"
-          # Retain the signing identity of the existing public v3.5.8 APK.
-          grep -Fqx 'Signer #1 certificate SHA-256 digest: b73c9f53f4500766d94e42dcd7f965d0988a8f9888f0be85243e0c031eacecdc' "$RUNNER_TEMP/apk-signature.txt"
-          "$tools/zipalign" -c -P 16 4 "$apk"
-          (cd dist && sha256sum *.apk > SHA256SUMS.txt)
+          chmod +x gradlew
+          ./gradlew --no-daemon testGithubDebugUnitTest lintGithubDebug assembleGithubDebug
 
-      - name: Publish release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="ci-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
-          title=""
-          printf 'Automated build of %s at %s.\nVersion code: %s\n' \
-            "$GITHUB_REF_NAME" "$GITHUB_SHA" "$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts)" > "$RUNNER_TEMP/release-notes.txt"
-          version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
-          if [ -f "docs/$version-CHANGELOG.md" ]; then
-            cat "docs/$version-CHANGELOG.md" >> "$RUNNER_TEMP/release-notes.txt"
-          fi
-          release_flags=(--prerelease --latest=false)
-          # Owner approved alpha.7 plus the three default changes as 3.5.2.
-          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.5.2 ]; then
-            release_flags=(--latest)
-          fi
-          # Owner approved the alpha.41 feature set plus copy edits as stable 3.5.3.
-          if [ "$GITHUB_REF_NAME" = release/3.5.3 ] && [ "$version" = 3.5.3 ]; then
-            tag="v3.5.3"
-            release_flags=(--latest)
-          fi
-          # Owner approved alpha.7 closure behavior and Smooth/Fast presets as stable 3.5.4.
-          if [ "$version" = 3.5.4 ] && { [ "$GITHUB_REF_NAME" = release/3.5.4 ] || [ "$GITHUB_REF_NAME" = main ]; }; then
-            tag="v3.5.4"
-            release_flags=(--latest)
-          fi
-          # Owner approved the section-order-only update as stable 3.5.6.
-          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.5.6 ]; then
-            tag="v3.5.6"
-            release_flags=(--latest)
-          fi
-          # Owner approved the tested motion glass build and compact wallpaper header as stable 3.5.7.
-          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.5.7 ]; then
-            tag="v3.5.7"
-            release_flags=(--latest)
-          fi
-          # Owner approved alpha.15 with inner screen motion enabled by default as stable 3.5.8.
-          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.5.8 ]; then
-            tag="v3.5.8"
-            release_flags=(--latest)
-          fi
-          # Owner approved alpha.109 for public stable promotion on 2026-11-09.
-          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.5.9-reconstructed ]; then
-            tag="v3.5.9"
-            release_flags=(--latest)
-          fi
-          # Owner approved alpha.111 for public stable promotion on 2026-11-11.
-          if [ "$GITHUB_REF_NAME" = main ] && [ "$version" = 3.6.0-reconstructed ]; then
-            tag="v3.6.0"
-            title="Duo Fold Live 3.6.0"
-            release_flags=(--latest)
-          fi
-          gh release create "$tag" dist/Duo-Fold-Live-github-*.apk dist/SHA256SUMS.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "${title:-Duo Fold Live $version}" "${release_flags[@]}" \
-            --notes-file "$RUNNER_TEMP/release-notes.txt"
-
-      - name: Remove temporary signing files
-        if: always()
-        run: rm -f "$RUNNER_TEMP/duofold-live.jks" "$RUNNER_TEMP/aligned.apk"
+# This workflow is intentionally test-only.
+# It has read-only repository permissions and cannot sign, upload or publish releases.
