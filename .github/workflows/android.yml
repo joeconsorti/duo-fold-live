@@ -50,5 +50,13 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon testGithubDebugUnitTest lintGithubDebug assembleGithubDebug
 
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DuofoldX-debug-apk
+          path: app/build/outputs/apk/github/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
 # This workflow is intentionally test-only.
 # It has read-only repository permissions and cannot sign, upload or publish releases.
